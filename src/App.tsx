@@ -74,6 +74,7 @@ function App() {
           </Routes>
           <BottomNav />
           <TransactionModal />
+          <BudgetModal />
         </div>
       </div>
     </BrowserRouter>
