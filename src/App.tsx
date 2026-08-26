@@ -3,6 +3,7 @@ import { BrowserRouter, Routes, Route, Link, useLocation } from 'react-router-do
 import { Home, List, PieChart, Users, Plus, Settings as SettingsIcon } from 'lucide-react';
 import { initDbWithMockData } from './utils/initDb';
 import { useUIStore } from './store/uiStore';
+import { useThemeStore } from './store/themeStore';
 import Dashboard from './pages/Dashboard';
 import Accounts from './pages/Accounts';
 import Activity from './pages/Activity';
@@ -11,6 +12,40 @@ import Settings from './pages/Settings';
 import BudgetDetail from './pages/BudgetDetail';
 import TransactionModal from './components/TransactionModal';
 import BudgetModal from './components/BudgetModal';
+
+function ThemeInitializer() {
+  const { theme } = useThemeStore();
+
+  useEffect(() => {
+    const root = document.documentElement;
+    
+    const applyTheme = () => {
+      if (theme === 'dark') {
+        root.classList.add('dark');
+      } else if (theme === 'light') {
+        root.classList.remove('dark');
+      } else {
+        // system
+        if (window.matchMedia('(prefers-color-scheme: dark)').matches) {
+          root.classList.add('dark');
+        } else {
+          root.classList.remove('dark');
+        }
+      }
+    };
+
+    applyTheme();
+
+    if (theme === 'system') {
+      const mediaQuery = window.matchMedia('(prefers-color-scheme: dark)');
+      const listener = () => applyTheme();
+      mediaQuery.addEventListener('change', listener);
+      return () => mediaQuery.removeEventListener('change', listener);
+    }
+  }, [theme]);
+
+  return null;
+}
 
 function BottomNav() {
   const location = useLocation();
@@ -23,31 +58,31 @@ function BottomNav() {
       <div className="fixed bottom-20 left-0 right-0 max-w-md mx-auto pointer-events-none flex justify-center z-40">
         <button 
           onClick={() => setAddTransactionModalOpen(true)}
-          className="bg-gray-900 text-white p-4 rounded-full shadow-lg active:scale-95 transition-transform pointer-events-auto"
+          className="bg-accent text-accent-foreground p-4 rounded-full shadow-lg active:scale-95 transition-transform pointer-events-auto"
         >
           <Plus size={28} />
         </button>
       </div>
 
-      <nav className="fixed bottom-0 w-full max-w-md mx-auto bg-white border-t border-gray-200 pb-safe z-40">
+      <nav className="fixed bottom-0 w-full max-w-md mx-auto bg-background border-t border-border pb-safe z-40">
         <div className="flex justify-around items-center h-16 px-1">
-          <Link to="/" className={`flex flex-col items-center justify-center w-full h-full ${isActive('/') ? 'text-gray-900' : 'text-gray-400'}`}>
+          <Link to="/" className={`flex flex-col items-center justify-center w-full h-full ${isActive('/') ? 'text-foreground' : 'text-muted-foreground'}`}>
             <Home size={22} />
             <span className="text-[10px] mt-1 font-medium">Home</span>
           </Link>
-          <Link to="/accounts" className={`flex flex-col items-center justify-center w-full h-full ${isActive('/accounts') ? 'text-gray-900' : 'text-gray-400'}`}>
+          <Link to="/accounts" className={`flex flex-col items-center justify-center w-full h-full ${isActive('/accounts') ? 'text-foreground' : 'text-muted-foreground'}`}>
             <PieChart size={22} />
             <span className="text-[10px] mt-1 font-medium">Accounts</span>
           </Link>
-          <Link to="/activity" className={`flex flex-col items-center justify-center w-full h-full ${isActive('/activity') ? 'text-gray-900' : 'text-gray-400'}`}>
+          <Link to="/activity" className={`flex flex-col items-center justify-center w-full h-full ${isActive('/activity') ? 'text-foreground' : 'text-muted-foreground'}`}>
             <List size={22} />
             <span className="text-[10px] mt-1 font-medium">Activity</span>
           </Link>
-          <Link to="/debts" className={`flex flex-col items-center justify-center w-full h-full ${isActive('/debts') ? 'text-gray-900' : 'text-gray-400'}`}>
+          <Link to="/debts" className={`flex flex-col items-center justify-center w-full h-full ${isActive('/debts') ? 'text-foreground' : 'text-muted-foreground'}`}>
             <Users size={22} />
             <span className="text-[10px] mt-1 font-medium">IOUs</span>
           </Link>
-          <Link to="/settings" className={`flex flex-col items-center justify-center w-full h-full ${isActive('/settings') ? 'text-gray-900' : 'text-gray-400'}`}>
+          <Link to="/settings" className={`flex flex-col items-center justify-center w-full h-full ${isActive('/settings') ? 'text-foreground' : 'text-muted-foreground'}`}>
             <SettingsIcon size={22} />
             <span className="text-[10px] mt-1 font-medium">Settings</span>
           </Link>
@@ -64,9 +99,10 @@ function App() {
 
   return (
     <BrowserRouter>
-      <div className="min-h-screen bg-gray-50 flex justify-center">
+      <ThemeInitializer />
+      <div className="min-h-screen bg-muted flex justify-center">
         {/* Mobile container */}
-        <div className="w-full max-w-md bg-white min-h-screen relative shadow-sm pb-20">
+        <div className="w-full max-w-md bg-background min-h-screen relative shadow-sm pb-20">
           <Routes>
             <Route path="/" element={<Dashboard />} />
             <Route path="/accounts" element={<Accounts />} />

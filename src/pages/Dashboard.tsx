@@ -54,11 +54,11 @@ export default function Dashboard() {
     <div className="p-6 pb-36">
       {/* ── Available balance ──────────────────────────────────────────────── */}
       <header className="mb-6 mt-4">
-        <h1 className="text-5xl font-light tracking-tight text-gray-900 mb-1">
+        <h1 className="text-5xl font-light tracking-tight text-foreground mb-1">
           <span className="text-2xl align-top mr-1">LKR</span>
           {totalBalance.toLocaleString()}
         </h1>
-        <p className="text-gray-400 text-sm font-medium mb-4">Available</p>
+        <p className="text-muted-foreground text-sm font-medium mb-4">Available</p>
 
         {/* Account pills — read-only glance */}
         <div className="flex overflow-x-auto pb-1 -mx-6 px-6 hide-scrollbar space-x-2">
@@ -67,12 +67,12 @@ export default function Dashboard() {
               key={acc.id}
               className={`flex-shrink-0 px-3 py-1.5 rounded-xl border text-xs font-medium flex items-center gap-1.5
                 ${acc.includeInTotal
-                  ? 'bg-white border-gray-200 text-gray-700'
-                  : 'bg-gray-50 border-dashed border-gray-200 text-gray-400'}`}
+                  ? 'bg-card border-border text-foreground'
+                  : 'bg-muted border-dashed border-border text-muted-foreground'}`}
             >
               <span>{accIcon(acc.type)}</span>
               <span>{acc.name}</span>
-              <span className="text-gray-500">LKR {acc.balance.toLocaleString()}</span>
+              <span className="text-muted-foreground">LKR {acc.balance.toLocaleString()}</span>
             </div>
           ))}
         </div>
@@ -84,67 +84,67 @@ export default function Dashboard() {
         className="w-full text-left mb-8 active:scale-[0.99] transition-transform"
       >
         {activeBudget ? (
-          <div className="bg-white rounded-2xl p-5 border border-gray-100 shadow-sm">
+          <div className="bg-card rounded-2xl p-5 border border-border shadow-sm">
             <div className="flex justify-between items-center mb-3">
               <div>
-                <p className="text-xs text-gray-400 font-medium mb-1">{activeBudget.name}</p>
-                <p className="text-3xl font-light text-gray-900">
+                <p className="text-xs text-muted-foreground font-medium mb-1">{activeBudget.name}</p>
+                <p className="text-3xl font-light text-foreground">
                   LKR {remainingBudget.toLocaleString()}
-                  <span className="text-sm text-gray-400 font-normal ml-2">left</span>
+                  <span className="text-sm text-muted-foreground font-normal ml-2">left</span>
                 </p>
               </div>
               <div className="flex items-center gap-2">
                 <span className="text-2xl">{onTrackStatus}</span>
-                <ChevronRight size={18} className="text-gray-300" />
+                <ChevronRight size={18} className="text-muted-foreground opacity-50" />
               </div>
             </div>
-            <div className="h-2 w-full bg-gray-100 rounded-full overflow-hidden mb-2">
+            <div className="h-2 w-full bg-muted rounded-full overflow-hidden mb-2">
               <div
                 className={`h-full rounded-full transition-all duration-500 ${
-                  onTrackStatus === '🔴' ? 'bg-red-500' : onTrackStatus === '🟡' ? 'bg-yellow-400' : 'bg-gray-900'
+                  onTrackStatus === '🔴' ? 'bg-red-500' : onTrackStatus === '🟡' ? 'bg-yellow-400' : 'bg-foreground'
                 }`}
                 style={{ width: `${progressPercentage}%` }}
               />
             </div>
-            <div className="flex justify-between text-xs text-gray-400 font-medium">
+            <div className="flex justify-between text-xs text-muted-foreground font-medium">
               <span>LKR {spentThisPeriod.toLocaleString()} spent</span>
               <span>{daysLeft}d left</span>
             </div>
           </div>
         ) : (
-          <div className="bg-gray-50 rounded-2xl p-5 border border-dashed border-gray-300 flex items-center justify-between text-gray-500">
+          <div className="bg-muted rounded-2xl p-5 border border-dashed border-border flex items-center justify-between text-muted-foreground">
             <span className="text-sm font-medium">No budget · Tap to set one up</span>
-            <ChevronRight size={18} className="text-gray-300" />
+            <ChevronRight size={18} className="opacity-50" />
           </div>
         )}
       </button>
 
       {/* ── Recent activity glance ────────────────────────────────────────── */}
       <section>
-        <h2 className="text-xs font-medium text-gray-400 uppercase tracking-wider mb-3">Recent</h2>
+        <h2 className="text-xs font-medium text-muted-foreground uppercase tracking-wider mb-3">Recent</h2>
         <div className="space-y-2">
           {recentTransactions.map(txn => (
-            <div key={txn.id} className="flex items-center justify-between p-3 bg-white border border-gray-100 rounded-xl shadow-sm">
+            <div key={txn.id} className="flex items-center justify-between p-3 bg-card border border-border rounded-xl shadow-sm">
               <div className="flex items-center">
-                <div className="w-9 h-9 rounded-full bg-gray-100 flex items-center justify-center text-base mr-3">
+                <div className="w-9 h-9 rounded-full bg-muted flex items-center justify-center text-base mr-3">
                   {txn.type === 'expense' ? '💸' : txn.type === 'income' ? '💰' : '🔄'}
                 </div>
                 <div>
-                  <p className="font-medium text-gray-900 text-sm leading-tight">
+                  <p className="font-medium text-foreground text-sm leading-tight">
                     {txn.notes || (txn.type === 'expense' ? 'Expense' : txn.type === 'income' ? 'Income' : 'Transfer')}
                   </p>
-                  <p className="text-xs text-gray-400">
+                  <p className="text-xs text-muted-foreground">
                     {new Date(txn.date).toLocaleDateString()}
                   </p>
                 </div>
               </div>
-              <span className={`font-medium text-sm ${txn.type === 'expense' ? 'text-gray-900' : txn.type === 'income' ? 'text-green-600' : 'text-gray-400'}`}>
+              <span className={`font-medium text-sm ${txn.type === 'expense' ? 'text-foreground' : txn.type === 'income' ? 'text-green-500' : 'text-muted-foreground'}`}>
                 {txn.type === 'expense' ? '−' : txn.type === 'income' ? '+' : ''}LKR {txn.amount.toLocaleString()}
               </span>
             </div>
           ))}
           {recentTransactions.length === 0 && (
-            <p className="text-gray-400 text-sm text-center py-6">No activity yet.</p>
+            <p className="text-muted-foreground text-sm text-center py-6">No activity yet.</p>
           )}
         </div>
       </section>

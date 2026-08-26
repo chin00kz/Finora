@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { X, ChevronDown, ChevronUp } from 'lucide-react';
-import { db, type TransactionType } from '../db/db';
+import { db } from '../db/db';
+import type { TransactionType } from '../db/db';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { useUIStore } from '../store/uiStore';
 
@@ -107,12 +108,12 @@ export default function TransactionModal() {
 
   return (
     <div className="fixed inset-0 z-50 flex flex-col justify-end bg-black/40 backdrop-blur-sm animate-in fade-in duration-200">
-      <div className="bg-white w-full max-w-md mx-auto rounded-t-3xl shadow-xl flex flex-col h-[85vh] animate-in slide-in-from-bottom-full duration-300">
+      <div className="bg-card w-full max-w-md mx-auto rounded-t-3xl shadow-xl flex flex-col h-[85vh] animate-in slide-in-from-bottom-full duration-300">
         
         {/* Header */}
-        <div className="flex justify-between items-center p-5 border-b border-gray-100">
-          <h2 className="text-xl font-medium text-gray-900">New Transaction</h2>
-          <button onClick={() => setAddTransactionModalOpen(false)} className="p-2 bg-gray-100 rounded-full text-gray-500 active:scale-95">
+        <div className="flex justify-between items-center p-5 border-b border-border">
+          <h2 className="text-xl font-medium text-foreground">New Transaction</h2>
+          <button onClick={() => setAddTransactionModalOpen(false)} className="p-2 bg-muted rounded-full text-muted-foreground active:scale-95">
             <X size={20} />
           </button>
         </div>
@@ -122,14 +123,14 @@ export default function TransactionModal() {
           <form id="tx-form" onSubmit={handleSubmit} className="p-6 space-y-6">
             
             {/* Type Selector */}
-            <div className="flex bg-gray-100 p-1 rounded-xl">
+            <div className="flex bg-muted p-1 rounded-xl">
               {(['expense', 'income', 'transfer'] as const).map(t => (
                 <button
                   key={t}
                   type="button"
                   onClick={() => setType(t)}
                   className={`flex-1 py-2 text-sm font-medium rounded-lg capitalize transition-colors ${
-                    type === t ? 'bg-white shadow-sm text-gray-900' : 'text-gray-500'
+                    type === t ? 'bg-card shadow-sm text-foreground' : 'text-muted-foreground'
                   }`}
                 >
                   {t}
@@ -139,9 +140,9 @@ export default function TransactionModal() {
 
             {/* Amount */}
             <div>
-              <label className="block text-xs font-medium text-gray-500 mb-2 uppercase tracking-wider">Amount</label>
+              <label className="block text-xs font-medium text-muted-foreground mb-2 uppercase tracking-wider">Amount</label>
               <div className="flex items-center text-5xl font-light">
-                <span className="text-2xl text-gray-400 mr-2">LKR</span>
+                <span className="text-2xl text-muted-foreground mr-2">LKR</span>
                 <input
                   type="number"
                   inputMode="decimal"
@@ -149,7 +150,7 @@ export default function TransactionModal() {
                   required
                   value={amount}
                   onChange={e => setAmount(e.target.value)}
-                  className="w-full bg-transparent outline-none placeholder:text-gray-300"
+                  className="w-full bg-transparent text-foreground outline-none placeholder:text-muted-foreground/50"
                   placeholder="0.00"
                 />
               </div>
@@ -157,13 +158,13 @@ export default function TransactionModal() {
 
             {/* From Account */}
             <div>
-              <label className="block text-xs font-medium text-gray-500 mb-2 uppercase tracking-wider">
+              <label className="block text-xs font-medium text-muted-foreground mb-2 uppercase tracking-wider">
                 {type === 'transfer' ? 'From Account' : 'Account'}
               </label>
               <select 
                 value={accountId} 
                 onChange={e => setAccountId(e.target.value)}
-                className="w-full p-4 bg-gray-50 border border-gray-200 rounded-xl font-medium text-gray-900 outline-none focus:border-gray-900"
+                className="w-full p-4 bg-background border border-border rounded-xl font-medium text-foreground outline-none focus:border-foreground"
               >
                 {accounts.map(a => <option key={a.id} value={a.id}>{a.name} — LKR {a.balance.toLocaleString()}</option>)}
               </select>
@@ -172,11 +173,11 @@ export default function TransactionModal() {
             {/* To Account (Transfers) */}
             {type === 'transfer' && (
               <div className="animate-in fade-in slide-in-from-top-2">
-                <label className="block text-xs font-medium text-gray-500 mb-2 uppercase tracking-wider">To Account</label>
+                <label className="block text-xs font-medium text-muted-foreground mb-2 uppercase tracking-wider">To Account</label>
                 <select 
                   value={toAccountId} 
                   onChange={e => setToAccountId(e.target.value)}
-                  className="w-full p-4 bg-gray-50 border border-gray-200 rounded-xl font-medium text-gray-900 outline-none focus:border-gray-900"
+                  className="w-full p-4 bg-background border border-border rounded-xl font-medium text-foreground outline-none focus:border-foreground"
                 >
                   <option value="">Select destination...</option>
                   {accounts.filter(a => a.id !== accountId).map(a => <option key={a.id} value={a.id}>{a.name} — LKR {a.balance.toLocaleString()}</option>)}
@@ -187,7 +188,7 @@ export default function TransactionModal() {
             {/* Category */}
             {type !== 'transfer' && (
               <div>
-                <label className="block text-xs font-medium text-gray-500 mb-2 uppercase tracking-wider">Category</label>
+                <label className="block text-xs font-medium text-muted-foreground mb-2 uppercase tracking-wider">Category</label>
                 <div className="grid grid-cols-3 gap-2">
                   {filteredCategories.map(c => (
                     <button
@@ -195,7 +196,7 @@ export default function TransactionModal() {
                       type="button"
                       onClick={() => setCategoryId(c.id)}
                       className={`p-3 rounded-xl border flex flex-col items-center justify-center transition-colors ${
-                        categoryId === c.id ? 'border-gray-900 bg-gray-900 text-white' : 'border-gray-200 bg-white text-gray-600'
+                        categoryId === c.id ? 'border-foreground bg-accent text-accent-foreground' : 'border-border bg-card text-muted-foreground'
                       }`}
                     >
                       <span className="text-sm font-medium">{c.name}</span>
@@ -210,7 +211,7 @@ export default function TransactionModal() {
               <button 
                 type="button" 
                 onClick={() => setShowAdvanced(!showAdvanced)}
-                className="flex items-center justify-center w-full py-3 text-sm font-medium text-gray-500 hover:text-gray-900 transition-colors"
+                className="flex items-center justify-center w-full py-3 text-sm font-medium text-muted-foreground hover:text-foreground transition-colors"
               >
                 {showAdvanced ? <ChevronUp size={16} className="mr-2" /> : <ChevronDown size={16} className="mr-2" />}
                 More options
@@ -219,25 +220,25 @@ export default function TransactionModal() {
 
             {/* Advanced Options */}
             {showAdvanced && (
-              <div className="space-y-6 pt-2 pb-6 animate-in slide-in-from-top-4 fade-in duration-300 border-t border-gray-100">
+              <div className="space-y-6 pt-2 pb-6 animate-in slide-in-from-top-4 fade-in duration-300 border-t border-border">
                 <div>
-                  <label className="block text-xs font-medium text-gray-500 mb-2 uppercase tracking-wider">Notes</label>
+                  <label className="block text-xs font-medium text-muted-foreground mb-2 uppercase tracking-wider">Notes</label>
                   <input
                     type="text"
                     value={notes}
                     onChange={e => setNotes(e.target.value)}
-                    className="w-full p-4 bg-gray-50 border border-gray-200 rounded-xl font-medium text-gray-900 outline-none focus:border-gray-900"
+                    className="w-full p-4 bg-background border border-border rounded-xl font-medium text-foreground outline-none focus:border-foreground"
                     placeholder="What was this for?"
                   />
                 </div>
 
                 <div>
-                  <label className="block text-xs font-medium text-gray-500 mb-2 uppercase tracking-wider">Tags</label>
-                  <div className="p-3 bg-gray-50 border border-gray-200 rounded-xl min-h-[56px] flex flex-wrap gap-2 items-center focus-within:border-gray-900">
+                  <label className="block text-xs font-medium text-muted-foreground mb-2 uppercase tracking-wider">Tags</label>
+                  <div className="p-3 bg-background border border-border rounded-xl min-h-[56px] flex flex-wrap gap-2 items-center focus-within:border-foreground">
                     {selectedTags.map(tag => (
-                      <span key={tag} className="flex items-center bg-gray-200 text-gray-800 px-2 py-1 rounded-md text-sm">
+                      <span key={tag} className="flex items-center bg-muted text-foreground px-2 py-1 rounded-md text-sm">
                         #{tag}
-                        <button type="button" onClick={() => setSelectedTags(selectedTags.filter(t => t !== tag))} className="ml-1 text-gray-500 hover:text-gray-900">
+                        <button type="button" onClick={() => setSelectedTags(selectedTags.filter(t => t !== tag))} className="ml-1 text-muted-foreground hover:text-foreground">
                           <X size={14} />
                         </button>
                       </span>
@@ -256,11 +257,11 @@ export default function TransactionModal() {
                             setTagInput('');
                           }
                         }}
-                        className="w-full bg-transparent outline-none text-sm"
+                        className="w-full bg-transparent text-foreground outline-none text-sm"
                         placeholder={selectedTags.length === 0 ? "Add tags..." : ""}
                       />
                       {tagInput && tags.length > 0 && (
-                        <div className="absolute top-full left-0 right-0 mt-1 bg-white border border-gray-200 rounded-lg shadow-lg z-10 max-h-40 overflow-y-auto">
+                        <div className="absolute top-full left-0 right-0 mt-1 bg-card border border-border rounded-lg shadow-lg z-10 max-h-40 overflow-y-auto">
                           {tags
                             .filter(t => t.name.toLowerCase().includes(tagInput.toLowerCase()) && !selectedTags.includes(t.name))
                             .map(t => (
@@ -271,7 +272,7 @@ export default function TransactionModal() {
                                   setSelectedTags([...selectedTags, t.name]);
                                   setTagInput('');
                                 }}
-                                className="w-full text-left px-4 py-2 hover:bg-gray-50 text-sm"
+                                className="w-full text-left px-4 py-2 hover:bg-muted text-foreground text-sm"
                               >
                                 #{t.name}
                               </button>
@@ -283,28 +284,28 @@ export default function TransactionModal() {
                 </div>
 
                 {type === 'expense' && (
-                  <div className="bg-blue-50/50 p-5 rounded-xl border border-blue-100">
+                  <div className="bg-blue-500/10 p-5 rounded-xl border border-blue-500/20">
                     <label className="flex items-center mb-4">
                       <input 
                         type="checkbox" 
                         checked={isShared} 
                         onChange={e => setIsShared(e.target.checked)}
-                        className="w-5 h-5 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                        className="w-5 h-5 rounded border-border text-blue-500 focus:ring-blue-500"
                       />
-                      <span className="ml-3 font-medium text-gray-900">Shared Expense (Split)</span>
+                      <span className="ml-3 font-medium text-foreground">Shared Expense (Split)</span>
                     </label>
                     
                     {isShared && (
                       <div className="pl-8 animate-in fade-in slide-in-from-top-2">
-                        <label className="block text-xs font-medium text-gray-500 mb-2 uppercase tracking-wider">My Share (LKR)</label>
+                        <label className="block text-xs font-medium text-muted-foreground mb-2 uppercase tracking-wider">My Share (LKR)</label>
                         <input
                           type="number"
                           value={personalAmount}
                           onChange={e => setPersonalAmount(e.target.value)}
-                          className="w-full p-3 bg-white border border-gray-200 rounded-xl font-medium text-gray-900 outline-none focus:border-blue-300"
+                          className="w-full p-3 bg-card border border-border rounded-xl font-medium text-foreground outline-none focus:border-blue-500"
                           placeholder="How much is actually yours?"
                         />
-                        <p className="text-xs text-gray-500 mt-2">
+                        <p className="text-xs text-muted-foreground mt-2">
                           The full {amount || '0'} will be deducted from your account, but only your share will count against your budget.
                         </p>
                       </div>
@@ -317,11 +318,11 @@ export default function TransactionModal() {
         </div>
 
         {/* Footer */}
-        <div className="p-5 border-t border-gray-100 bg-white">
+        <div className="p-5 border-t border-border bg-card">
           <button 
             type="submit" 
             form="tx-form"
-            className="w-full py-4 bg-gray-900 text-white rounded-xl font-medium text-lg active:scale-[0.98] transition-transform"
+            className="w-full py-4 bg-accent text-accent-foreground rounded-xl font-medium text-lg active:scale-[0.98] transition-transform"
           >
             Save Transaction
           </button>

@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { X, Trash2 } from 'lucide-react';
-import { db, type Transaction, type TransactionType } from '../db/db';
+import { db } from '../db/db';
+import type { Transaction, TransactionType } from '../db/db';
 import { useLiveQuery } from 'dexie-react-hooks';
 
 interface Props {
@@ -154,15 +155,15 @@ export default function TransactionEditSheet({ transaction, onClose }: Props) {
 
   return (
     <div className="fixed inset-0 z-50 flex flex-col justify-end bg-black/40 backdrop-blur-sm animate-in fade-in duration-200">
-      <div className="bg-white w-full max-w-md mx-auto rounded-t-3xl shadow-xl flex flex-col max-h-[90vh] animate-in slide-in-from-bottom-full duration-300">
+      <div className="bg-card w-full max-w-md mx-auto rounded-t-3xl shadow-xl flex flex-col max-h-[90vh] animate-in slide-in-from-bottom-full duration-300">
 
         {/* Header */}
-        <div className="flex justify-between items-center p-5 border-b border-gray-100 shrink-0">
+        <div className="flex justify-between items-center p-5 border-b border-border shrink-0">
           <div>
-            <p className="text-xs text-gray-400 uppercase tracking-wider font-medium">{typeLabel}</p>
-            <h2 className="text-xl font-medium text-gray-900">Edit Transaction</h2>
+            <p className="text-xs text-muted-foreground uppercase tracking-wider font-medium">{typeLabel}</p>
+            <h2 className="text-xl font-medium text-foreground">Edit Transaction</h2>
           </div>
-          <button onClick={onClose} className="p-2 bg-gray-100 rounded-full text-gray-500 active:scale-95">
+          <button onClick={onClose} className="p-2 bg-muted rounded-full text-muted-foreground active:scale-95">
             <X size={20} />
           </button>
         </div>
@@ -172,29 +173,29 @@ export default function TransactionEditSheet({ transaction, onClose }: Props) {
 
           {/* Amount */}
           <div>
-            <label className="block text-xs font-medium text-gray-400 mb-1 uppercase tracking-wider">Amount</label>
+            <label className="block text-xs font-medium text-muted-foreground mb-1 uppercase tracking-wider">Amount</label>
             <div className="flex items-center text-4xl font-light">
-              <span className="text-xl text-gray-400 mr-2">LKR</span>
+              <span className="text-xl text-muted-foreground mr-2">LKR</span>
               <input
                 type="number"
                 inputMode="decimal"
                 required
                 value={amount}
                 onChange={e => setAmount(e.target.value)}
-                className="w-full bg-transparent outline-none placeholder:text-gray-200"
+                className="w-full bg-transparent text-foreground outline-none placeholder:text-muted-foreground/50"
               />
             </div>
           </div>
 
           {/* Account */}
           <div>
-            <label className="block text-xs font-medium text-gray-400 mb-2 uppercase tracking-wider">
+            <label className="block text-xs font-medium text-muted-foreground mb-2 uppercase tracking-wider">
               {type === 'transfer' ? 'From Account' : 'Account'}
             </label>
             <select
               value={accountId}
               onChange={e => setAccountId(e.target.value)}
-              className="w-full p-3.5 bg-gray-50 border border-gray-200 rounded-xl text-sm font-medium text-gray-900 outline-none"
+              className="w-full p-3.5 bg-background border border-border rounded-xl text-sm font-medium text-foreground outline-none"
             >
               {accounts.map(a => (
                 <option key={a.id} value={a.id}>{a.name} — LKR {a.balance.toLocaleString()}</option>
@@ -205,11 +206,11 @@ export default function TransactionEditSheet({ transaction, onClose }: Props) {
           {/* To Account (transfers) */}
           {type === 'transfer' && (
             <div>
-              <label className="block text-xs font-medium text-gray-400 mb-2 uppercase tracking-wider">To Account</label>
+              <label className="block text-xs font-medium text-muted-foreground mb-2 uppercase tracking-wider">To Account</label>
               <select
                 value={toAccountId}
                 onChange={e => setToAccountId(e.target.value)}
-                className="w-full p-3.5 bg-gray-50 border border-gray-200 rounded-xl text-sm font-medium text-gray-900 outline-none"
+                className="w-full p-3.5 bg-background border border-border rounded-xl text-sm font-medium text-foreground outline-none"
               >
                 <option value="">Select destination...</option>
                 {accounts.filter(a => a.id !== accountId).map(a => (
@@ -222,7 +223,7 @@ export default function TransactionEditSheet({ transaction, onClose }: Props) {
           {/* Category */}
           {type !== 'transfer' && filteredCategories.length > 0 && (
             <div>
-              <label className="block text-xs font-medium text-gray-400 mb-2 uppercase tracking-wider">Category</label>
+              <label className="block text-xs font-medium text-muted-foreground mb-2 uppercase tracking-wider">Category</label>
               <div className="grid grid-cols-3 gap-2">
                 {filteredCategories.map(c => (
                   <button
@@ -230,7 +231,7 @@ export default function TransactionEditSheet({ transaction, onClose }: Props) {
                     type="button"
                     onClick={() => setCategoryId(c.id)}
                     className={`p-3 rounded-xl border text-sm font-medium transition-colors ${
-                      categoryId === c.id ? 'border-gray-900 bg-gray-900 text-white' : 'border-gray-200 bg-white text-gray-600'
+                      categoryId === c.id ? 'border-foreground bg-accent text-accent-foreground' : 'border-border bg-card text-muted-foreground'
                     }`}
                   >
                     {c.name}
@@ -242,24 +243,24 @@ export default function TransactionEditSheet({ transaction, onClose }: Props) {
 
           {/* Notes */}
           <div>
-            <label className="block text-xs font-medium text-gray-400 mb-2 uppercase tracking-wider">Notes</label>
+            <label className="block text-xs font-medium text-muted-foreground mb-2 uppercase tracking-wider">Notes</label>
             <input
               type="text"
               value={notes}
               onChange={e => setNotes(e.target.value)}
-              className="w-full p-3.5 bg-gray-50 border border-gray-200 rounded-xl text-sm font-medium text-gray-900 outline-none focus:border-gray-900"
+              className="w-full p-3.5 bg-background border border-border rounded-xl text-sm font-medium text-foreground outline-none focus:border-foreground"
               placeholder="What was this for?"
             />
           </div>
 
           {/* Tags */}
           <div>
-            <label className="block text-xs font-medium text-gray-400 mb-2 uppercase tracking-wider">Tags</label>
-            <div className="p-3 bg-gray-50 border border-gray-200 rounded-xl flex flex-wrap gap-2 items-center min-h-[48px]">
+            <label className="block text-xs font-medium text-muted-foreground mb-2 uppercase tracking-wider">Tags</label>
+            <div className="p-3 bg-background border border-border rounded-xl flex flex-wrap gap-2 items-center min-h-[48px]">
               {selectedTagIds.map(tid => (
-                <span key={tid} className="flex items-center bg-gray-200 text-gray-800 px-2 py-0.5 rounded-md text-sm">
+                <span key={tid} className="flex items-center bg-muted text-foreground px-2 py-0.5 rounded-md text-sm">
                   #{getTagDisplay(tid)}
-                  <button type="button" onClick={() => toggleTag(tid)} className="ml-1 text-gray-500">
+                  <button type="button" onClick={() => toggleTag(tid)} className="ml-1 text-muted-foreground hover:text-foreground">
                     <X size={12} />
                   </button>
                 </span>
@@ -270,18 +271,18 @@ export default function TransactionEditSheet({ transaction, onClose }: Props) {
                 onChange={e => setTagInput(e.target.value)}
                 onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); addTagFromInput(); } }}
                 placeholder={selectedTagIds.length === 0 ? 'Add tags...' : ''}
-                className="flex-1 min-w-[80px] bg-transparent text-sm outline-none"
+                className="flex-1 min-w-[80px] bg-transparent text-foreground text-sm outline-none"
               />
             </div>
             {/* Tag suggestions */}
             {tagInput && (
-              <div className="mt-1 bg-white border border-gray-200 rounded-xl shadow-sm overflow-hidden">
+              <div className="mt-1 bg-card border border-border rounded-xl shadow-sm overflow-hidden">
                 {tags.filter(t => t.name.toLowerCase().includes(tagInput.toLowerCase()) && !selectedTagIds.includes(t.id)).map(t => (
                   <button
                     key={t.id}
                     type="button"
                     onClick={() => { toggleTag(t.id); setTagInput(''); }}
-                    className="w-full text-left px-4 py-2 text-sm hover:bg-gray-50"
+                    className="w-full text-left px-4 py-2 text-sm text-foreground hover:bg-muted"
                   >
                     #{t.name}
                   </button>
@@ -292,24 +293,24 @@ export default function TransactionEditSheet({ transaction, onClose }: Props) {
 
           {/* Shared expense */}
           {type === 'expense' && (
-            <div className="bg-blue-50/50 p-4 rounded-xl border border-blue-100">
+            <div className="bg-blue-500/10 p-4 rounded-xl border border-blue-500/20">
               <label className="flex items-center mb-3">
                 <input
                   type="checkbox"
                   checked={isShared}
                   onChange={e => setIsShared(e.target.checked)}
-                  className="w-4 h-4 rounded border-gray-300 text-blue-600"
+                  className="w-4 h-4 rounded border-border text-blue-500"
                 />
-                <span className="ml-3 text-sm font-medium text-gray-900">Shared Expense (Split)</span>
+                <span className="ml-3 text-sm font-medium text-foreground">Shared Expense (Split)</span>
               </label>
               {isShared && (
                 <div>
-                  <label className="block text-xs text-gray-500 mb-1 font-medium uppercase tracking-wider">My Share (LKR)</label>
+                  <label className="block text-xs text-muted-foreground mb-1 font-medium uppercase tracking-wider">My Share (LKR)</label>
                   <input
                     type="number"
                     value={personalAmount}
                     onChange={e => setPersonalAmount(e.target.value)}
-                    className="w-full p-3 bg-white border border-gray-200 rounded-xl text-sm font-medium outline-none"
+                    className="w-full p-3 bg-card border border-border rounded-xl text-sm font-medium text-foreground outline-none"
                     placeholder="Your personal share"
                   />
                 </div>
@@ -320,17 +321,17 @@ export default function TransactionEditSheet({ transaction, onClose }: Props) {
         </div>
 
         {/* Footer */}
-        <div className="p-5 border-t border-gray-100 flex gap-3 shrink-0">
+        <div className="p-5 border-t border-border flex gap-3 shrink-0">
           <button
             onClick={handleDelete}
-            className="p-4 bg-red-50 text-red-500 rounded-xl active:scale-95 transition-transform"
+            className="p-4 bg-red-500/10 text-red-500 rounded-xl active:scale-95 transition-transform"
             title="Delete transaction"
           >
             <Trash2 size={20} />
           </button>
           <button
             onClick={handleSave}
-            className="flex-1 py-4 bg-gray-900 text-white rounded-xl font-medium text-base active:scale-[0.98] transition-transform"
+            className="flex-1 py-4 bg-accent text-accent-foreground rounded-xl font-medium text-base active:scale-[0.98] transition-transform"
           >
             Save Changes
           </button>
