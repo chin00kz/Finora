@@ -87,21 +87,9 @@ export default function Dashboard() {
       </header>
 
       {activeBudget ? (
-        <section className="bg-white rounded-2xl p-5 mb-8 border border-gray-100 shadow-sm relative group">
-          <div className="absolute top-2 right-2 opacity-0 group-hover:opacity-100 transition-opacity">
-            <button 
-              onClick={async () => {
-                if(confirm('End this budget early?')) {
-                  await db.budgets.update(activeBudget.id, { status: 'ended', endDate: Date.now() });
-                }
-              }}
-              className="text-xs bg-red-50 text-red-600 px-2 py-1 rounded font-medium"
-            >
-              End Budget
-            </button>
-          </div>
-          <div className="flex justify-between items-end mb-4">
-            <div>
+        <section className="bg-white rounded-2xl p-5 mb-8 border border-gray-100 shadow-sm">
+          <div className="flex justify-between items-start mb-4">
+            <div className="flex-1 min-w-0">
               <p 
                 className="text-sm text-gray-500 font-medium mb-1 cursor-pointer hover:text-gray-900 border-b border-dashed border-gray-300 inline-block"
                 onClick={async () => {
@@ -110,9 +98,9 @@ export default function Dashboard() {
                     await db.budgets.update(activeBudget.id, { name: newName.trim() });
                   }
                 }}
-                title="Click to rename"
+                title="Tap to rename"
               >
-                {activeBudget.name}
+                ✏️ {activeBudget.name}
               </p>
               <p className="text-3xl font-medium text-gray-900">
                 <span className="text-sm mr-1">LKR</span>
@@ -120,11 +108,21 @@ export default function Dashboard() {
                 <span className="text-sm text-gray-400 font-normal ml-2">left</span>
               </p>
             </div>
-            <div className="text-right pb-1">
+            <div className="flex flex-col items-end gap-2 ml-3 shrink-0">
               <div className="bg-gray-50 px-3 py-1 rounded-full inline-flex items-center">
                 <span className="text-sm font-medium mr-2">Pace</span>
                 <span className="text-lg">{onTrackStatus}</span>
               </div>
+              <button 
+                onClick={async () => {
+                  if(confirm('End this budget early?')) {
+                    await db.budgets.update(activeBudget.id, { status: 'ended', endDate: Date.now() });
+                  }
+                }}
+                className="text-xs text-red-500 font-medium px-2 py-1 rounded-lg bg-red-50 active:scale-95 transition-transform"
+              >
+                End budget
+              </button>
             </div>
           </div>
           

@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { X, ChevronDown, ChevronUp } from 'lucide-react';
 import { db, type TransactionType } from '../db/db';
 import { useLiveQuery } from 'dexie-react-hooks';
@@ -27,9 +27,16 @@ export default function TransactionModal() {
 
   const filteredCategories = categories.filter(c => c.type === (type === 'transfer' ? 'expense' : type));
 
-  // Set defaults when data loads
-  if (accounts.length > 0 && !accountId) setAccountId(accounts[0].id);
-  if (filteredCategories.length > 0 && !categoryId && type !== 'transfer') setCategoryId(filteredCategories[0].id);
+  // Set sensible defaults once data arrives — must be in useEffect, not during render
+  useEffect(() => {
+    if (accounts.length > 0 && !accountId) setAccountId(accounts[0].id);
+  }, [accounts]);
+
+  useEffect(() => {
+    if (filteredCategories.length > 0 && !categoryId && type !== 'transfer') {
+      setCategoryId(filteredCategories[0].id);
+    }
+  }, [filteredCategories.length, type]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -158,7 +165,7 @@ export default function TransactionModal() {
                 onChange={e => setAccountId(e.target.value)}
                 className="w-full p-4 bg-gray-50 border border-gray-200 rounded-xl font-medium text-gray-900 outline-none focus:border-gray-900"
               >
-                {accounts.map(a => <option key={a.id} value={a.id}>{a.name} ({a.balance})</option>)}
+                {accounts.map(a => <option key={a.id} value={a.id}>{a.name} — LKR {a.balance.toLocaleString()}</option>)}
               </select>
             </div>
 
@@ -172,7 +179,7 @@ export default function TransactionModal() {
                   className="w-full p-4 bg-gray-50 border border-gray-200 rounded-xl font-medium text-gray-900 outline-none focus:border-gray-900"
                 >
                   <option value="">Select destination...</option>
-                  {accounts.filter(a => a.id !== accountId).map(a => <option key={a.id} value={a.id}>{a.name} ({a.balance})</option>)}
+                  {accounts.filter(a => a.id !== accountId).map(a => <option key={a.id} value={a.id}>{a.name} — LKR {a.balance.toLocaleString()}</option>)}
                 </select>
               </div>
             )}

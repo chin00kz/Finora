@@ -9,6 +9,7 @@ import Activity from './pages/Activity';
 import Debts from './pages/Debts';
 import Settings from './pages/Settings';
 import TransactionModal from './components/TransactionModal';
+import BudgetModal from './components/BudgetModal';
 
 function BottomNav() {
   const location = useLocation();
