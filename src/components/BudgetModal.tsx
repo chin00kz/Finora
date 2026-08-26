@@ -23,10 +23,17 @@ export default function BudgetModal() {
     if (!name || isNaN(Number(amount))) return;
     if (!startDateStr || !endDateStr) return;
 
-    const start = new Date(startDateStr).getTime();
-    // End of the day for endDate
-    const endDateObj = new Date(endDateStr);
-    endDateObj.setHours(23, 59, 59, 999);
+    // Parse start date as local midnight
+    const [sy, sm, sd] = startDateStr.split('-').map(Number);
+    const parsedStart = new Date(sy, sm - 1, sd).getTime();
+    // If the selected start date is today, use right now so existing
+    // transactions from earlier today are NOT counted towards this budget.
+    const todayLocalMidnight = new Date(new Date().getFullYear(), new Date().getMonth(), new Date().getDate()).getTime();
+    const start = parsedStart === todayLocalMidnight ? Date.now() : parsedStart;
+
+    // End of the selected end-date day (local midnight + 1 day - 1ms)
+    const [ey, em, ed] = endDateStr.split('-').map(Number);
+    const endDateObj = new Date(ey, em - 1, ed, 23, 59, 59, 999);
     const end = endDateObj.getTime();
 
     if (end < start) {
