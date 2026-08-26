@@ -1,15 +1,10 @@
 import { useState } from 'react';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { db } from '../db/db';
-import { Trash2, Edit2, Check, X, Merge, ChevronRight } from 'lucide-react';
-import { useNavigate } from 'react-router-dom';
+import { Trash2, Edit2, Check, X, Merge } from 'lucide-react';
 
 export default function Settings() {
-  const navigate = useNavigate();
   const tags = useLiveQuery(() => db.tags.toArray()) || [];
-  const budgets = useLiveQuery(() => db.budgets.toArray()) || [];
-  const pastBudgets = budgets.filter(b => b.status === 'ended').sort((a, b) => b.endDate - a.endDate);
-  const transactions = useLiveQuery(() => db.transactions.toArray()) || [];
   
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editName, setEditName] = useState('');
@@ -137,52 +132,6 @@ export default function Settings() {
           )}
         </div>
       </section>
-
-      <section className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden mt-8">
-        <div className="p-5 border-b border-gray-100 bg-gray-50">
-          <h3 className="font-medium text-gray-900">Past Budgets</h3>
-          <p className="text-xs text-gray-500 mt-1">Review your historical budget periods and their final pacing.</p>
-        </div>
-        <div className="divide-y divide-gray-100">
-          {pastBudgets.map(budget => {
-            // Calculate spent
-            const periodTxns = transactions.filter(t => t.type === 'expense' && t.date >= budget.startDate && t.date <= budget.endDate);
-            const spent = periodTxns.reduce((sum, t) => sum + (t.isShared && t.personalAmount ? t.personalAmount : t.amount), 0);
-            
-            let statusIcon = '🟢';
-            if (spent > budget.amount) statusIcon = '🔴';
-            else if (spent > budget.amount * 0.9) statusIcon = '🟡';
-
-            return (
-              <div 
-                key={budget.id} 
-                onClick={() => navigate('/activity', { state: { filterStartDate: budget.startDate, filterEndDate: budget.endDate, filterName: budget.name } })}
-                className="p-4 flex items-center justify-between cursor-pointer hover:bg-gray-50 transition-colors"
-              >
-                <div>
-                  <p className="font-medium text-gray-900">{budget.name}</p>
-                  <p className="text-xs text-gray-500 mt-0.5">
-                    {new Date(budget.startDate).toLocaleDateString()} - {new Date(budget.endDate).toLocaleDateString()}
-                  </p>
-                  <p className="text-xs font-medium mt-1 text-gray-500">
-                    Spent LKR {spent.toLocaleString()} / LKR {budget.amount.toLocaleString()}
-                  </p>
-                </div>
-                <div className="flex items-center text-gray-400">
-                  <span className="text-lg mr-2" title={spent > budget.amount ? 'Over budget' : 'On track'}>{statusIcon}</span>
-                  <ChevronRight size={20} />
-                </div>
-              </div>
-            );
-          })}
-          {pastBudgets.length === 0 && (
-            <div className="p-6 text-center text-gray-500 text-sm">
-              No ended budgets yet.
-            </div>
-          )}
-        </div>
-      </section>
     </div>
   );
 }
-

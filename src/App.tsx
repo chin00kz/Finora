@@ -8,6 +8,7 @@ import Accounts from './pages/Accounts';
 import Activity from './pages/Activity';
 import Debts from './pages/Debts';
 import Settings from './pages/Settings';
+import BudgetDetail from './pages/BudgetDetail';
 import TransactionModal from './components/TransactionModal';
 import BudgetModal from './components/BudgetModal';
 
@@ -72,6 +73,7 @@ function App() {
             <Route path="/activity" element={<Activity />} />
             <Route path="/debts" element={<Debts />} />
             <Route path="/settings" element={<Settings />} />
+            <Route path="/budget" element={<BudgetDetail />} />
           </Routes>
           <BottomNav />
           <TransactionModal />
