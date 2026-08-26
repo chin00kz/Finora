@@ -1,9 +1,10 @@
 import { useState } from 'react';
 import { useLiveQuery } from 'dexie-react-hooks';
-import { db } from '../db/db';
+import { db, type Transaction } from '../db/db';
 import { format, subDays, startOfMonth, endOfMonth } from 'date-fns';
 import { Filter } from 'lucide-react';
 import { useLocation } from 'react-router-dom';
+import TransactionEditSheet from '../components/TransactionEditSheet';
 
 export default function Activity() {
   const location = useLocation();
@@ -27,6 +28,7 @@ export default function Activity() {
   const [filterCustomEnd] = useState<number | null>(initEnd || null);
   const [filterMinAmount, setFilterMinAmount] = useState('');
   const [filterMaxAmount, setFilterMaxAmount] = useState('');
+  const [selectedTxn, setSelectedTxn] = useState<Transaction | null>(null);
 
   const getCategory = (id?: string) => categories.find(c => c.id === id);
   const getTag = (id: string) => tags.find(t => t.id === id);
@@ -241,7 +243,11 @@ export default function Activity() {
               {txns.map((txn, i) => {
                 const category = getCategory(txn.categoryId);
                 return (
-                  <div key={txn.id} className={`p-4 flex items-center justify-between ${i !== txns.length - 1 ? 'border-b border-gray-100' : ''}`}>
+                  <div
+                    key={txn.id}
+                    onClick={() => setSelectedTxn(txn)}
+                    className={`p-4 flex items-center justify-between cursor-pointer active:bg-gray-50 transition-colors ${i !== txns.length - 1 ? 'border-b border-gray-100' : ''}`}
+                  >
                     <div className="flex items-center">
                       <div 
                         className="w-10 h-10 rounded-full flex items-center justify-center text-lg mr-3"
@@ -283,6 +289,14 @@ export default function Activity() {
           </div>
         )}
       </div>
+
+      {/* Transaction edit/delete sheet */}
+      {selectedTxn && (
+        <TransactionEditSheet
+          transaction={selectedTxn}
+          onClose={() => setSelectedTxn(null)}
+        />
+      )}
     </div>
   );
 }
