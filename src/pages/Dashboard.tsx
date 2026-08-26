@@ -1,16 +1,18 @@
 import { useLiveQuery } from 'dexie-react-hooks';
 import { db } from '../db/db';
 import { differenceInDays } from 'date-fns';
+import { useUIStore } from '../store/uiStore';
 
 export default function Dashboard() {
+  const { setBudgetModalOpen } = useUIStore();
   const accounts = useLiveQuery(() => db.accounts.toArray()) || [];
   const budgets = useLiveQuery(() => db.budgets.toArray()) || [];
-  const activeBudget = budgets[0]; // Assuming just one active budget for MVP
+  const activeBudget = budgets.find(b => b.status === 'active');
 
   const transactions = useLiveQuery(() => db.transactions.toArray()) || [];
 
   // Calculate total balance
-  const totalBalance = accounts.reduce((sum, acc) => sum + acc.balance, 0);
+  const totalBalance = accounts.filter(a => a.includeInTotal).reduce((sum, acc) => sum + acc.balance, 0);
 
   // Budget calculations
   let spentThisPeriod = 0;
@@ -62,19 +64,54 @@ export default function Dashboard() {
 
   return (
     <div className="p-6">
-      <header className="mb-8 mt-4">
+      <header className="mb-6 mt-4">
         <h1 className="text-5xl font-light tracking-tight text-gray-900 mb-1">
           <span className="text-2xl align-top mr-1">LKR</span>
           {totalBalance.toLocaleString()}
         </h1>
-        <p className="text-gray-500 font-medium">Available Balance</p>
+        <p className="text-gray-500 font-medium mb-4">Available Balance</p>
+        
+        {/* Accounts Breakdown */}
+        <div className="flex overflow-x-auto pb-2 -mx-6 px-6 hide-scrollbar space-x-3">
+          {accounts.map(acc => (
+            <div key={acc.id} className={`flex-shrink-0 px-3 py-2 rounded-xl border ${acc.includeInTotal ? 'bg-white border-gray-200' : 'bg-gray-50 border-dashed border-gray-200 opacity-70'} shadow-sm flex flex-col justify-center`}>
+              <div className="flex items-center text-xs font-medium text-gray-500 mb-1">
+                {acc.type === 'cash' ? '💵' : acc.type === 'wallet' ? '👛' : acc.type === 'bank' ? '🏦' : acc.type === 'card' ? '💳' : acc.type === 'savings' ? '🐷' : '📦'}
+                <span className="ml-1.5">{acc.name}</span>
+                {!acc.includeInTotal && <span className="ml-1.5 text-[9px] bg-gray-200 text-gray-500 px-1 rounded uppercase">Excl</span>}
+              </div>
+              <p className="font-medium text-gray-900">LKR {acc.balance.toLocaleString()}</p>
+            </div>
+          ))}
+        </div>
       </header>
 
-      {activeBudget && (
-        <section className="bg-white rounded-2xl p-5 mb-8 border border-gray-100 shadow-sm">
+      {activeBudget ? (
+        <section className="bg-white rounded-2xl p-5 mb-8 border border-gray-100 shadow-sm relative group">
+          <div className="absolute top-2 right-2 opacity-0 group-hover:opacity-100 transition-opacity">
+            <button 
+              onClick={async () => {
+                if(confirm('End this budget early?')) {
+                  await db.budgets.update(activeBudget.id, { status: 'ended', endDate: Date.now() });
+                }
+              }}
+              className="text-xs bg-red-50 text-red-600 px-2 py-1 rounded font-medium"
+            >
+              End Budget
+            </button>
+          </div>
           <div className="flex justify-between items-end mb-4">
             <div>
-              <p className="text-sm text-gray-500 font-medium mb-1">
+              <p 
+                className="text-sm text-gray-500 font-medium mb-1 cursor-pointer hover:text-gray-900 border-b border-dashed border-gray-300 inline-block"
+                onClick={async () => {
+                  const newName = prompt('Rename budget:', activeBudget.name);
+                  if (newName && newName.trim()) {
+                    await db.budgets.update(activeBudget.id, { name: newName.trim() });
+                  }
+                }}
+                title="Click to rename"
+              >
                 {activeBudget.name}
               </p>
               <p className="text-3xl font-medium text-gray-900">
@@ -102,6 +139,18 @@ export default function Dashboard() {
             <span>Spent: LKR {spentThisPeriod.toLocaleString()}</span>
             <span>{daysLeft} days left</span>
           </div>
+        </section>
+      ) : (
+        <section className="bg-gray-50 rounded-2xl p-6 mb-8 border border-dashed border-gray-300 flex flex-col items-center text-center">
+          <div className="w-12 h-12 bg-gray-200 rounded-full flex items-center justify-center text-xl mb-3">📅</div>
+          <h3 className="font-medium text-gray-900 mb-1">No Active Budget</h3>
+          <p className="text-sm text-gray-500 mb-4">Start a new budget period to track your spending pace.</p>
+          <button 
+            onClick={() => setBudgetModalOpen(true)}
+            className="bg-gray-900 text-white px-5 py-2 rounded-xl text-sm font-medium active:scale-95 transition-transform"
+          >
+            + New Budget
+          </button>
         </section>
       )}
 

@@ -1,12 +1,13 @@
 import { useEffect } from 'react';
 import { BrowserRouter, Routes, Route, Link, useLocation } from 'react-router-dom';
-import { Home, List, PieChart, Users, Plus } from 'lucide-react';
+import { Home, List, PieChart, Users, Plus, Settings as SettingsIcon } from 'lucide-react';
 import { initDbWithMockData } from './utils/initDb';
 import { useUIStore } from './store/uiStore';
 import Dashboard from './pages/Dashboard';
 import Accounts from './pages/Accounts';
 import Activity from './pages/Activity';
 import Debts from './pages/Debts';
+import Settings from './pages/Settings';
 import TransactionModal from './components/TransactionModal';
 
 function BottomNav() {
@@ -15,37 +16,42 @@ function BottomNav() {
   const { setAddTransactionModalOpen } = useUIStore();
 
   return (
-    <nav className="fixed bottom-0 w-full max-w-md mx-auto bg-white border-t border-gray-200 pb-safe">
-      <div className="flex justify-around items-center h-16 px-2">
-        <Link to="/" className={`flex flex-col items-center justify-center w-full h-full ${isActive('/') ? 'text-gray-900' : 'text-gray-400'}`}>
-          <Home size={24} />
-          <span className="text-[10px] mt-1 font-medium">Home</span>
-        </Link>
-        <Link to="/accounts" className={`flex flex-col items-center justify-center w-full h-full ${isActive('/accounts') ? 'text-gray-900' : 'text-gray-400'}`}>
-          <PieChart size={24} />
-          <span className="text-[10px] mt-1 font-medium">Accounts</span>
-        </Link>
-        
-        {/* Quick Add FAB */}
-        <div className="flex flex-col items-center justify-center w-full h-full -mt-6">
-          <button 
-            onClick={() => setAddTransactionModalOpen(true)}
-            className="bg-gray-900 text-white p-3 rounded-full shadow-lg active:scale-95 transition-transform"
-          >
-            <Plus size={28} />
-          </button>
-        </div>
-
-        <Link to="/activity" className={`flex flex-col items-center justify-center w-full h-full ${isActive('/activity') ? 'text-gray-900' : 'text-gray-400'}`}>
-          <List size={24} />
-          <span className="text-[10px] mt-1 font-medium">Activity</span>
-        </Link>
-        <Link to="/debts" className={`flex flex-col items-center justify-center w-full h-full ${isActive('/debts') ? 'text-gray-900' : 'text-gray-400'}`}>
-          <Users size={24} />
-          <span className="text-[10px] mt-1 font-medium">IOUs</span>
-        </Link>
+    <>
+      {/* Floating Quick Add FAB */}
+      <div className="fixed bottom-20 left-0 right-0 max-w-md mx-auto pointer-events-none flex justify-center z-40">
+        <button 
+          onClick={() => setAddTransactionModalOpen(true)}
+          className="bg-gray-900 text-white p-4 rounded-full shadow-lg active:scale-95 transition-transform pointer-events-auto"
+        >
+          <Plus size={28} />
+        </button>
       </div>
-    </nav>
+
+      <nav className="fixed bottom-0 w-full max-w-md mx-auto bg-white border-t border-gray-200 pb-safe z-40">
+        <div className="flex justify-around items-center h-16 px-1">
+          <Link to="/" className={`flex flex-col items-center justify-center w-full h-full ${isActive('/') ? 'text-gray-900' : 'text-gray-400'}`}>
+            <Home size={22} />
+            <span className="text-[10px] mt-1 font-medium">Home</span>
+          </Link>
+          <Link to="/accounts" className={`flex flex-col items-center justify-center w-full h-full ${isActive('/accounts') ? 'text-gray-900' : 'text-gray-400'}`}>
+            <PieChart size={22} />
+            <span className="text-[10px] mt-1 font-medium">Accounts</span>
+          </Link>
+          <Link to="/activity" className={`flex flex-col items-center justify-center w-full h-full ${isActive('/activity') ? 'text-gray-900' : 'text-gray-400'}`}>
+            <List size={22} />
+            <span className="text-[10px] mt-1 font-medium">Activity</span>
+          </Link>
+          <Link to="/debts" className={`flex flex-col items-center justify-center w-full h-full ${isActive('/debts') ? 'text-gray-900' : 'text-gray-400'}`}>
+            <Users size={22} />
+            <span className="text-[10px] mt-1 font-medium">IOUs</span>
+          </Link>
+          <Link to="/settings" className={`flex flex-col items-center justify-center w-full h-full ${isActive('/settings') ? 'text-gray-900' : 'text-gray-400'}`}>
+            <SettingsIcon size={22} />
+            <span className="text-[10px] mt-1 font-medium">Settings</span>
+          </Link>
+        </div>
+      </nav>
+    </>
   );
 }
 
@@ -64,6 +70,7 @@ function App() {
             <Route path="/accounts" element={<Accounts />} />
             <Route path="/activity" element={<Activity />} />
             <Route path="/debts" element={<Debts />} />
+            <Route path="/settings" element={<Settings />} />
           </Routes>
           <BottomNav />
           <TransactionModal />
