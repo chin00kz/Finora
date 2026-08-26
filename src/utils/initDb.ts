@@ -6,8 +6,8 @@ export async function initDbWithMockData() {
   if (accountsCount > 0) return; // Already initialized
 
   await db.accounts.bulkAdd([
-    { id: 'acc-cash', name: 'Wallet', type: 'cash', balance: 5000, currency: 'LKR' },
-    { id: 'acc-bank', name: 'Card', type: 'bank', balance: 15000, currency: 'LKR' }
+    { id: 'acc-cash', name: 'Wallet', type: 'wallet', balance: 5000, currency: 'LKR', includeInTotal: true },
+    { id: 'acc-bank', name: 'Card', type: 'card', balance: 15000, currency: 'LKR', includeInTotal: true }
   ]);
 
   await db.categories.bulkAdd([
@@ -25,7 +25,8 @@ export async function initDbWithMockData() {
     period: 'days',
     periodLength: 4,
     startDate: today,
-    endDate: addDays(today, 3).getTime()
+    endDate: addDays(today, 3).getTime(),
+    status: 'active'
   });
 
   // Add a sample transaction

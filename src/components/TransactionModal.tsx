@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { X, ChevronDown, ChevronUp } from 'lucide-react';
 import { db, type TransactionType } from '../db/db';
 import { useLiveQuery } from 'dexie-react-hooks';
@@ -12,21 +12,31 @@ export default function TransactionModal() {
   const [categoryId, setCategoryId] = useState('');
   const [accountId, setAccountId] = useState('');
   
-  // Advanced options
   const [showAdvanced, setShowAdvanced] = useState(false);
   const [notes, setNotes] = useState('');
+  const [selectedTags, setSelectedTags] = useState<string[]>([]);
+  const [tagInput, setTagInput] = useState('');
+  
   const [toAccountId, setToAccountId] = useState(''); // For transfers
   const [isShared, setIsShared] = useState(false);
   const [personalAmount, setPersonalAmount] = useState(''); // For shared expenses
 
   const accounts = useLiveQuery(() => db.accounts.toArray()) || [];
   const categories = useLiveQuery(() => db.categories.toArray()) || [];
+  const tags = useLiveQuery(() => db.tags.toArray()) || [];
 
   const filteredCategories = categories.filter(c => c.type === (type === 'transfer' ? 'expense' : type));
 
-  // Set defaults when data loads
-  if (accounts.length > 0 && !accountId) setAccountId(accounts[0].id);
-  if (filteredCategories.length > 0 && !categoryId && type !== 'transfer') setCategoryId(filteredCategories[0].id);
+  // Set sensible defaults once data arrives — must be in useEffect, not during render
+  useEffect(() => {
+    if (accounts.length > 0 && !accountId) setAccountId(accounts[0].id);
+  }, [accounts]);
+
+  useEffect(() => {
+    if (filteredCategories.length > 0 && !categoryId && type !== 'transfer') {
+      setCategoryId(filteredCategories[0].id);
+    }
+  }, [filteredCategories.length, type]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -35,7 +45,20 @@ export default function TransactionModal() {
     const numAmount = Number(amount);
 
     try {
-      await db.transaction('rw', db.transactions, db.accounts, async () => {
+      await db.transaction('rw', db.transactions, db.accounts, db.tags, async () => {
+        // Resolve tags (create if new)
+        const resolvedTagIds: string[] = [];
+        for (const tagName of selectedTags) {
+          const existingTag = await db.tags.where('name').equalsIgnoreCase(tagName).first();
+          if (existingTag) {
+            resolvedTagIds.push(existingTag.id);
+          } else {
+            const newId = `tag-${Date.now()}-${Math.random().toString(36).substr(2, 5)}`;
+            await db.tags.add({ id: newId, name: tagName });
+            resolvedTagIds.push(newId);
+          }
+        }
+
         // 1. Add transaction record
         await db.transactions.add({
           id: `txn-${Date.now()}`,
@@ -45,6 +68,7 @@ export default function TransactionModal() {
           accountId,
           categoryId: type !== 'transfer' ? categoryId : undefined,
           notes,
+          tagIds: resolvedTagIds.length > 0 ? resolvedTagIds : undefined,
           toAccountId: type === 'transfer' ? toAccountId : undefined,
           isShared,
           personalAmount: isShared ? Number(personalAmount) : undefined,
@@ -70,6 +94,7 @@ export default function TransactionModal() {
       // Reset & close
       setAmount('');
       setNotes('');
+      setSelectedTags([]);
       setShowAdvanced(false);
       setIsShared(false);
       setAddTransactionModalOpen(false);
@@ -140,7 +165,7 @@ export default function TransactionModal() {
                 onChange={e => setAccountId(e.target.value)}
                 className="w-full p-4 bg-gray-50 border border-gray-200 rounded-xl font-medium text-gray-900 outline-none focus:border-gray-900"
               >
-                {accounts.map(a => <option key={a.id} value={a.id}>{a.name} ({a.balance})</option>)}
+                {accounts.map(a => <option key={a.id} value={a.id}>{a.name} — LKR {a.balance.toLocaleString()}</option>)}
               </select>
             </div>
 
@@ -154,7 +179,7 @@ export default function TransactionModal() {
                   className="w-full p-4 bg-gray-50 border border-gray-200 rounded-xl font-medium text-gray-900 outline-none focus:border-gray-900"
                 >
                   <option value="">Select destination...</option>
-                  {accounts.filter(a => a.id !== accountId).map(a => <option key={a.id} value={a.id}>{a.name} ({a.balance})</option>)}
+                  {accounts.filter(a => a.id !== accountId).map(a => <option key={a.id} value={a.id}>{a.name} — LKR {a.balance.toLocaleString()}</option>)}
                 </select>
               </div>
             )}
@@ -204,6 +229,57 @@ export default function TransactionModal() {
                     className="w-full p-4 bg-gray-50 border border-gray-200 rounded-xl font-medium text-gray-900 outline-none focus:border-gray-900"
                     placeholder="What was this for?"
                   />
+                </div>
+
+                <div>
+                  <label className="block text-xs font-medium text-gray-500 mb-2 uppercase tracking-wider">Tags</label>
+                  <div className="p-3 bg-gray-50 border border-gray-200 rounded-xl min-h-[56px] flex flex-wrap gap-2 items-center focus-within:border-gray-900">
+                    {selectedTags.map(tag => (
+                      <span key={tag} className="flex items-center bg-gray-200 text-gray-800 px-2 py-1 rounded-md text-sm">
+                        #{tag}
+                        <button type="button" onClick={() => setSelectedTags(selectedTags.filter(t => t !== tag))} className="ml-1 text-gray-500 hover:text-gray-900">
+                          <X size={14} />
+                        </button>
+                      </span>
+                    ))}
+                    <div className="relative flex-1 min-w-[120px]">
+                      <input
+                        type="text"
+                        value={tagInput}
+                        onChange={e => setTagInput(e.target.value)}
+                        onKeyDown={e => {
+                          if (e.key === 'Enter' && tagInput.trim()) {
+                            e.preventDefault();
+                            if (!selectedTags.includes(tagInput.trim())) {
+                              setSelectedTags([...selectedTags, tagInput.trim()]);
+                            }
+                            setTagInput('');
+                          }
+                        }}
+                        className="w-full bg-transparent outline-none text-sm"
+                        placeholder={selectedTags.length === 0 ? "Add tags..." : ""}
+                      />
+                      {tagInput && tags.length > 0 && (
+                        <div className="absolute top-full left-0 right-0 mt-1 bg-white border border-gray-200 rounded-lg shadow-lg z-10 max-h-40 overflow-y-auto">
+                          {tags
+                            .filter(t => t.name.toLowerCase().includes(tagInput.toLowerCase()) && !selectedTags.includes(t.name))
+                            .map(t => (
+                              <button
+                                key={t.id}
+                                type="button"
+                                onClick={() => {
+                                  setSelectedTags([...selectedTags, t.name]);
+                                  setTagInput('');
+                                }}
+                                className="w-full text-left px-4 py-2 hover:bg-gray-50 text-sm"
+                              >
+                                #{t.name}
+                              </button>
+                            ))}
+                        </div>
+                      )}
+                    </div>
+                  </div>
                 </div>
 
                 {type === 'expense' && (
