@@ -1,47 +1,181 @@
-# Finora Budget Tracker
+# Finora
 
-A personal budget and expense tracker built around one idea: **budget apps are too complicated, so nobody actually uses them.**
+A modern personal finance and budget management web app built around one idea:
 
-## Why this exists
+> **Extremely simple on the surface. Extremely powerful underneath.**
 
-Most budgeting apps try to be complete financial software — categories, reports, charts, settings — and end up feeling like a chore to open. So people stop logging expenses within a week, and the app becomes useless the moment it's abandoned.
+## Why Finora?
 
-This app flips that. It started from a real, specific problem: heading to university for a 4-day week with a fixed amount of cash, splitting bills with friends, moving money between cash and a card, and never actually knowing — in the moment — how much was left or whether spending was on pace.
+Most personal finance applications try to expose every feature at once — categories, charts, accounts, reports, settings, budgets, and transaction management.
 
-The goal isn't a university expense tracker specifically. It's a **general-purpose budget tracker that never feels like accounting software**, built so that:
+The result is often an application that feels more like accounting software than something people actually want to use every day.
 
-- The home screen answers exactly one question at a glance: *how much do I have, and am I on track?* Big numbers, almost no text, no menus.
-- Everything else a real financial life needs — multiple accounts, cash vs. card, transfers, shared/group expenses, IOUs, tags, budget history — is fully supported, but lives one tap away instead of cluttering the first screen.
+**Finora takes the opposite approach.**
 
-## Core principle
+The primary experience is intentionally minimal. The dashboard focuses on the information that matters most at a glance:
 
-**Extremely simple on the surface. Extremely powerful underneath.**
+* How much money is available
+* How much has been spent
+* How much remains
+* Whether spending is on track
 
-A normal day should only ever require: `Home → + → Amount → Category → Account → Save`. Everything else — splitting a bill, tagging a coffee run, starting a new budget period, tracking who owes who — is there when it's needed and invisible when it's not.
+More advanced financial functionality is available when needed without cluttering the core experience.
+
+## Core Principle
+
+**Simple by default. Powerful when needed.**
+
+A basic transaction should be as simple as:
+
+```text
+Home → + → Amount → Category → Account → Save
+```
+
+At the same time, Finora is designed to support more complex financial situations, including:
+
+* Multiple accounts
+* Cash, bank, and card balances
+* Transfers between accounts
+* Flexible budget periods
+* Shared and split expenses
+* Money owed and receivable
+* Recurring transactions
+* Custom categories and tags
+* Budget history
+* Spending analytics
+* Savings goals
+* Multiple currencies
+* Data import/export
+
+Advanced functionality should remain optional rather than becoming part of every interaction.
+
+## Design Philosophy
+
+Finora follows a **minimal interface, feature-rich architecture** approach.
+
+The home screen should remain clean and immediately understandable, while the underlying financial model is capable of representing real-world money movement.
+
+For example, transferring money from cash to a bank account should be treated as a transfer rather than an expense. Similarly, paying for a shared expense should distinguish between the amount actually paid and the user's personal share.
+
+The goal is to make complex financial situations easy to represent without making everyday usage complex.
+
+## Features
+
+### Dashboard
+
+* Available balance
+* Budget progress
+* Spending pace
+* Remaining budget
+* Recent transactions
+* Account overview
+
+### Transactions
+
+* Income and expenses
+* Multiple payment accounts
+* Categories
+* Tags
+* Notes
+* Transaction history
+* Advanced transaction details
+
+### Accounts
+
+* Cash accounts
+* Bank accounts
+* Debit/credit cards
+* Custom accounts
+* Account balances
+* Transfers between accounts
+
+### Budgets
+
+* Daily, weekly, monthly, and custom periods
+* Spending limits
+* Budget progress
+* Spending pace
+* Budget history
+* Over/under budget tracking
+
+### Shared Expenses
+
+* Split transactions
+* Track personal shares
+* Track amounts owed
+* Record repayments
+* Settlement tracking
+
+### Analytics
+
+* Spending by category
+* Spending trends
+* Cash vs. card usage
+* Budget performance
+* Income vs. expenses
+* Historical comparisons
+
+### Data & Privacy
+
+* Local-first storage
+* Offline support
+* Import/export capabilities
+* User-controlled data
 
 ## Status
 
-Actively being built out feature by feature (v1: dashboard, accounts, budgets, transactions, transfers, shared expenses, IOUs. v2: multiple custom accounts, custom tags, budget period lifecycle).
+🚧 **Actively under development**
+
+Current development is focused on establishing the core financial engine and progressively adding higher-level features.
+
+### v1
+
+* Dashboard
+* Accounts
+* Budgets
+* Transactions
+* Transfers
+* Shared expenses
+* IOUs
+
+### v2
+
+* Custom account types
+* Custom tags
+* Budget period lifecycle
+* Advanced analytics
+* Additional personalization
 
 ---
 
-## Tech Stack & Development
+## Tech Stack
 
-This project is a local-first web app built with:
-- **React 19** + **TypeScript** + **Vite**
-- **Tailwind CSS v4** for styling
-- **Dexie.js** (IndexedDB) for local-first, offline data storage
-- **Zustand** for lightweight UI state management
+Finora is built as a local-first web application using:
 
-### Running Locally
+* **React 19**
+* **TypeScript**
+* **Vite**
+* **Tailwind CSS v4**
+* **Dexie.js** — IndexedDB persistence
+* **Zustand** — lightweight UI state management
+
+## Running Locally
 
 ```bash
 # Install dependencies
 npm install
 
-# Start the dev server
+# Start the development server
 npm run dev
 
 # Build for production
 npm run build
 ```
+
+## Project Direction
+
+Finora is being developed with a focus on **progressive complexity**:
+
+> Start simple. Add complexity only when it provides value.
+
+The application should remain approachable for someone who only wants to track everyday spending while being capable of growing into a complete personal financial management system.
