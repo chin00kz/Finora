@@ -3,6 +3,7 @@ import { X } from 'lucide-react';
 import { db } from '../db/db';
 import { useUIStore } from '../store/uiStore';
 import { differenceInDays } from 'date-fns';
+import { triggerSync } from '../sync/syncEngine';
 
 export default function BudgetModal() {
   const { isBudgetModalOpen, setBudgetModalOpen } = useUIStore();
@@ -45,19 +46,21 @@ export default function BudgetModal() {
     const days = differenceInDays(end, start) + 1;
 
     try {
-      // Create new budget
+      const now = Date.now();
       await db.budgets.add({
-        id: `bud-${Date.now()}`,
+        id: `bud-${now}`,
         name,
         amount: numAmount,
         period: 'days', // fallback
         periodLength: days,
         startDate: start,
         endDate: end,
-        status: 'active'
+        status: 'active',
+        updatedAt: now,
       });
 
-      // Reset & close
+      triggerSync();
+
       setName('');
       setAmount('');
       setBudgetModalOpen(false);

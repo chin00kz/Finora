@@ -5,6 +5,7 @@ import { differenceInDays } from 'date-fns';
 import { ChevronLeft, Check, X } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { useUIStore } from '../store/uiStore';
+import { triggerSync } from '../sync/syncEngine';
 
 export default function BudgetDetail() {
   const navigate = useNavigate();
@@ -51,7 +52,8 @@ export default function BudgetDetail() {
 
   const saveRename = async () => {
     if (renameValue.trim() && activeBudget) {
-      await db.budgets.update(activeBudget.id, { name: renameValue.trim() });
+      await db.budgets.update(activeBudget.id, { name: renameValue.trim(), updatedAt: Date.now() });
+      triggerSync();
     }
     setIsRenaming(false);
   };
@@ -59,7 +61,8 @@ export default function BudgetDetail() {
   const endBudget = async () => {
     if (!activeBudget) return;
     if (confirm(`End "${activeBudget.name}" now? This freezes its final numbers.`)) {
-      await db.budgets.update(activeBudget.id, { status: 'ended', endDate: Date.now() });
+      await db.budgets.update(activeBudget.id, { status: 'ended', endDate: Date.now(), updatedAt: Date.now() });
+      triggerSync();
     }
   };
 

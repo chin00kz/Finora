@@ -1,7 +1,12 @@
 import { db } from '../db/db';
 import { addDays, startOfDay } from 'date-fns';
+import { supabase } from '../lib/supabase';
 
 export async function initDbWithMockData() {
+  // Never seed mock data if the user is authenticated
+  const { data: { session } } = await supabase.auth.getSession();
+  if (session) return;
+
   const accountsCount = await db.accounts.count();
   if (accountsCount > 0) return; // Already initialized
 
