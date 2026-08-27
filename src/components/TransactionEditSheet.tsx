@@ -3,6 +3,7 @@ import { X, Trash2 } from 'lucide-react';
 import { db } from '../db/db';
 import type { Transaction, TransactionType } from '../db/db';
 import { useLiveQuery } from 'dexie-react-hooks';
+import { triggerSync, deleteFromCloud } from '../sync/syncEngine';
 
 interface Props {
   transaction: Transaction;
@@ -96,6 +97,8 @@ export default function TransactionEditSheet({ transaction, onClose }: Props) {
         await reverseBalance();
         await applyBalance(numAmount, accountId, toAccountId || undefined);
 
+        const now = Date.now();
+
         // Update transaction record
         await db.transactions.update(transaction.id, {
           amount: numAmount,
@@ -106,8 +109,10 @@ export default function TransactionEditSheet({ transaction, onClose }: Props) {
           tagIds: resolvedTagIds.length > 0 ? resolvedTagIds : undefined,
           isShared,
           personalAmount: isShared ? Number(personalAmount) : undefined,
+          updatedAt: now,
         });
       });
+      triggerSync();
       onClose();
     } catch (err) {
       console.error('Failed to save transaction edit', err);
@@ -122,6 +127,8 @@ export default function TransactionEditSheet({ transaction, onClose }: Props) {
         await reverseBalance();
         await db.transactions.delete(transaction.id);
       });
+      await deleteFromCloud('transactions', transaction.id);
+      triggerSync();
       onClose();
     } catch (err) {
       console.error('Failed to delete transaction', err);

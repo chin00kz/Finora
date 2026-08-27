@@ -3,6 +3,7 @@ import { useLiveQuery } from 'dexie-react-hooks';
 import { db } from '../db/db';
 import type { AccountType } from '../db/db';
 import { Plus, X, Trash2 } from 'lucide-react';
+import { triggerSync, deleteFromCloud } from '../sync/syncEngine';
 
 const ACCOUNT_TYPES: { id: AccountType; label: string; icon: string }[] = [
   { id: 'cash', label: 'Cash', icon: '💵' },
@@ -46,30 +47,36 @@ export default function Accounts() {
     e.preventDefault();
     if (!name || isNaN(Number(balance))) return;
 
+    const now = Date.now();
+
     if (editingId) {
       await db.accounts.update(editingId, {
         name,
         type,
         includeInTotal,
-        // Only update balance if we allow manual override here (usually balance is derived, but we allow editing for simplicity)
-        balance: Number(balance)
+        balance: Number(balance),
+        updatedAt: now,
       });
     } else {
       await db.accounts.add({
-        id: `acc-${Date.now()}`,
+        id: `acc-${now}`,
         name,
         type,
         balance: Number(balance),
         currency: 'LKR',
-        includeInTotal
+        includeInTotal,
+        updatedAt: now,
       });
     }
+    triggerSync();
     setIsModalOpen(false);
   };
 
   const handleDelete = async (id: string) => {
     if (confirm('Are you sure you want to delete this account?')) {
       await db.accounts.delete(id);
+      await deleteFromCloud('accounts', id);
+      triggerSync();
       setIsModalOpen(false);
     }
   };

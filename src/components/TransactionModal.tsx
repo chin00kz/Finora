@@ -4,6 +4,7 @@ import { db } from '../db/db';
 import type { TransactionType } from '../db/db';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { useUIStore } from '../store/uiStore';
+import { triggerSync } from '../sync/syncEngine';
 
 export default function TransactionModal() {
   const { isAddTransactionModalOpen, setAddTransactionModalOpen } = useUIStore();
@@ -60,12 +61,14 @@ export default function TransactionModal() {
           }
         }
 
+        const now = Date.now();
+
         // 1. Add transaction record
         await db.transactions.add({
-          id: `txn-${Date.now()}`,
+          id: `txn-${now}`,
           type,
           amount: numAmount,
-          date: Date.now(),
+          date: now,
           accountId,
           categoryId: type !== 'transfer' ? categoryId : undefined,
           notes,
@@ -73,24 +76,28 @@ export default function TransactionModal() {
           toAccountId: type === 'transfer' ? toAccountId : undefined,
           isShared,
           personalAmount: isShared ? Number(personalAmount) : undefined,
+          updatedAt: now,
         });
 
         // 2. Update account balances
         const fromAcc = await db.accounts.get(accountId);
         if (fromAcc) {
           if (type === 'expense') {
-            await db.accounts.update(accountId, { balance: fromAcc.balance - numAmount });
+            await db.accounts.update(accountId, { balance: fromAcc.balance - numAmount, updatedAt: now });
           } else if (type === 'income') {
-            await db.accounts.update(accountId, { balance: fromAcc.balance + numAmount });
+            await db.accounts.update(accountId, { balance: fromAcc.balance + numAmount, updatedAt: now });
           } else if (type === 'transfer' && toAccountId) {
             const toAcc = await db.accounts.get(toAccountId);
             if (toAcc) {
-              await db.accounts.update(accountId, { balance: fromAcc.balance - numAmount });
-              await db.accounts.update(toAccountId, { balance: toAcc.balance + numAmount });
+              await db.accounts.update(accountId, { balance: fromAcc.balance - numAmount, updatedAt: now });
+              await db.accounts.update(toAccountId, { balance: toAcc.balance + numAmount, updatedAt: now });
             }
           }
         }
       });
+
+      // Trigger cloud sync in background
+      triggerSync();
 
       // Reset & close
       setAmount('');

@@ -12,12 +12,14 @@ export interface Account {
   balance: number;
   currency: string;
   includeInTotal: boolean;
+  updatedAt?: number;
 }
 
 export interface Tag {
   id: string;
   name: string;
   color?: string;
+  updatedAt?: number;
 }
 
 export interface Category {
@@ -26,6 +28,7 @@ export interface Category {
   type: 'income' | 'expense';
   icon: string;
   color: string;
+  updatedAt?: number;
 }
 
 export interface SplitDetail {
@@ -52,6 +55,8 @@ export interface Transaction {
   totalAmount?: number;
   personalAmount?: number;
   splitDetails?: SplitDetail[];
+
+  updatedAt?: number;
 }
 
 export interface Budget {
@@ -63,11 +68,13 @@ export interface Budget {
   startDate: number; // Unix timestamp
   endDate: number; // Unix timestamp
   status: 'active' | 'ended' | 'archived';
+  updatedAt?: number;
 }
 
 export interface Person {
   id: string;
   name: string;
+  updatedAt?: number;
 }
 
 export interface Debt {
@@ -76,7 +83,9 @@ export interface Debt {
   amount: number; // Positive if they owe user, Negative if user owes them
   relatedTransactionId?: string;
   date: number;
+  updatedAt?: number;
 }
+
 
 const db = new Dexie('FinoraDB') as Dexie & {
   accounts: EntityTable<Account, 'id'>;
@@ -111,5 +120,15 @@ db.version(3).stores({}).upgrade(tx => {
   });
 });
 
-export { db };
+// v4 — adds updatedAt index to all tables for sync engine
+db.version(4).stores({
+  accounts: 'id, type, updatedAt',
+  categories: 'id, type, updatedAt',
+  transactions: 'id, type, date, accountId, categoryId, updatedAt',
+  budgets: 'id, updatedAt',
+  people: 'id, updatedAt',
+  debts: 'id, personId, updatedAt',
+  tags: 'id, name, updatedAt',
+});
 
+export { db };
