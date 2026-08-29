@@ -55,6 +55,7 @@ export interface Transaction {
   totalAmount?: number;
   personalAmount?: number;
   splitDetails?: SplitDetail[];
+  isSettled?: boolean;
 
   updatedAt?: number;
 }

@@ -4,7 +4,7 @@ import { db } from '../db/db';
 import { Trash2, Edit2, Check, X, Merge, Moon, Sun, Monitor, LogOut, UserX, CloudUpload, RefreshCw, Download, CheckCircle } from 'lucide-react';
 import { useThemeStore } from '../store/themeStore';
 import { useAuthStore } from '../store/authStore';
-import { syncAll, hydrateFromCloud } from '../sync/syncEngine';
+import { syncAll, hydrateFromCloud, triggerSync, deleteFromCloud } from '../sync/syncEngine';
 import { useNavigate } from 'react-router-dom';
 
 export default function Settings() {
@@ -31,8 +31,9 @@ export default function Settings() {
 
   const saveEdit = async (id: string) => {
     if (!editName.trim()) return;
-    await db.tags.update(id, { name: editName.trim() });
+    await db.tags.update(id, { name: editName.trim(), updatedAt: Date.now() });
     setEditingId(null);
+    triggerSync();
   };
 
   const handleDelete = async (id: string) => {
@@ -42,12 +43,15 @@ export default function Settings() {
         for (const txn of txns) {
           if (txn.tagIds) {
             await db.transactions.update(txn.id, {
-              tagIds: txn.tagIds.filter(tid => tid !== id)
+              tagIds: txn.tagIds.filter(tid => tid !== id),
+              updatedAt: Date.now()
             });
           }
         }
         await db.tags.delete(id);
       });
+      await deleteFromCloud('tags', id);
+      triggerSync();
     }
   };
 
@@ -61,11 +65,16 @@ export default function Settings() {
           if (txn.tagIds) {
             const newTags = new Set(txn.tagIds.filter(tid => tid !== sourceId));
             newTags.add(targetMergeId);
-            await db.transactions.update(txn.id, { tagIds: Array.from(newTags) });
+            await db.transactions.update(txn.id, { 
+              tagIds: Array.from(newTags),
+              updatedAt: Date.now()
+            });
           }
         }
         await db.tags.delete(sourceId);
       });
+      await deleteFromCloud('tags', sourceId);
+      triggerSync();
       setMergingId(null);
       setTargetMergeId('');
     }
