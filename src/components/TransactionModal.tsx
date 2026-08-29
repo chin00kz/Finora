@@ -49,14 +49,20 @@ export default function TransactionModal() {
     try {
       await db.transaction('rw', db.transactions, db.accounts, db.tags, async () => {
         // Resolve tags (create if new)
+        const tagsToProcess = [...selectedTags];
+        if (tagInput.trim() && !tagsToProcess.includes(tagInput.trim())) {
+          tagsToProcess.push(tagInput.trim());
+        }
+
         const resolvedTagIds: string[] = [];
-        for (const tagName of selectedTags) {
-          const existingTag = await db.tags.where('name').equalsIgnoreCase(tagName).first();
+        for (const tagName of tagsToProcess) {
+          const allTags = await db.tags.toArray();
+          const existingTag = allTags.find(t => t.name.toLowerCase() === tagName.toLowerCase());
           if (existingTag) {
             resolvedTagIds.push(existingTag.id);
           } else {
             const newId = `tag-${Date.now()}-${Math.random().toString(36).substr(2, 5)}`;
-            await db.tags.add({ id: newId, name: tagName });
+            await db.tags.add({ id: newId, name: tagName, updatedAt: Date.now() });
             resolvedTagIds.push(newId);
           }
         }

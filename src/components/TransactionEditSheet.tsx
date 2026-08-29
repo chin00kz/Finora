@@ -74,20 +74,24 @@ export default function TransactionEditSheet({ transaction, onClose }: Props) {
     try {
       await db.transaction('rw', db.transactions, db.accounts, db.tags, async () => {
         // Resolve any new tags
+        const tagsToProcess = [...selectedTagIds];
+        if (tagInput.trim() && !tagsToProcess.includes(tagInput.trim())) {
+          tagsToProcess.push(tagInput.trim());
+        }
+
         const resolvedTagIds: string[] = [];
-        for (const tid of selectedTagIds) {
+        for (const tid of tagsToProcess) {
           // tid may be an existing id OR a raw name (from inline input)
           const existing = await db.tags.get(tid);
           if (existing) {
             resolvedTagIds.push(tid);
           } else {
             // treat as name, find or create
-            const byName = await db.tags.where('name').equalsIgnoreCase(tid).first();
-            if (byName) {
+            const allTags = await db.tags.toArray();
               resolvedTagIds.push(byName.id);
             } else {
               const newId = `tag-${Date.now()}-${Math.random().toString(36).substr(2, 5)}`;
-              await db.tags.add({ id: newId, name: tid });
+              await db.tags.add({ id: newId, name: tid, updatedAt: Date.now() });
               resolvedTagIds.push(newId);
             }
           }
