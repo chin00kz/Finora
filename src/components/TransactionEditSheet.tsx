@@ -88,6 +88,8 @@ export default function TransactionEditSheet({ transaction, onClose }: Props) {
           } else {
             // treat as name, find or create
             const allTags = await db.tags.toArray();
+            const byName = allTags.find(t => t.name.toLowerCase() === tid.toLowerCase());
+            if (byName) {
               resolvedTagIds.push(byName.id);
             } else {
               const newId = `tag-${Date.now()}-${Math.random().toString(36).substr(2, 5)}`;
