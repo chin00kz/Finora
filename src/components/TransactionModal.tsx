@@ -23,9 +23,17 @@ export default function TransactionModal() {
   const [isShared, setIsShared] = useState(false);
   const [personalAmount, setPersonalAmount] = useState(''); // For shared expenses
 
+  const [showNoteSuggestions, setShowNoteSuggestions] = useState(false);
+
   const accounts = useLiveQuery(() => db.accounts.toArray()) || [];
   const categories = useLiveQuery(() => db.categories.toArray()) || [];
   const tags = useLiveQuery(() => db.tags.toArray()) || [];
+  const allTransactions = useLiveQuery(() => db.transactions.toArray()) || [];
+  
+  const pastNotes = Array.from(new Set(allTransactions.map(t => t.notes?.trim()).filter(Boolean))) as string[];
+  const filteredNotes = notes
+    ? pastNotes.filter(n => n.toLowerCase().includes(notes.toLowerCase()) && n.toLowerCase() !== notes.toLowerCase())
+    : [];
 
   const filteredCategories = categories.filter(c => c.type === (type === 'transfer' ? 'expense' : type));
 
@@ -109,8 +117,10 @@ export default function TransactionModal() {
       setAmount('');
       setNotes('');
       setSelectedTags([]);
+      setTagInput('');
       setShowAdvanced(false);
       setIsShared(false);
+      setPersonalAmount('');
       setAddTransactionModalOpen(false);
     } catch (error) {
       console.error("Failed to save transaction", error);
@@ -166,6 +176,40 @@ export default function TransactionModal() {
                   className="w-full bg-transparent text-foreground outline-none placeholder:text-muted-foreground/50"
                   placeholder="0.00"
                 />
+              </div>
+            </div>
+
+            {/* Notes */}
+            <div>
+              <label className="block text-xs font-medium text-muted-foreground mb-2 uppercase tracking-wider">What is it for?</label>
+              <div className="relative">
+                <input
+                  type="text"
+                  value={notes}
+                  onChange={e => setNotes(e.target.value)}
+                  onFocus={() => setShowNoteSuggestions(true)}
+                  onBlur={() => setShowNoteSuggestions(false)}
+                  className="w-full p-4 bg-background border border-border rounded-xl font-medium text-foreground outline-none focus:border-foreground"
+                  placeholder="Optional description"
+                />
+                {showNoteSuggestions && filteredNotes.length > 0 && (
+                  <div className="absolute top-full left-0 right-0 mt-1 bg-card border border-border rounded-lg shadow-lg z-10 max-h-40 overflow-y-auto">
+                    {filteredNotes.map(n => (
+                      <button
+                        key={n}
+                        type="button"
+                        onMouseDown={(e) => {
+                          e.preventDefault(); // prevent blur before click
+                          setNotes(n);
+                          setShowNoteSuggestions(false);
+                        }}
+                        className="w-full text-left px-4 py-2 hover:bg-muted text-foreground text-sm"
+                      >
+                        {n}
+                      </button>
+                    ))}
+                  </div>
+                )}
               </div>
             </div>
 
@@ -234,16 +278,6 @@ export default function TransactionModal() {
             {/* Advanced Options */}
             {showAdvanced && (
               <div className="space-y-6 pt-2 pb-6 animate-in slide-in-from-top-4 fade-in duration-300 border-t border-border">
-                <div>
-                  <label className="block text-xs font-medium text-muted-foreground mb-2 uppercase tracking-wider">Notes</label>
-                  <input
-                    type="text"
-                    value={notes}
-                    onChange={e => setNotes(e.target.value)}
-                    className="w-full p-4 bg-background border border-border rounded-xl font-medium text-foreground outline-none focus:border-foreground"
-                    placeholder="What was this for?"
-                  />
-                </div>
 
                 <div>
                   <label className="block text-xs font-medium text-muted-foreground mb-2 uppercase tracking-wider">Tags</label>

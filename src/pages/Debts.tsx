@@ -14,16 +14,34 @@ export default function Debts() {
   // Basic implementation: total owed to me = (total amount - my share)
   const totalOwedToMe = pendingTxns.reduce((sum, t) => sum + (t.amount - (t.personalAmount || 0)), 0);
 
-  const handleSettle = async (id: string) => {
-    await db.transactions.update(id, { 
+  const handleSettle = async (txn: typeof pendingTxns[0]) => {
+    const account = await db.accounts.get(txn.accountId);
+    if (account && txn.personalAmount !== undefined) {
+      // When settled: refund the other person's share back to the account
+      const othersShare = txn.amount - txn.personalAmount;
+      await db.accounts.update(txn.accountId, { 
+        balance: account.balance + othersShare,
+        updatedAt: Date.now()
+      });
+    }
+    await db.transactions.update(txn.id, { 
       isSettled: true,
       updatedAt: Date.now() 
     });
     triggerSync();
   };
 
-  const handleUnsettle = async (id: string) => {
-    await db.transactions.update(id, { 
+  const handleUnsettle = async (txn: typeof settledTxns[0]) => {
+    const account = await db.accounts.get(txn.accountId);
+    if (account && txn.personalAmount !== undefined) {
+      // When unsettled: deduct the other person's share again
+      const othersShare = txn.amount - txn.personalAmount;
+      await db.accounts.update(txn.accountId, { 
+        balance: account.balance - othersShare,
+        updatedAt: Date.now()
+      });
+    }
+    await db.transactions.update(txn.id, { 
       isSettled: false,
       updatedAt: Date.now() 
     });
@@ -59,7 +77,7 @@ export default function Debts() {
                 </div>
               </div>
               <button
-                onClick={() => handleSettle(txn.id)}
+                onClick={() => handleSettle(txn)}
                 className="w-full py-2 bg-green-500/10 text-green-500 rounded-lg text-sm font-medium hover:bg-green-500/20 transition-colors"
               >
                 Mark as Settled
@@ -89,7 +107,7 @@ export default function Debts() {
                       <p className="font-medium text-muted-foreground line-through">LKR {owedAmount.toLocaleString()}</p>
                     </div>
                     <button
-                      onClick={() => handleUnsettle(txn.id)}
+                      onClick={() => handleUnsettle(txn)}
                       className="p-2 hover:bg-muted rounded-lg text-xs"
                       title="Undo settle"
                     >

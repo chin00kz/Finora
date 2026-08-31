@@ -14,6 +14,7 @@ export default function TransactionEditSheet({ transaction, onClose }: Props) {
   const accounts = useLiveQuery(() => db.accounts.toArray()) || [];
   const categories = useLiveQuery(() => db.categories.toArray()) || [];
   const tags = useLiveQuery(() => db.tags.toArray()) || [];
+  const allTransactions = useLiveQuery(() => db.transactions.toArray()) || [];
 
   // Form state — initialise from the transaction
   const [amount, setAmount] = useState(String(transaction.amount));
@@ -26,6 +27,12 @@ export default function TransactionEditSheet({ transaction, onClose }: Props) {
   const [personalAmount, setPersonalAmount] = useState(String(transaction.personalAmount || ''));
   const [selectedTagIds, setSelectedTagIds] = useState<string[]>(transaction.tagIds || []);
   const [tagInput, setTagInput] = useState('');
+  const [showNoteSuggestions, setShowNoteSuggestions] = useState(false);
+
+  const pastNotes = Array.from(new Set(allTransactions.map(t => t.notes?.trim()).filter(Boolean))) as string[];
+  const filteredNotes = notes
+    ? pastNotes.filter(n => n.toLowerCase().includes(notes.toLowerCase()) && n.toLowerCase() !== notes.toLowerCase())
+    : [];
 
   const filteredCategories = categories.filter(c => c.type === (type === 'transfer' ? 'expense' : type));
 
@@ -200,6 +207,40 @@ export default function TransactionEditSheet({ transaction, onClose }: Props) {
             </div>
           </div>
 
+          {/* Notes */}
+          <div>
+            <label className="block text-xs font-medium text-muted-foreground mb-2 uppercase tracking-wider">What is it for?</label>
+            <div className="relative">
+              <input
+                type="text"
+                value={notes}
+                onChange={e => setNotes(e.target.value)}
+                onFocus={() => setShowNoteSuggestions(true)}
+                onBlur={() => setShowNoteSuggestions(false)}
+                className="w-full p-3.5 bg-background border border-border rounded-xl text-sm font-medium text-foreground outline-none focus:border-foreground"
+                placeholder="Optional description"
+              />
+              {showNoteSuggestions && filteredNotes.length > 0 && (
+                <div className="absolute top-full left-0 right-0 mt-1 bg-card border border-border rounded-lg shadow-lg z-10 max-h-40 overflow-y-auto">
+                  {filteredNotes.map(n => (
+                    <button
+                      key={n}
+                      type="button"
+                      onMouseDown={(e) => {
+                        e.preventDefault(); // prevent blur before click
+                        setNotes(n);
+                        setShowNoteSuggestions(false);
+                      }}
+                      className="w-full text-left px-4 py-2 hover:bg-muted text-foreground text-sm"
+                    >
+                      {n}
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
+          </div>
+
           {/* Account */}
           <div>
             <label className="block text-xs font-medium text-muted-foreground mb-2 uppercase tracking-wider">
@@ -253,18 +294,6 @@ export default function TransactionEditSheet({ transaction, onClose }: Props) {
               </div>
             </div>
           )}
-
-          {/* Notes */}
-          <div>
-            <label className="block text-xs font-medium text-muted-foreground mb-2 uppercase tracking-wider">Notes</label>
-            <input
-              type="text"
-              value={notes}
-              onChange={e => setNotes(e.target.value)}
-              className="w-full p-3.5 bg-background border border-border rounded-xl text-sm font-medium text-foreground outline-none focus:border-foreground"
-              placeholder="What was this for?"
-            />
-          </div>
 
           {/* Tags */}
           <div>
