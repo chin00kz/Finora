@@ -24,6 +24,7 @@ export default function BudgetDetail() {
 
   // ── Active budget calculations ──────────────────────────────────────────────
   let spentThisPeriod = 0;
+  let outOfBudgetSpent = 0;
   let remainingBudget = 0;
   let onTrackStatus = '🟢';
   let progressPercentage = 0;
@@ -32,9 +33,13 @@ export default function BudgetDetail() {
   if (activeBudget) {
     const today = Date.now();
     const periodTxns = transactions.filter(
-      t => t.type === 'expense' && t.date >= activeBudget.startDate && t.date <= activeBudget.endDate
+      t => t.type === 'expense' && !t.excludeFromBudget && t.date >= activeBudget.startDate && t.date <= activeBudget.endDate
+    );
+    const outOfBudgetTxns = transactions.filter(
+      t => t.type === 'expense' && t.excludeFromBudget && t.date >= activeBudget.startDate && t.date <= activeBudget.endDate
     );
     spentThisPeriod = periodTxns.reduce((sum, t) => sum + (t.isShared && t.personalAmount ? t.personalAmount : t.amount), 0);
+    outOfBudgetSpent = outOfBudgetTxns.reduce((sum, t) => sum + (t.isShared && t.personalAmount ? t.personalAmount : t.amount), 0);
     remainingBudget = activeBudget.amount - spentThisPeriod;
     progressPercentage = Math.min(100, Math.max(0, (spentThisPeriod / activeBudget.amount) * 100));
     const totalDays = activeBudget.periodLength;
@@ -130,6 +135,17 @@ export default function BudgetDetail() {
                   {new Date(activeBudget.endDate).toLocaleDateString()}
                 </span>
               </div>
+
+              {outOfBudgetSpent > 0 && (
+                <div className="mt-3 pt-3 border-t border-border flex justify-between items-center text-xs">
+                  <span className="text-muted-foreground flex items-center gap-1">
+                    <span>⚡</span> Out-of-budget expenses:
+                  </span>
+                  <span className="font-medium text-amber-600 dark:text-amber-400">
+                    LKR {outOfBudgetSpent.toLocaleString()}
+                  </span>
+                </div>
+              )}
             </div>
 
             {/* Actions */}
@@ -169,7 +185,7 @@ export default function BudgetDetail() {
             <div className="bg-card rounded-2xl border border-border shadow-sm divide-y divide-border overflow-hidden">
               {pastBudgets.map(budget => {
                 const periodTxns = transactions.filter(
-                  t => t.type === 'expense' && t.date >= budget.startDate && t.date <= budget.endDate
+                  t => t.type === 'expense' && !t.excludeFromBudget && t.date >= budget.startDate && t.date <= budget.endDate
                 );
                 const spent = periodTxns.reduce(
                   (sum, t) => sum + (t.isShared && t.personalAmount ? t.personalAmount : t.amount),

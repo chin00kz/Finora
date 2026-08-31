@@ -22,6 +22,7 @@ export default function TransactionModal() {
   const [toAccountId, setToAccountId] = useState(''); // For transfers
   const [isShared, setIsShared] = useState(false);
   const [personalAmount, setPersonalAmount] = useState(''); // For shared expenses
+  const [excludeFromBudget, setExcludeFromBudget] = useState(false);
 
   const [showNoteSuggestions, setShowNoteSuggestions] = useState(false);
 
@@ -90,6 +91,7 @@ export default function TransactionModal() {
           toAccountId: type === 'transfer' ? toAccountId : undefined,
           isShared,
           personalAmount: isShared ? Number(personalAmount) : undefined,
+          excludeFromBudget: type === 'expense' ? excludeFromBudget : undefined,
           updatedAt: now,
         });
 
@@ -121,6 +123,7 @@ export default function TransactionModal() {
       setShowAdvanced(false);
       setIsShared(false);
       setPersonalAmount('');
+      setExcludeFromBudget(false);
       setAddTransactionModalOpen(false);
     } catch (error) {
       console.error("Failed to save transaction", error);
@@ -331,33 +334,52 @@ export default function TransactionModal() {
                 </div>
 
                 {type === 'expense' && (
-                  <div className="bg-blue-500/10 p-5 rounded-xl border border-blue-500/20">
-                    <label className="flex items-center mb-4">
-                      <input 
-                        type="checkbox" 
-                        checked={isShared} 
-                        onChange={e => setIsShared(e.target.checked)}
-                        className="w-5 h-5 rounded border-border text-blue-500 focus:ring-blue-500"
-                      />
-                      <span className="ml-3 font-medium text-foreground">Shared Expense (Split)</span>
-                    </label>
-                    
-                    {isShared && (
-                      <div className="pl-8 animate-in fade-in slide-in-from-top-2">
-                        <label className="block text-xs font-medium text-muted-foreground mb-2 uppercase tracking-wider">My Share (LKR)</label>
-                        <input
-                          type="number"
-                          value={personalAmount}
-                          onChange={e => setPersonalAmount(e.target.value)}
-                          className="w-full p-3 bg-card border border-border rounded-xl font-medium text-foreground outline-none focus:border-blue-500"
-                          placeholder="How much is actually yours?"
+                  <>
+                    <div className="bg-amber-500/10 p-5 rounded-xl border border-amber-500/20">
+                      <label className="flex items-start cursor-pointer">
+                        <input 
+                          type="checkbox" 
+                          checked={excludeFromBudget} 
+                          onChange={e => setExcludeFromBudget(e.target.checked)}
+                          className="w-5 h-5 mt-0.5 rounded border-border text-amber-500 focus:ring-amber-500"
                         />
-                        <p className="text-xs text-muted-foreground mt-2">
-                          The full {amount || '0'} will be deducted from your account, but only your share will count against your budget.
-                        </p>
-                      </div>
-                    )}
-                  </div>
+                        <div className="ml-3">
+                          <span className="font-medium text-foreground text-sm block">Exclude from Budget</span>
+                          <span className="text-xs text-muted-foreground block mt-0.5">
+                            Deducts from your account balance, but won't count against your active budget pace (for emergency/one-off expenses).
+                          </span>
+                        </div>
+                      </label>
+                    </div>
+
+                    <div className="bg-blue-500/10 p-5 rounded-xl border border-blue-500/20">
+                      <label className="flex items-center mb-4">
+                        <input 
+                          type="checkbox" 
+                          checked={isShared} 
+                          onChange={e => setIsShared(e.target.checked)}
+                          className="w-5 h-5 rounded border-border text-blue-500 focus:ring-blue-500"
+                        />
+                        <span className="ml-3 font-medium text-foreground">Shared Expense (Split)</span>
+                      </label>
+                      
+                      {isShared && (
+                        <div className="pl-8 animate-in fade-in slide-in-from-top-2">
+                          <label className="block text-xs font-medium text-muted-foreground mb-2 uppercase tracking-wider">My Share (LKR)</label>
+                          <input
+                            type="number"
+                            value={personalAmount}
+                            onChange={e => setPersonalAmount(e.target.value)}
+                            className="w-full p-3 bg-card border border-border rounded-xl font-medium text-foreground outline-none focus:border-blue-500"
+                            placeholder="How much is actually yours?"
+                          />
+                          <p className="text-xs text-muted-foreground mt-2">
+                            The full {amount || '0'} will be deducted from your account, but only your share will count against your budget.
+                          </p>
+                        </div>
+                      )}
+                    </div>
+                  </>
                 )}
               </div>
             )}

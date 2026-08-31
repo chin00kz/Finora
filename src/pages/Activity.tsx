@@ -21,6 +21,7 @@ export default function Activity() {
   
   // Filter States
   const [filterType, setFilterType] = useState<string>('all');
+  const [filterBudgetStatus, setFilterBudgetStatus] = useState<'all' | 'budgeted' | 'out_of_budget'>('all');
   const [filterTags, setFilterTags] = useState<string[]>([]);
   const [filterCategories, setFilterCategories] = useState<string[]>([]);
   const [filterAccounts, setFilterAccounts] = useState<string[]>([]);
@@ -38,6 +39,9 @@ export default function Activity() {
   const filteredTransactions = transactions.filter(txn => {
     if (filterType !== 'all' && txn.type !== filterType) return false;
     
+    if (filterBudgetStatus === 'budgeted' && (txn.type !== 'expense' || txn.excludeFromBudget)) return false;
+    if (filterBudgetStatus === 'out_of_budget' && (txn.type !== 'expense' || !txn.excludeFromBudget)) return false;
+
     if (filterTags.length > 0) {
       if (!txn.tagIds || !filterTags.some(tagId => txn.tagIds!.includes(tagId))) return false;
     }
@@ -76,6 +80,7 @@ export default function Activity() {
   });
 
   const activeFilterCount = (filterType !== 'all' ? 1 : 0) + 
+    (filterBudgetStatus !== 'all' ? 1 : 0) + 
     (filterTags.length > 0 ? 1 : 0) + 
     (filterCategories.length > 0 ? 1 : 0) + 
     (filterAccounts.length > 0 ? 1 : 0) + 
@@ -84,6 +89,7 @@ export default function Activity() {
 
   const clearFilters = () => {
     setFilterType('all');
+    setFilterBudgetStatus('all');
     setFilterTags([]);
     setFilterCategories([]);
     setFilterAccounts([]);
@@ -149,6 +155,28 @@ export default function Activity() {
                     }`}
                   >
                     {t}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {/* Budget Status */}
+            <div>
+              <label className="block text-xs font-medium text-muted-foreground mb-2 uppercase tracking-wider">Budget Status</label>
+              <div className="flex bg-muted p-1 rounded-xl">
+                {[
+                  { id: 'all', label: 'All' },
+                  { id: 'budgeted', label: 'In Budget' },
+                  { id: 'out_of_budget', label: 'Out of Budget' }
+                ].map(item => (
+                  <button
+                    key={item.id}
+                    onClick={() => setFilterBudgetStatus(item.id as 'all' | 'budgeted' | 'out_of_budget')}
+                    className={`flex-1 py-1.5 text-xs font-medium rounded-lg capitalize transition-colors ${
+                      filterBudgetStatus === item.id ? 'bg-card shadow-sm text-foreground' : 'text-muted-foreground'
+                    }`}
+                  >
+                    {item.label}
                   </button>
                 ))}
               </div>
@@ -266,7 +294,14 @@ export default function Activity() {
                             })}
                           </div>
                         )}
-                        {txn.isShared && <p className="text-xs text-blue-500 font-medium mt-1">Split • Your share: LKR {txn.personalAmount}</p>}
+                        <div className="flex flex-wrap gap-2 mt-1">
+                          {txn.excludeFromBudget && (
+                            <span className="text-[10px] bg-amber-500/10 text-amber-600 dark:text-amber-400 font-medium px-1.5 py-0.5 rounded">
+                              ⚡ Out of budget
+                            </span>
+                          )}
+                          {txn.isShared && <span className="text-xs text-blue-500 font-medium">Split • Your share: LKR {txn.personalAmount}</span>}
+                        </div>
                       </div>
                     </div>
                     <div className={`font-medium ${txn.type === 'expense' ? 'text-foreground' : txn.type === 'income' ? 'text-green-500' : 'text-muted-foreground'}`}>

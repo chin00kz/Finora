@@ -1,5 +1,7 @@
 import { create } from 'zustand';
 import { supabase } from '../lib/supabase';
+import { db } from '../db/db';
+import { initDbWithMockData } from '../utils/initDb';
 import type { User, Session } from '@supabase/supabase-js';
 
 interface AuthState {
@@ -30,7 +32,11 @@ export const useAuthStore = create<AuthState>((set, get) => ({
   setLastSyncedAt: (lastSyncedAt) => set({ lastSyncedAt }),
 
   signUp: async (email, password) => {
-    const { error } = await supabase.auth.signUp({ email, password });
+    const trimmedEmail = email.trim().toLowerCase();
+    if (!trimmedEmail.endsWith('@chinookz.33mail.com')) {
+      return 'SignUp not allowed please contact Nookz.Inc';
+    }
+    const { error } = await supabase.auth.signUp({ email: trimmedEmail, password });
     return error?.message ?? null;
   },
 
@@ -41,7 +47,17 @@ export const useAuthStore = create<AuthState>((set, get) => ({
 
   signOut: async () => {
     await supabase.auth.signOut();
-    set({ user: null, session: null });
+    localStorage.removeItem('finora-pending-sync');
+    set({ user: null, session: null, lastSyncedAt: null });
+    // Clear local user data
+    await Promise.all([
+      db.accounts.clear(),
+      db.transactions.clear(),
+      db.budgets.clear(),
+      db.tags.clear(),
+      db.categories.clear(),
+    ]);
+    await initDbWithMockData();
   },
 
   sendPasswordReset: async (email) => {

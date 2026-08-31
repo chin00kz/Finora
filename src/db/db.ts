@@ -57,6 +57,9 @@ export interface Transaction {
   splitDetails?: SplitDetail[];
   isSettled?: boolean;
 
+  // Out of budget expenses
+  excludeFromBudget?: boolean;
+
   updatedAt?: number;
 }
 

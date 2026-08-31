@@ -41,6 +41,15 @@ export default function Auth() {
       return;
     }
 
+    if (mode === 'signup') {
+      const trimmed = email.trim().toLowerCase();
+      if (!trimmed.endsWith('@chinookz.33mail.com')) {
+        setError('SignUp not allowed please contact Nookz.Inc');
+        setIsLoading(false);
+        return;
+      }
+    }
+
     const err = mode === 'signup'
       ? await signUp(email, password)
       : await signIn(email, password);

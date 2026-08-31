@@ -26,7 +26,7 @@ export default function Dashboard() {
   if (activeBudget) {
     const today = Date.now();
     const periodTxns = transactions.filter(
-      t => t.type === 'expense' && t.date >= activeBudget.startDate && t.date <= activeBudget.endDate
+      t => t.type === 'expense' && !t.excludeFromBudget && t.date >= activeBudget.startDate && t.date <= activeBudget.endDate
     );
     spentThisPeriod = periodTxns.reduce(
       (sum, t) => sum + (t.isShared && t.personalAmount ? t.personalAmount : t.amount),
@@ -133,8 +133,13 @@ export default function Dashboard() {
                   <p className="font-medium text-foreground text-sm leading-tight">
                     {txn.notes || (txn.type === 'expense' ? 'Expense' : txn.type === 'income' ? 'Income' : 'Transfer')}
                   </p>
-                  <p className="text-xs text-muted-foreground">
-                    {new Date(txn.date).toLocaleDateString()}
+                  <p className="text-xs text-muted-foreground flex items-center gap-1.5 mt-0.5">
+                    <span>{new Date(txn.date).toLocaleDateString()}</span>
+                    {txn.excludeFromBudget && (
+                      <span className="text-[10px] bg-amber-500/10 text-amber-600 dark:text-amber-400 font-medium px-1.5 py-0.5 rounded">
+                        Out of budget
+                      </span>
+                    )}
                   </p>
                 </div>
               </div>

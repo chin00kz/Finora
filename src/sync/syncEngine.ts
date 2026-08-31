@@ -82,6 +82,8 @@ function toSupabaseTransaction(userId: string, t: Transaction) {
     to_account_id: t.toAccountId || null,
     is_shared: t.isShared || null,
     personal_amount: t.personalAmount != null ? t.personalAmount : null,
+    is_settled: t.isSettled || null,
+    exclude_from_budget: t.excludeFromBudget || null,
     updated_at: t.updatedAt || Date.now(),
   };
 }
@@ -99,6 +101,8 @@ function fromSupabaseTransaction(row: Record<string, unknown>): Transaction {
     toAccountId: row.to_account_id ? String(row.to_account_id) : undefined,
     isShared: Boolean(row.is_shared),
     personalAmount: row.personal_amount != null ? Number(row.personal_amount) : undefined,
+    isSettled: Boolean(row.is_settled),
+    excludeFromBudget: Boolean(row.exclude_from_budget),
     updatedAt: Number(row.updated_at) || Date.now(),
   };
 }
@@ -263,12 +267,69 @@ export async function deleteFromCloud(table: TableName, id: string): Promise<voi
   }
 }
 
+async function migrateLegacyIds(): Promise<void> {
+  try {
+    const cash = await db.accounts.get('acc-cash');
+    if (cash) {
+      const newId = `acc-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`;
+      await db.accounts.delete('acc-cash');
+      await db.accounts.add({ ...cash, id: newId, updatedAt: Date.now() });
+      const txns = await db.transactions.filter(t => t.accountId === 'acc-cash').toArray();
+      for (const t of txns) {
+        await db.transactions.update(t.id, { accountId: newId, updatedAt: Date.now() });
+      }
+    }
+
+    const bank = await db.accounts.get('acc-bank');
+    if (bank) {
+      const newId = `acc-${Date.now() + 1}-${Math.random().toString(36).substring(2, 7)}`;
+      await db.accounts.delete('acc-bank');
+      await db.accounts.add({ ...bank, id: newId, updatedAt: Date.now() });
+      const txns = await db.transactions.filter(t => t.accountId === 'acc-bank').toArray();
+      for (const t of txns) {
+        await db.transactions.update(t.id, { accountId: newId, updatedAt: Date.now() });
+      }
+    }
+
+    const legacyCats = ['cat-food', 'cat-transport', 'cat-salary'];
+    for (const catId of legacyCats) {
+      const cat = await db.categories.get(catId);
+      if (cat) {
+        const newId = `cat-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`;
+        await db.categories.delete(catId);
+        await db.categories.add({ ...cat, id: newId, updatedAt: Date.now() });
+        const txns = await db.transactions.filter(t => t.categoryId === catId).toArray();
+        for (const t of txns) {
+          await db.transactions.update(t.id, { categoryId: newId, updatedAt: Date.now() });
+        }
+      }
+    }
+
+    const bud = await db.budgets.get('bud-1');
+    if (bud) {
+      const newId = `bud-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`;
+      await db.budgets.delete('bud-1');
+      await db.budgets.add({ ...bud, id: newId, updatedAt: Date.now() });
+    }
+
+    const txn = await db.transactions.get('txn-1');
+    if (txn) {
+      const newId = `txn-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`;
+      await db.transactions.delete('txn-1');
+      await db.transactions.add({ ...txn, id: newId, updatedAt: Date.now() });
+    }
+  } catch (err) {
+    console.warn('[sync] Legacy ID migration failed:', err);
+  }
+}
+
 // ── Full Two-Way Sync ────────────────────────────────────────────────────────
 
 /**
  * Runs a full two-way sync: pushes local changes then pulls remote changes.
  */
 export async function syncAll(userId: string): Promise<{ success: boolean; error?: string }> {
+  await migrateLegacyIds();
   const tables: TableName[] = ['accounts', 'categories', 'tags', 'budgets', 'transactions'];
   
   // 1. Push all local tables
@@ -304,6 +365,7 @@ export async function drainPendingSync(userId: string): Promise<void> {
  * If cloud has data, removes default starter mock data so it doesn't collide.
  */
 export async function hydrateFromCloud(userId: string): Promise<{ restoredCount: number }> {
+  await migrateLegacyIds();
   const [accsRes, txnsRes, budsRes, tagsRes, catsRes] = await Promise.all([
     supabase.from('accounts').select('*').eq('user_id', userId),
     supabase.from('transactions').select('*').eq('user_id', userId),
