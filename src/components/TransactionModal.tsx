@@ -31,6 +31,7 @@ export default function TransactionModal() {
   const [showNewCat, setShowNewCat] = useState(false);
   const [newCatName, setNewCatName] = useState('');
   const [newCatColor, setNewCatColor] = useState(PRESET_COLORS[0]);
+  const [newCatError, setNewCatError] = useState('');
 
   const accounts = useLiveQuery(() => db.accounts.toArray()) || [];
   const categories = useLiveQuery(() => db.categories.toArray()) || [];
@@ -287,17 +288,21 @@ export default function TransactionModal() {
                     <input
                       type="text"
                       value={newCatName}
-                      onChange={e => setNewCatName(e.target.value)}
+                      onChange={e => { setNewCatName(e.target.value); setNewCatError(''); }}
                       onKeyDown={async e => {
                         if (e.key === 'Enter') {
                           e.preventDefault();
                           const name = newCatName.trim();
                           if (!name) return;
+                          const catType = type as 'expense' | 'income';
+                          const dup = categories.find(c => c.name.toLowerCase() === name.toLowerCase() && c.type === catType);
+                          if (dup) { setNewCatError(`A ${catType} category named "${name}" already exists.`); return; }
                           const id = `cat-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`;
-                          await db.categories.add({ id, name, type: type as 'expense' | 'income', icon: 'tag', color: newCatColor, updatedAt: Date.now() });
+                          await db.categories.add({ id, name, type: catType, icon: 'tag', color: newCatColor, updatedAt: Date.now() });
                           triggerSync();
                           setCategoryId(id);
                           setNewCatName('');
+                          setNewCatError('');
                           setShowNewCat(false);
                         }
                       }}
@@ -310,12 +315,13 @@ export default function TransactionModal() {
                         <button
                           key={c}
                           type="button"
-                          onClick={() => setNewCatColor(c)}
+                          onClick={() => { setNewCatColor(c); setNewCatError(''); }}
                           className={`w-7 h-7 rounded-full transition-transform active:scale-90 ${newCatColor === c ? 'ring-2 ring-offset-2 ring-foreground scale-110' : ''}`}
                           style={{ backgroundColor: c }}
                         />
                       ))}
                     </div>
+                    {newCatError && <p className="text-xs text-red-500 font-medium">{newCatError}</p>}
                     <div className="flex gap-2">
                       <button
                         type="button"
@@ -323,11 +329,15 @@ export default function TransactionModal() {
                         onClick={async () => {
                           const name = newCatName.trim();
                           if (!name) return;
+                          const catType = type as 'expense' | 'income';
+                          const dup = categories.find(c => c.name.toLowerCase() === name.toLowerCase() && c.type === catType);
+                          if (dup) { setNewCatError(`A ${catType} category named "${name}" already exists.`); return; }
                           const id = `cat-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`;
-                          await db.categories.add({ id, name, type: type as 'expense' | 'income', icon: 'tag', color: newCatColor, updatedAt: Date.now() });
+                          await db.categories.add({ id, name, type: catType, icon: 'tag', color: newCatColor, updatedAt: Date.now() });
                           triggerSync();
                           setCategoryId(id);
                           setNewCatName('');
+                          setNewCatError('');
                           setShowNewCat(false);
                         }}
                         className="flex-1 py-2 bg-accent text-accent-foreground rounded-xl text-sm font-medium active:scale-[0.98] transition-transform disabled:opacity-50"
@@ -336,7 +346,7 @@ export default function TransactionModal() {
                       </button>
                       <button
                         type="button"
-                        onClick={() => { setShowNewCat(false); setNewCatName(''); }}
+                        onClick={() => { setShowNewCat(false); setNewCatName(''); setNewCatError(''); }}
                         className="px-4 py-2 bg-background border border-border rounded-xl text-sm font-medium text-muted-foreground active:scale-[0.98] transition-transform"
                       >
                         Cancel

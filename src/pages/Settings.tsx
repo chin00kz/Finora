@@ -88,13 +88,21 @@ export default function Settings() {
   const [newCatType, setNewCatType] = useState<'expense' | 'income'>('expense');
   const [newCatColor, setNewCatColor] = useState(PRESET_COLORS[0]);
   const [showAddCat, setShowAddCat] = useState(false);
+  const [catError, setCatError] = useState('');
 
   const [editingCatId, setEditingCatId] = useState<string | null>(null);
   const [editCatName, setEditCatName] = useState('');
+  const [editCatError, setEditCatError] = useState('');
 
   const handleAddCategory = async () => {
     const name = newCatName.trim();
     if (!name) return;
+    const duplicate = categories.find(c => c.name.toLowerCase() === name.toLowerCase() && c.type === newCatType);
+    if (duplicate) {
+      setCatError(`A ${newCatType} category named "${name}" already exists.`);
+      return;
+    }
+    setCatError('');
     const id = `cat-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`;
     await db.categories.add({ id, name, type: newCatType, icon: 'tag', color: newCatColor, updatedAt: Date.now() });
     triggerSync();
@@ -105,6 +113,13 @@ export default function Settings() {
   const handleRenameCategory = async (id: string) => {
     const name = editCatName.trim();
     if (!name) return;
+    const cat = categories.find(c => c.id === id);
+    const duplicate = categories.find(c => c.id !== id && c.name.toLowerCase() === name.toLowerCase() && c.type === cat?.type);
+    if (duplicate) {
+      setEditCatError(`A ${cat?.type} category named "${name}" already exists.`);
+      return;
+    }
+    setEditCatError('');
     await db.categories.update(id, { name, updatedAt: Date.now() });
     triggerSync();
     setEditingCatId(null);
@@ -373,12 +388,13 @@ export default function Settings() {
                 <button
                   key={c}
                   type="button"
-                  onClick={() => setNewCatColor(c)}
+                  onClick={() => { setNewCatColor(c); setCatError(''); }}
                   className={`w-7 h-7 rounded-full transition-transform active:scale-90 ${newCatColor === c ? 'ring-2 ring-offset-2 ring-foreground scale-110' : ''}`}
                   style={{ backgroundColor: c }}
                 />
               ))}
             </div>
+            {catError && <p className="text-xs text-red-500 font-medium">{catError}</p>}
             <div className="flex gap-2">
               <button
                 onClick={handleAddCategory}
@@ -388,7 +404,7 @@ export default function Settings() {
                 Save
               </button>
               <button
-                onClick={() => setShowAddCat(false)}
+                onClick={() => { setShowAddCat(false); setCatError(''); }}
                 className="px-4 py-2.5 bg-muted text-muted-foreground rounded-xl text-sm font-medium active:scale-[0.98] transition-transform"
               >
                 Cancel
@@ -410,18 +426,21 @@ export default function Settings() {
                 {group.map(cat => (
                   <div key={cat.id} className="px-4 py-3 flex items-center justify-between gap-3">
                     {editingCatId === cat.id ? (
-                      <div className="flex-1 flex items-center gap-2">
-                        <span className="w-3 h-3 rounded-full shrink-0" style={{ backgroundColor: cat.color }} />
-                        <input
-                          type="text"
-                          value={editCatName}
-                          onChange={e => setEditCatName(e.target.value)}
-                          onKeyDown={e => { if (e.key === 'Enter') handleRenameCategory(cat.id); }}
-                          autoFocus
-                          className="flex-1 p-2 bg-background border border-border rounded-lg text-sm text-foreground outline-none focus:border-foreground"
-                        />
-                        <button onClick={() => handleRenameCategory(cat.id)} className="p-2 bg-accent text-accent-foreground rounded-lg"><Check size={15} /></button>
-                        <button onClick={() => setEditingCatId(null)} className="p-2 bg-muted text-muted-foreground rounded-lg"><X size={15} /></button>
+                      <div className="flex-1 flex flex-col gap-1">
+                        <div className="flex items-center gap-2">
+                          <span className="w-3 h-3 rounded-full shrink-0" style={{ backgroundColor: cat.color }} />
+                          <input
+                            type="text"
+                            value={editCatName}
+                            onChange={e => { setEditCatName(e.target.value); setEditCatError(''); }}
+                            onKeyDown={e => { if (e.key === 'Enter') handleRenameCategory(cat.id); }}
+                            autoFocus
+                            className="flex-1 p-2 bg-background border border-border rounded-lg text-sm text-foreground outline-none focus:border-foreground"
+                          />
+                          <button onClick={() => handleRenameCategory(cat.id)} className="p-2 bg-accent text-accent-foreground rounded-lg"><Check size={15} /></button>
+                          <button onClick={() => { setEditingCatId(null); setEditCatError(''); }} className="p-2 bg-muted text-muted-foreground rounded-lg"><X size={15} /></button>
+                        </div>
+                        {editCatError && <p className="text-xs text-red-500 font-medium pl-5">{editCatError}</p>}
                       </div>
                     ) : (
                       <>
