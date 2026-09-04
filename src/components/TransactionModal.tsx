@@ -294,7 +294,7 @@ export default function TransactionModal() {
                           const name = newCatName.trim();
                           if (!name) return;
                           const id = `cat-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`;
-                          await db.categories.add({ id, name, type: type === 'transfer' ? 'expense' : type, icon: 'tag', color: newCatColor, updatedAt: Date.now() });
+                          await db.categories.add({ id, name, type: type as 'expense' | 'income', icon: 'tag', color: newCatColor, updatedAt: Date.now() });
                           triggerSync();
                           setCategoryId(id);
                           setNewCatName('');
@@ -324,7 +324,7 @@ export default function TransactionModal() {
                           const name = newCatName.trim();
                           if (!name) return;
                           const id = `cat-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`;
-                          await db.categories.add({ id, name, type: type === 'transfer' ? 'expense' : type, icon: 'tag', color: newCatColor, updatedAt: Date.now() });
+                          await db.categories.add({ id, name, type: type as 'expense' | 'income', icon: 'tag', color: newCatColor, updatedAt: Date.now() });
                           triggerSync();
                           setCategoryId(id);
                           setNewCatName('');
