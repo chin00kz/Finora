@@ -286,6 +286,10 @@ export default function Activity() {
                       </div>
                       <div>
                         <p className="font-medium text-foreground">{txn.notes || category?.name || (txn.type === 'transfer' ? 'Transfer' : 'Transaction')}</p>
+                        <p className="text-xs text-muted-foreground mt-0.5">
+                          {format(new Date(txn.date), 'h:mm a')}
+                          {category && txn.notes ? ` · ${category.name}` : ''}
+                        </p>
                         {txn.tagIds && txn.tagIds.length > 0 && (
                           <div className="flex gap-1 mt-1">
                             {txn.tagIds.map(tid => {
@@ -300,7 +304,7 @@ export default function Activity() {
                               ⚡ Out of budget
                             </span>
                           )}
-                          {txn.isShared && <span className="text-xs text-blue-500 font-medium">Split • Your share: LKR {txn.personalAmount}</span>}
+                          {txn.isShared && <span className="text-xs text-blue-500 font-medium">Split · Your share: LKR {txn.personalAmount}</span>}
                         </div>
                       </div>
                     </div>
