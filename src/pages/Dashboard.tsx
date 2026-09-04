@@ -3,6 +3,7 @@ import { db } from '../db/db';
 import { differenceInDays } from 'date-fns';
 import { useNavigate } from 'react-router-dom';
 import { ChevronRight } from 'lucide-react';
+import { getBudgetStatus } from '../utils/budgetUtils';
 
 export default function Dashboard() {
   const navigate = useNavigate();
@@ -18,10 +19,8 @@ export default function Dashboard() {
 
   // ── Budget pace ─────────────────────────────────────────────────────────────
   let spentThisPeriod = 0;
-  let remainingBudget = 0;
-  let onTrackStatus = '🟢';
-  let progressPercentage = 0;
   let daysLeft = 0;
+  let budgetStatus = getBudgetStatus(0, 0);
 
   if (activeBudget) {
     const today = Date.now();
@@ -32,14 +31,8 @@ export default function Dashboard() {
       (sum, t) => sum + (t.isShared && t.personalAmount ? t.personalAmount : t.amount),
       0
     );
-    remainingBudget = activeBudget.amount - spentThisPeriod;
-    progressPercentage = Math.min(100, Math.max(0, (spentThisPeriod / activeBudget.amount) * 100));
-    const totalDays = activeBudget.periodLength;
-    const daysElapsed = Math.max(1, differenceInDays(today, activeBudget.startDate) + 1);
     daysLeft = Math.max(0, differenceInDays(activeBudget.endDate, today));
-    const expectedRate = activeBudget.amount / totalDays;
-    const actualRate = spentThisPeriod / daysElapsed;
-    onTrackStatus = actualRate <= expectedRate ? '🟢' : actualRate <= expectedRate * 1.2 ? '🟡' : '🔴';
+    budgetStatus = getBudgetStatus(spentThisPeriod, activeBudget.amount);
   }
 
   // ── Recent transactions ──────────────────────────────────────────────────────
@@ -89,25 +82,25 @@ export default function Dashboard() {
               <div>
                 <p className="text-xs text-muted-foreground font-medium mb-1">{activeBudget.name}</p>
                 <p className="text-3xl font-light text-foreground">
-                  LKR {remainingBudget.toLocaleString()}
-                  <span className="text-sm text-muted-foreground font-normal ml-2">left</span>
+                  LKR {budgetStatus.remaining.toLocaleString()}
+                  <span className={`text-sm font-normal ml-2 ${budgetStatus.isOverspent ? 'text-red-500 font-medium' : 'text-muted-foreground'}`}>
+                    {budgetStatus.label}
+                  </span>
                 </p>
               </div>
               <div className="flex items-center gap-2">
-                <span className="text-2xl">{onTrackStatus}</span>
+                <span className={`w-3.5 h-3.5 rounded-full ${budgetStatus.dotColor} shadow-sm ${budgetStatus.glowColor}`} />
                 <ChevronRight size={18} className="text-muted-foreground opacity-50" />
               </div>
             </div>
             <div className="h-2 w-full bg-muted rounded-full overflow-hidden mb-2">
               <div
-                className={`h-full rounded-full transition-all duration-500 ${
-                  onTrackStatus === '🔴' ? 'bg-red-500' : onTrackStatus === '🟡' ? 'bg-yellow-400' : 'bg-foreground'
-                }`}
-                style={{ width: `${progressPercentage}%` }}
+                className={`h-full rounded-full transition-all duration-500 ${budgetStatus.barColor}`}
+                style={{ width: `${budgetStatus.percent}%` }}
               />
             </div>
             <div className="flex justify-between text-xs text-muted-foreground font-medium">
-              <span>LKR {spentThisPeriod.toLocaleString()} spent</span>
+              <span>LKR {spentThisPeriod.toLocaleString()} of LKR {activeBudget.amount.toLocaleString()} spent</span>
               <span>{daysLeft}d left</span>
             </div>
           </div>

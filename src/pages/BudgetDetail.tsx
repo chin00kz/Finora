@@ -6,6 +6,7 @@ import { ChevronLeft, Check, X } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { useUIStore } from '../store/uiStore';
 import { triggerSync } from '../sync/syncEngine';
+import { getBudgetStatus } from '../utils/budgetUtils';
 
 export default function BudgetDetail() {
   const navigate = useNavigate();
@@ -25,10 +26,8 @@ export default function BudgetDetail() {
   // ── Active budget calculations ──────────────────────────────────────────────
   let spentThisPeriod = 0;
   let outOfBudgetSpent = 0;
-  let remainingBudget = 0;
-  let onTrackStatus = '🟢';
-  let progressPercentage = 0;
   let daysLeft = 0;
+  let budgetStatus = getBudgetStatus(0, 0);
 
   if (activeBudget) {
     const today = Date.now();
@@ -40,14 +39,8 @@ export default function BudgetDetail() {
     );
     spentThisPeriod = periodTxns.reduce((sum, t) => sum + (t.isShared && t.personalAmount ? t.personalAmount : t.amount), 0);
     outOfBudgetSpent = outOfBudgetTxns.reduce((sum, t) => sum + (t.isShared && t.personalAmount ? t.personalAmount : t.amount), 0);
-    remainingBudget = activeBudget.amount - spentThisPeriod;
-    progressPercentage = Math.min(100, Math.max(0, (spentThisPeriod / activeBudget.amount) * 100));
-    const totalDays = activeBudget.periodLength;
-    const daysElapsed = Math.max(1, differenceInDays(today, activeBudget.startDate) + 1);
     daysLeft = Math.max(0, differenceInDays(activeBudget.endDate, today));
-    const expectedRate = activeBudget.amount / totalDays;
-    const actualRate = spentThisPeriod / daysElapsed;
-    onTrackStatus = actualRate <= expectedRate ? '🟢' : actualRate <= expectedRate * 1.2 ? '🟡' : '🔴';
+    budgetStatus = getBudgetStatus(spentThisPeriod, activeBudget.amount);
   }
 
   const startRename = () => {
@@ -112,20 +105,29 @@ export default function BudgetDetail() {
               {/* Stats */}
               <div className="flex justify-between items-center mb-3">
                 <div>
-                  <p className="text-3xl font-light text-foreground">LKR {remainingBudget.toLocaleString()}</p>
-                  <p className="text-sm text-muted-foreground mt-0.5">of LKR {activeBudget.amount.toLocaleString()} remaining</p>
+                  <p className="text-3xl font-light text-foreground">
+                    LKR {budgetStatus.remaining.toLocaleString()}
+                    <span className={`text-sm font-normal ml-2 ${budgetStatus.isOverspent ? 'text-red-500 font-medium' : 'text-muted-foreground'}`}>
+                      {budgetStatus.label}
+                    </span>
+                  </p>
+                  <p className="text-sm text-muted-foreground mt-0.5">
+                    {budgetStatus.isOverspent
+                      ? `LKR ${budgetStatus.remaining.toLocaleString()} over budget of LKR ${activeBudget.amount.toLocaleString()}`
+                      : `of LKR ${activeBudget.amount.toLocaleString()} remaining`}
+                  </p>
                 </div>
-                <div className="text-right">
-                  <span className="text-2xl">{onTrackStatus}</span>
-                  <p className="text-xs text-muted-foreground mt-1">{daysLeft}d left</p>
+                <div className="text-right flex flex-col items-end">
+                  <span className={`w-3.5 h-3.5 rounded-full ${budgetStatus.dotColor} shadow-sm ${budgetStatus.glowColor}`} />
+                  <p className="text-xs text-muted-foreground mt-1.5">{daysLeft}d left</p>
                 </div>
               </div>
 
               {/* Progress bar */}
               <div className="h-2 w-full bg-muted rounded-full overflow-hidden mb-2">
                 <div
-                  className={`h-full rounded-full transition-all duration-500 ${onTrackStatus === '🔴' ? 'bg-red-500' : onTrackStatus === '🟡' ? 'bg-yellow-400' : 'bg-foreground'}`}
-                  style={{ width: `${progressPercentage}%` }}
+                  className={`h-full rounded-full transition-all duration-500 ${budgetStatus.barColor}`}
+                  style={{ width: `${budgetStatus.percent}%` }}
                 />
               </div>
               <div className="flex justify-between text-xs text-muted-foreground font-medium">
@@ -191,9 +193,7 @@ export default function BudgetDetail() {
                   (sum, t) => sum + (t.isShared && t.personalAmount ? t.personalAmount : t.amount),
                   0
                 );
-                const over = spent > budget.amount;
-                const pct = Math.min(100, Math.round((spent / budget.amount) * 100));
-                const icon = over ? '🔴' : spent > budget.amount * 0.9 ? '🟡' : '🟢';
+                const status = getBudgetStatus(spent, budget.amount);
 
                 return (
                   <div key={budget.id} className="p-4">
@@ -205,16 +205,16 @@ export default function BudgetDetail() {
                         </p>
                       </div>
                       <div className="flex items-center gap-2">
-                        <span className="text-base">{icon}</span>
+                        <span className={`w-2.5 h-2.5 rounded-full ${status.dotColor}`} />
                         <p className="text-sm font-medium text-foreground">
-                          {pct}%
+                          {status.actualPercent}%
                         </p>
                       </div>
                     </div>
                     <div className="h-1.5 w-full bg-muted rounded-full overflow-hidden">
                       <div
-                        className={`h-full rounded-full ${over ? 'bg-red-500' : 'bg-muted-foreground'}`}
-                        style={{ width: `${pct}%` }}
+                        className={`h-full rounded-full ${status.barColor}`}
+                        style={{ width: `${status.percent}%` }}
                       />
                     </div>
                     <div className="flex justify-between text-xs text-muted-foreground mt-1.5">
