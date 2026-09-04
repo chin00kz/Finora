@@ -1,7 +1,6 @@
 import { useEffect, useRef, useState, useCallback } from 'react';
 import { useAuthStore } from '../store/authStore';
 import { syncAll, drainPendingSync } from '../sync/syncEngine';
-
 export type SyncStatus = 'idle' | 'syncing' | 'error';
 
 // Minimum time between background syncs triggered by focus/visibility (ms)
@@ -31,7 +30,6 @@ export function useSync(): {
     try {
       // syncAll does a full push + pull cycle; no need to also hydrateFromCloud
       // (that causes double-inserts on every refresh).
-      // hydrateFromCloud is only used for the manual "Pull Cloud Data" action.
       const res = await syncAll(userId);
       setSyncStatus(res.success ? 'idle' : 'error');
       lastSyncRef.current = Date.now();

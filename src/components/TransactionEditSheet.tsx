@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { X, Trash2 } from 'lucide-react';
+import { X, Trash2, Plus } from 'lucide-react';
 import { db } from '../db/db';
 import type { Transaction, TransactionType } from '../db/db';
 import { useLiveQuery } from 'dexie-react-hooks';
@@ -29,6 +29,12 @@ export default function TransactionEditSheet({ transaction, onClose }: Props) {
   const [selectedTagIds, setSelectedTagIds] = useState<string[]>(transaction.tagIds || []);
   const [tagInput, setTagInput] = useState('');
   const [showNoteSuggestions, setShowNoteSuggestions] = useState(false);
+
+  // Inline new-category form
+  const PRESET_COLORS = ['#f43f5e', '#f97316', '#eab308', '#22c55e', '#10b981', '#3b82f6', '#8b5cf6', '#ec4899', '#64748b'];
+  const [showNewCat, setShowNewCat] = useState(false);
+  const [newCatName, setNewCatName] = useState('');
+  const [newCatColor, setNewCatColor] = useState(PRESET_COLORS[0]);
 
   const pastNotes = Array.from(new Set(allTransactions.map(t => t.notes?.trim()).filter(Boolean))) as string[];
   const filteredNotes = notes
@@ -277,7 +283,7 @@ export default function TransactionEditSheet({ transaction, onClose }: Props) {
           )}
 
           {/* Category */}
-          {type !== 'transfer' && filteredCategories.length > 0 && (
+          {type !== 'transfer' && filteredCategories.length >= 0 && (
             <div>
               <label className="block text-xs font-medium text-muted-foreground mb-2 uppercase tracking-wider">Category</label>
               <div className="grid grid-cols-3 gap-2">
@@ -285,7 +291,7 @@ export default function TransactionEditSheet({ transaction, onClose }: Props) {
                   <button
                     key={c.id}
                     type="button"
-                    onClick={() => setCategoryId(c.id)}
+                    onClick={() => { setCategoryId(c.id); setShowNewCat(false); }}
                     className={`p-3 rounded-xl border text-sm font-medium transition-colors ${
                       categoryId === c.id ? 'border-foreground bg-accent text-accent-foreground' : 'border-border bg-card text-muted-foreground'
                     }`}
@@ -293,7 +299,82 @@ export default function TransactionEditSheet({ transaction, onClose }: Props) {
                     {c.name}
                   </button>
                 ))}
+                {/* ＋ New category tile */}
+                <button
+                  type="button"
+                  onClick={() => setShowNewCat(v => !v)}
+                  className={`p-3 rounded-xl border flex flex-col items-center justify-center transition-colors gap-1 ${
+                    showNewCat ? 'border-foreground bg-accent text-accent-foreground' : 'border-dashed border-border text-muted-foreground'
+                  }`}
+                >
+                  <Plus size={16} />
+                  <span className="text-xs font-medium">New</span>
+                </button>
               </div>
+
+              {/* Inline new-category form */}
+              {showNewCat && (
+                <div className="mt-3 p-4 bg-muted/50 border border-border rounded-xl space-y-3 animate-in slide-in-from-top-2 fade-in duration-200">
+                  <input
+                    type="text"
+                    value={newCatName}
+                    onChange={e => setNewCatName(e.target.value)}
+                    onKeyDown={async e => {
+                      if (e.key === 'Enter') {
+                        e.preventDefault();
+                        const name = newCatName.trim();
+                        if (!name) return;
+                        const id = `cat-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`;
+                        await db.categories.add({ id, name, type, icon: 'tag', color: newCatColor, updatedAt: Date.now() });
+                        triggerSync();
+                        setCategoryId(id);
+                        setNewCatName('');
+                        setShowNewCat(false);
+                      }
+                    }}
+                    autoFocus
+                    placeholder="Category name…"
+                    className="w-full p-3 bg-background border border-border rounded-xl text-sm font-medium text-foreground outline-none focus:border-foreground"
+                  />
+                  <div className="flex gap-2 flex-wrap">
+                    {PRESET_COLORS.map(c => (
+                      <button
+                        key={c}
+                        type="button"
+                        onClick={() => setNewCatColor(c)}
+                        className={`w-7 h-7 rounded-full transition-transform active:scale-90 ${newCatColor === c ? 'ring-2 ring-offset-2 ring-foreground scale-110' : ''}`}
+                        style={{ backgroundColor: c }}
+                      />
+                    ))}
+                  </div>
+                  <div className="flex gap-2">
+                    <button
+                      type="button"
+                      disabled={!newCatName.trim()}
+                      onClick={async () => {
+                        const name = newCatName.trim();
+                        if (!name) return;
+                        const id = `cat-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`;
+                        await db.categories.add({ id, name, type, icon: 'tag', color: newCatColor, updatedAt: Date.now() });
+                        triggerSync();
+                        setCategoryId(id);
+                        setNewCatName('');
+                        setShowNewCat(false);
+                      }}
+                      className="flex-1 py-2 bg-accent text-accent-foreground rounded-xl text-sm font-medium active:scale-[0.98] transition-transform disabled:opacity-50"
+                    >
+                      Save
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => { setShowNewCat(false); setNewCatName(''); }}
+                      className="px-4 py-2 bg-background border border-border rounded-xl text-sm font-medium text-muted-foreground active:scale-[0.98] transition-transform"
+                    >
+                      Cancel
+                    </button>
+                  </div>
+                </div>
+              )}
             </div>
           )}
 

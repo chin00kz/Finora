@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { db } from '../db/db';
-import { Trash2, Edit2, Check, X, Merge, Moon, Sun, Monitor, LogOut, UserX, CloudUpload, RefreshCw, Download, CheckCircle } from 'lucide-react';
+import { Trash2, Edit2, Check, X, Merge, Moon, Sun, Monitor, LogOut, UserX, CloudUpload, RefreshCw, Download, CheckCircle, Plus } from 'lucide-react';
 import { useThemeStore } from '../store/themeStore';
 import { useAuthStore } from '../store/authStore';
 import { syncAll, hydrateFromCloud, triggerSync, deleteFromCloud } from '../sync/syncEngine';
@@ -10,6 +10,7 @@ import { useNavigate } from 'react-router-dom';
 export default function Settings() {
   const navigate = useNavigate();
   const tags = useLiveQuery(() => db.tags.toArray()) || [];
+  const categories = useLiveQuery(() => db.categories.toArray()) || [];
   const { theme, setTheme } = useThemeStore();
   const { user, lastSyncedAt, signOut, deleteAccountData } = useAuthStore();
 
@@ -78,6 +79,45 @@ export default function Settings() {
       setMergingId(null);
       setTargetMergeId('');
     }
+  };
+
+  // ── Category management ──────────────────────────────────────────────────────
+  const PRESET_COLORS = ['#f43f5e', '#f97316', '#eab308', '#22c55e', '#10b981', '#3b82f6', '#8b5cf6', '#ec4899', '#64748b'];
+
+  const [newCatName, setNewCatName] = useState('');
+  const [newCatType, setNewCatType] = useState<'expense' | 'income'>('expense');
+  const [newCatColor, setNewCatColor] = useState(PRESET_COLORS[0]);
+  const [showAddCat, setShowAddCat] = useState(false);
+
+  const [editingCatId, setEditingCatId] = useState<string | null>(null);
+  const [editCatName, setEditCatName] = useState('');
+
+  const handleAddCategory = async () => {
+    const name = newCatName.trim();
+    if (!name) return;
+    const id = `cat-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`;
+    await db.categories.add({ id, name, type: newCatType, icon: 'tag', color: newCatColor, updatedAt: Date.now() });
+    triggerSync();
+    setNewCatName('');
+    setShowAddCat(false);
+  };
+
+  const handleRenameCategory = async (id: string) => {
+    const name = editCatName.trim();
+    if (!name) return;
+    await db.categories.update(id, { name, updatedAt: Date.now() });
+    triggerSync();
+    setEditingCatId(null);
+  };
+
+  const handleDeleteCategory = async (id: string, name: string) => {
+    if (!confirm(`Delete the "${name}" category? Transactions using it will have no category.`)) return;
+    await db.transaction('rw', db.categories, db.transactions, async () => {
+      await db.transactions.filter(t => t.categoryId === id).modify({ categoryId: undefined });
+      await db.categories.delete(id);
+    });
+    await deleteFromCloud('categories', id);
+    triggerSync();
   };
 
   return (
@@ -279,6 +319,140 @@ export default function Settings() {
           {tags.length === 0 && (
             <div className="p-6 text-center text-muted-foreground text-sm">
               No tags created yet. Create them on the fly when adding transactions.
+            </div>
+          )}
+        </div>
+      </section>
+
+      {/* ── Manage Categories ────────────────────────────────────────────── */}
+      <section className="bg-card rounded-2xl border border-border shadow-sm overflow-hidden mt-6">
+        <div className="p-5 border-b border-border bg-muted/50 flex items-center justify-between">
+          <div>
+            <h3 className="font-medium text-foreground">Manage Categories</h3>
+            <p className="text-xs text-muted-foreground mt-1">Add, rename, or delete your spending categories.</p>
+          </div>
+          <button
+            onClick={() => { setShowAddCat(v => !v); setNewCatName(''); }}
+            className="flex items-center gap-1.5 px-3 py-1.5 bg-accent text-accent-foreground rounded-lg text-xs font-medium active:scale-95 transition-transform"
+          >
+            <Plus size={14} />
+            New
+          </button>
+        </div>
+
+        {/* Add form */}
+        {showAddCat && (
+          <div className="p-4 border-b border-border bg-muted/30 space-y-3 animate-in slide-in-from-top-2 fade-in duration-200">
+            <input
+              type="text"
+              value={newCatName}
+              onChange={e => setNewCatName(e.target.value)}
+              onKeyDown={e => { if (e.key === 'Enter') handleAddCategory(); }}
+              autoFocus
+              placeholder="Category name…"
+              className="w-full p-3 bg-background border border-border rounded-xl text-sm font-medium text-foreground outline-none focus:border-foreground"
+            />
+            {/* Type toggle */}
+            <div className="flex bg-muted p-1 rounded-xl">
+              {(['expense', 'income'] as const).map(t => (
+                <button
+                  key={t}
+                  type="button"
+                  onClick={() => setNewCatType(t)}
+                  className={`flex-1 py-1.5 text-xs font-medium rounded-lg capitalize transition-colors ${
+                    newCatType === t ? 'bg-card shadow-sm text-foreground' : 'text-muted-foreground'
+                  }`}
+                >
+                  {t}
+                </button>
+              ))}
+            </div>
+            {/* Color swatches */}
+            <div className="flex gap-2 flex-wrap">
+              {PRESET_COLORS.map(c => (
+                <button
+                  key={c}
+                  type="button"
+                  onClick={() => setNewCatColor(c)}
+                  className={`w-7 h-7 rounded-full transition-transform active:scale-90 ${newCatColor === c ? 'ring-2 ring-offset-2 ring-foreground scale-110' : ''}`}
+                  style={{ backgroundColor: c }}
+                />
+              ))}
+            </div>
+            <div className="flex gap-2">
+              <button
+                onClick={handleAddCategory}
+                disabled={!newCatName.trim()}
+                className="flex-1 py-2.5 bg-accent text-accent-foreground rounded-xl text-sm font-medium active:scale-[0.98] transition-transform disabled:opacity-50"
+              >
+                Save
+              </button>
+              <button
+                onClick={() => setShowAddCat(false)}
+                className="px-4 py-2.5 bg-muted text-muted-foreground rounded-xl text-sm font-medium active:scale-[0.98] transition-transform"
+              >
+                Cancel
+              </button>
+            </div>
+          </div>
+        )}
+
+        {/* Category list */}
+        <div className="divide-y divide-border">
+          {(['expense', 'income'] as const).map(type => {
+            const group = categories.filter(c => c.type === type);
+            if (group.length === 0) return null;
+            return (
+              <div key={type}>
+                <p className="px-4 pt-3 pb-1 text-[10px] font-semibold uppercase tracking-widest text-muted-foreground">
+                  {type}
+                </p>
+                {group.map(cat => (
+                  <div key={cat.id} className="px-4 py-3 flex items-center justify-between gap-3">
+                    {editingCatId === cat.id ? (
+                      <div className="flex-1 flex items-center gap-2">
+                        <span className="w-3 h-3 rounded-full shrink-0" style={{ backgroundColor: cat.color }} />
+                        <input
+                          type="text"
+                          value={editCatName}
+                          onChange={e => setEditCatName(e.target.value)}
+                          onKeyDown={e => { if (e.key === 'Enter') handleRenameCategory(cat.id); }}
+                          autoFocus
+                          className="flex-1 p-2 bg-background border border-border rounded-lg text-sm text-foreground outline-none focus:border-foreground"
+                        />
+                        <button onClick={() => handleRenameCategory(cat.id)} className="p-2 bg-accent text-accent-foreground rounded-lg"><Check size={15} /></button>
+                        <button onClick={() => setEditingCatId(null)} className="p-2 bg-muted text-muted-foreground rounded-lg"><X size={15} /></button>
+                      </div>
+                    ) : (
+                      <>
+                        <div className="flex items-center gap-2.5">
+                          <span className="w-3 h-3 rounded-full shrink-0" style={{ backgroundColor: cat.color }} />
+                          <span className="text-sm font-medium text-foreground">{cat.name}</span>
+                        </div>
+                        <div className="flex items-center gap-0.5">
+                          <button
+                            onClick={() => { setEditingCatId(cat.id); setEditCatName(cat.name); }}
+                            className="p-2 text-muted-foreground hover:text-foreground transition-colors"
+                          >
+                            <Edit2 size={15} />
+                          </button>
+                          <button
+                            onClick={() => handleDeleteCategory(cat.id, cat.name)}
+                            className="p-2 text-red-500 hover:text-red-600 transition-colors"
+                          >
+                            <Trash2 size={15} />
+                          </button>
+                        </div>
+                      </>
+                    )}
+                  </div>
+                ))}
+              </div>
+            );
+          })}
+          {categories.length === 0 && (
+            <div className="p-6 text-center text-muted-foreground text-sm">
+              No categories yet. Tap "New" to create one.
             </div>
           )}
         </div>

@@ -1,7 +1,7 @@
 import { useEffect } from 'react';
 import { BrowserRouter, Routes, Route, Link, useLocation } from 'react-router-dom';
 import { Home, List, PieChart, Users, Plus, Settings as SettingsIcon, AlertTriangle } from 'lucide-react';
-import { initDbWithMockData } from './utils/initDb';
+import { initDbWithMockData, deduplicateCategories } from './utils/initDb';
 import { useUIStore } from './store/uiStore';
 import { useThemeStore } from './store/themeStore';
 import { useAuthStore } from './store/authStore';
@@ -163,6 +163,7 @@ function App() {
 
   useEffect(() => {
     initDbWithMockData();
+    deduplicateCategories();
   }, []);
 
   return (

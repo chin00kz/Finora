@@ -2,6 +2,45 @@ import { db } from '../db/db';
 import { addDays, startOfDay } from 'date-fns';
 import { supabase } from '../lib/supabase';
 
+/**
+ * Removes duplicate categories from IndexedDB.
+ * Groups by (name, type) and keeps the entry with the latest updatedAt.
+ * Any transactions pointing to a removed duplicate are re-pointed to the survivor.
+ */
+export async function deduplicateCategories(): Promise<void> {
+  const all = await db.categories.toArray();
+  if (all.length === 0) return;
+
+  // Group by "name|type" key
+  const groups = new Map<string, typeof all>();
+  for (const cat of all) {
+    const key = `${cat.name.toLowerCase()}|${cat.type}`;
+    if (!groups.has(key)) groups.set(key, []);
+    groups.get(key)!.push(cat);
+  }
+
+  for (const [, group] of groups) {
+    if (group.length <= 1) continue;
+
+    // Keep the one with the latest updatedAt (most authoritative)
+    group.sort((a, b) => (b.updatedAt ?? 0) - (a.updatedAt ?? 0));
+    const [survivor, ...duplicates] = group;
+    const duplicateIds = duplicates.map(d => d.id);
+
+    // Re-point transactions that reference a duplicate to the survivor
+    const affected = await db.transactions
+      .filter(t => !!t.categoryId && duplicateIds.includes(t.categoryId))
+      .toArray();
+
+    for (const txn of affected) {
+      await db.transactions.update(txn.id, { categoryId: survivor.id });
+    }
+
+    // Delete the duplicates
+    await db.categories.bulkDelete(duplicateIds);
+  }
+}
+
 export async function initDbWithMockData() {
   // Never seed mock data if the user is authenticated
   const { data: { session } } = await supabase.auth.getSession();
