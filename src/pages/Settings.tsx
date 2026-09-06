@@ -1,12 +1,13 @@
 import { useState } from 'react';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { db } from '../db/db';
-import { Trash2, Edit2, Check, X, Merge, Moon, Sun, Monitor, LogOut, UserX, CloudUpload, RefreshCw, Download, CheckCircle, Plus, FileSpreadsheet } from 'lucide-react';
+import { Trash2, Edit2, Check, X, Merge, Moon, Sun, Monitor, LogOut, UserX, CloudUpload, RefreshCw, Download, CheckCircle, Plus, FileSpreadsheet, UploadCloud } from 'lucide-react';
 import { useThemeStore } from '../store/themeStore';
 import { useAuthStore } from '../store/authStore';
 import { syncAll, hydrateFromCloud, triggerSync, deleteFromCloud, purgeAndRepushCloud } from '../sync/syncEngine';
 import { useNavigate } from 'react-router-dom';
 import ExportReportModal from '../components/ExportReportModal';
+import ImportDataModal from '../components/ImportDataModal';
 
 export default function Settings() {
   const navigate = useNavigate();
@@ -19,6 +20,7 @@ export default function Settings() {
   const [syncFeedback, setSyncFeedback] = useState<{ message: string; isError: boolean } | null>(null);
   const [isDeletingAccount, setIsDeletingAccount] = useState(false);
   const [isExportModalOpen, setIsExportModalOpen] = useState(false);
+  const [isImportModalOpen, setIsImportModalOpen] = useState(false);
 
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editName, setEditName] = useState('');
@@ -278,9 +280,9 @@ export default function Settings() {
       <section className="bg-card rounded-2xl border border-border shadow-sm overflow-hidden mb-6">
         <div className="p-5 border-b border-border bg-muted/50">
           <h3 className="font-medium text-foreground">Data & Reports</h3>
-          <p className="text-xs text-muted-foreground mt-1">Export transaction history and period summaries.</p>
+          <p className="text-xs text-muted-foreground mt-1">Export or restore transaction history, accounts and categories.</p>
         </div>
-        <div className="p-5">
+        <div className="p-5 space-y-3">
           <button
             onClick={() => setIsExportModalOpen(true)}
             className="flex items-center justify-between w-full p-3.5 bg-muted/40 hover:bg-muted/70 border border-border rounded-xl text-xs font-medium text-foreground transition-colors"
@@ -294,6 +296,22 @@ export default function Settings() {
             </div>
             <span className="px-3 py-1.5 bg-accent text-accent-foreground rounded-lg text-xs font-semibold">
               Export
+            </span>
+          </button>
+
+          <button
+            onClick={() => setIsImportModalOpen(true)}
+            className="flex items-center justify-between w-full p-3.5 bg-muted/40 hover:bg-muted/70 border border-border rounded-xl text-xs font-medium text-foreground transition-colors"
+          >
+            <div className="flex items-center gap-3">
+              <UploadCloud size={20} className="text-accent" />
+              <div className="text-left">
+                <p className="font-medium text-sm text-foreground">Import CSV Data</p>
+                <p className="text-[11px] text-muted-foreground">Restore transactions, accounts & categories from CSV backup</p>
+              </div>
+            </div>
+            <span className="px-3 py-1.5 bg-foreground text-background rounded-lg text-xs font-semibold">
+              Import
             </span>
           </button>
         </div>
@@ -532,6 +550,11 @@ export default function Settings() {
       <ExportReportModal
         isOpen={isExportModalOpen}
         onClose={() => setIsExportModalOpen(false)}
+      />
+
+      <ImportDataModal
+        isOpen={isImportModalOpen}
+        onClose={() => setIsImportModalOpen(false)}
       />
     </div>
   );

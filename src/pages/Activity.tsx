@@ -13,9 +13,11 @@ import {
   FolderInput,
   X,
   ChevronDown,
+  UploadCloud,
 } from 'lucide-react';
 import { useLocation } from 'react-router-dom';
 import TransactionEditSheet from '../components/TransactionEditSheet';
+import ImportDataModal from '../components/ImportDataModal';
 import { triggerSync, deleteFromCloud } from '../sync/syncEngine';
 
 export default function Activity() {
@@ -23,6 +25,7 @@ export default function Activity() {
   const initStart = location.state?.filterStartDate;
   const initEnd = location.state?.filterEndDate;
   const searchInputRef = useRef<HTMLInputElement>(null);
+  const [isImportModalOpen, setIsImportModalOpen] = useState(false);
 
   const transactions = useLiveQuery(() => db.transactions.toArray()) || [];
   const categories = useLiveQuery(() => db.categories.toArray()) || [];
@@ -283,6 +286,16 @@ export default function Activity() {
               </kbd>
             )}
           </div>
+
+          {/* Import CSV button */}
+          <button
+            onClick={() => setIsImportModalOpen(true)}
+            className="px-3 py-2 rounded-xl text-xs font-medium flex items-center bg-card border border-border text-foreground hover:bg-muted active:scale-95 transition-all shadow-sm"
+            title="Import transactions from CSV"
+          >
+            <UploadCloud size={14} className="mr-1.5 text-muted-foreground" />
+            <span>Import</span>
+          </button>
 
           {/* Filter toggle button */}
           <button
@@ -781,12 +794,22 @@ export default function Activity() {
         ))}
 
         {Object.keys(grouped).length === 0 && (
-          <div className="text-center py-10">
+          <div className="text-center py-12 space-y-3">
             <p className="text-sm text-muted-foreground">No activity found.</p>
-            {activeFilterCount > 0 && (
-              <button onClick={clearFilters} className="mt-3 text-sm font-medium text-foreground underline">
+            {activeFilterCount > 0 ? (
+              <button onClick={clearFilters} className="text-sm font-medium text-foreground underline">
                 Clear filters
               </button>
+            ) : (
+              <div className="pt-2">
+                <button
+                  onClick={() => setIsImportModalOpen(true)}
+                  className="inline-flex items-center gap-2 px-4 py-2 bg-accent text-accent-foreground rounded-xl text-xs font-medium shadow-sm hover:opacity-90 active:scale-95 transition-all"
+                >
+                  <UploadCloud size={14} />
+                  <span>Import Backup CSV</span>
+                </button>
+              </div>
             )}
           </div>
         )}
@@ -796,6 +819,12 @@ export default function Activity() {
       {selectedTxn && (
         <TransactionEditSheet transaction={selectedTxn} onClose={() => setSelectedTxn(null)} />
       )}
+
+      {/* Import CSV Modal */}
+      <ImportDataModal
+        isOpen={isImportModalOpen}
+        onClose={() => setIsImportModalOpen(false)}
+      />
     </div>
   );
 }
