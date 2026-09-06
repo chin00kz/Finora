@@ -84,7 +84,7 @@ export default function Accounts() {
   const getIcon = (t: string) => ACCOUNT_TYPES.find(a => a.id === t)?.icon || '📦';
 
   return (
-    <div className="p-6 pb-24">
+    <div className="p-6 pb-28 max-w-5xl mx-auto">
       <div className="flex justify-between items-center mb-6">
         <h2 className="text-2xl font-medium text-foreground">Accounts</h2>
         <button 

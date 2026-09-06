@@ -1,11 +1,12 @@
 import { useState } from 'react';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { db } from '../db/db';
-import { Trash2, Edit2, Check, X, Merge, Moon, Sun, Monitor, LogOut, UserX, CloudUpload, RefreshCw, Download, CheckCircle, Plus } from 'lucide-react';
+import { Trash2, Edit2, Check, X, Merge, Moon, Sun, Monitor, LogOut, UserX, CloudUpload, RefreshCw, Download, CheckCircle, Plus, FileSpreadsheet } from 'lucide-react';
 import { useThemeStore } from '../store/themeStore';
 import { useAuthStore } from '../store/authStore';
-import { syncAll, hydrateFromCloud, triggerSync, deleteFromCloud } from '../sync/syncEngine';
+import { syncAll, hydrateFromCloud, triggerSync, deleteFromCloud, purgeAndRepushCloud } from '../sync/syncEngine';
 import { useNavigate } from 'react-router-dom';
+import ExportReportModal from '../components/ExportReportModal';
 
 export default function Settings() {
   const navigate = useNavigate();
@@ -17,6 +18,7 @@ export default function Settings() {
   const [isSyncing, setIsSyncing] = useState(false);
   const [syncFeedback, setSyncFeedback] = useState<{ message: string; isError: boolean } | null>(null);
   const [isDeletingAccount, setIsDeletingAccount] = useState(false);
+  const [isExportModalOpen, setIsExportModalOpen] = useState(false);
 
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editName, setEditName] = useState('');
@@ -136,7 +138,7 @@ export default function Settings() {
   };
 
   return (
-    <div className="p-6 pb-24">
+    <div className="p-6 pb-28 max-w-5xl mx-auto">
       <h2 className="text-2xl font-medium text-foreground mb-6">Settings</h2>
 
       {/* ── Account ─────────────────────────────────────────────────────────── */}
@@ -207,6 +209,31 @@ export default function Settings() {
               </button>
             </div>
 
+            {/* Emergency: fix cloud duplication */}
+            <div className="pt-2">
+              <button
+                onClick={async () => {
+                  if (!confirm(
+                    'This will DELETE all cloud data for your account and re-upload your current local data as the source of truth.\n\nUse this to fix duplicate categories, budgets, or transactions in the cloud.\n\nYour local data is NOT touched. Continue?'
+                  )) return;
+                  setIsSyncing(true);
+                  setSyncFeedback(null);
+                  const res = await purgeAndRepushCloud(user.id);
+                  setIsSyncing(false);
+                  if (res.success) {
+                    setSyncFeedback({ message: 'Cloud cleaned and re-uploaded successfully!', isError: false });
+                  } else {
+                    setSyncFeedback({ message: res.error || 'Recovery failed.', isError: true });
+                  }
+                }}
+                disabled={isSyncing}
+                className="flex items-center justify-center gap-2 w-full py-2.5 px-3 bg-amber-500/10 border border-amber-500/20 text-amber-600 dark:text-amber-400 rounded-xl text-xs font-medium active:scale-[0.98] transition-transform disabled:opacity-60"
+              >
+                <RefreshCw size={14} className={isSyncing ? 'animate-spin' : ''} />
+                Fix Cloud Duplicates
+              </button>
+            </div>
+
             <div className="pt-2 border-t border-border space-y-2">
               <button
                 onClick={async () => { await signOut(); }}
@@ -245,6 +272,31 @@ export default function Settings() {
             </button>
           </div>
         )}
+      </section>
+
+      {/* ── Data & Reports ─────────────────────────────────────────────────── */}
+      <section className="bg-card rounded-2xl border border-border shadow-sm overflow-hidden mb-6">
+        <div className="p-5 border-b border-border bg-muted/50">
+          <h3 className="font-medium text-foreground">Data & Reports</h3>
+          <p className="text-xs text-muted-foreground mt-1">Export transaction history and period summaries.</p>
+        </div>
+        <div className="p-5">
+          <button
+            onClick={() => setIsExportModalOpen(true)}
+            className="flex items-center justify-between w-full p-3.5 bg-muted/40 hover:bg-muted/70 border border-border rounded-xl text-xs font-medium text-foreground transition-colors"
+          >
+            <div className="flex items-center gap-3">
+              <FileSpreadsheet size={20} className="text-muted-foreground" />
+              <div className="text-left">
+                <p className="font-medium text-sm text-foreground">Export CSV or PDF</p>
+                <p className="text-[11px] text-muted-foreground">Download spreadsheet or printable financial reports</p>
+              </div>
+            </div>
+            <span className="px-3 py-1.5 bg-accent text-accent-foreground rounded-lg text-xs font-semibold">
+              Export
+            </span>
+          </button>
+        </div>
       </section>
 
       {/* ── Appearance ──────────────────────────────────────────────────────── */}
@@ -476,6 +528,11 @@ export default function Settings() {
           )}
         </div>
       </section>
+
+      <ExportReportModal
+        isOpen={isExportModalOpen}
+        onClose={() => setIsExportModalOpen(false)}
+      />
     </div>
   );
 }

@@ -49,7 +49,7 @@ export default function Debts() {
   };
 
   return (
-    <div className="p-6">
+    <div className="p-6 pb-28 max-w-5xl mx-auto">
       <h2 className="text-2xl font-medium mb-6 text-foreground">IOUs</h2>
       
       <div className="bg-card rounded-2xl p-6 border border-border shadow-sm mb-6">

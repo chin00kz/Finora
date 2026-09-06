@@ -90,6 +90,31 @@ export interface Debt {
   updatedAt?: number;
 }
 
+export type RecurringFrequency = 'daily' | 'weekly' | 'monthly' | 'yearly';
+
+export interface RecurringTransaction {
+  id: string;
+  name: string;
+  amount: number;
+  categoryId?: string;
+  accountId: string;
+  frequency: RecurringFrequency;
+  nextDueDate: number; // Unix timestamp
+  type: 'expense' | 'income';
+  active: boolean;
+  updatedAt?: number;
+}
+
+export interface SavingsGoal {
+  id: string;
+  name: string;
+  targetAmount: number;
+  currentAmount: number;
+  targetDate?: number; // Unix timestamp
+  linkedAccountId?: string;
+  color?: string;
+  updatedAt?: number;
+}
 
 const db = new Dexie('FinoraDB') as Dexie & {
   accounts: EntityTable<Account, 'id'>;
@@ -99,6 +124,8 @@ const db = new Dexie('FinoraDB') as Dexie & {
   people: EntityTable<Person, 'id'>;
   debts: EntityTable<Debt, 'id'>;
   tags: EntityTable<Tag, 'id'>;
+  recurringTransactions: EntityTable<RecurringTransaction, 'id'>;
+  savingsGoals: EntityTable<SavingsGoal, 'id'>;
 };
 
 db.version(1).stores({
@@ -133,6 +160,12 @@ db.version(4).stores({
   people: 'id, updatedAt',
   debts: 'id, personId, updatedAt',
   tags: 'id, name, updatedAt',
+});
+
+// v5 — adds recurringTransactions and savingsGoals
+db.version(5).stores({
+  recurringTransactions: 'id, accountId, categoryId, nextDueDate, active, updatedAt',
+  savingsGoals: 'id, linkedAccountId, updatedAt',
 });
 
 export { db };

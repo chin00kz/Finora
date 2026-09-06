@@ -200,7 +200,9 @@ export async function pushTable(table: TableName, userId: string): Promise<{ suc
       return { success: true };
     }
 
-    const { error } = await supabase.from(table).upsert(rows, { onConflict: 'id' });
+    const { error } = await supabase
+      .from(table)
+      .upsert(rows, { onConflict: 'id,user_id', ignoreDuplicates: false });
 
     if (error) {
       console.warn(`[sync] Push failed for ${table}:`, error.message);
@@ -263,6 +265,44 @@ export async function deleteFromCloud(table: TableName, id: string): Promise<voi
     await supabase.from(table).delete().eq('id', id).eq('user_id', user.id);
   } catch (err) {
     console.warn(`[sync] Delete failed for ${table}/${id}:`, err);
+  }
+}
+
+// ── Purge All Cloud Data + Re-push Local ────────────────────────────────────
+
+/**
+ * EMERGENCY RECOVERY: Wipes ALL rows for this user from every Supabase table,
+ * then re-pushes the current local Dexie data as the single source of truth.
+ *
+ * Use this to recover from cloud duplication caused by broken upsert behaviour.
+ */
+export async function purgeAndRepushCloud(userId: string): Promise<{ success: boolean; error?: string }> {
+  const tables: TableName[] = ['transactions', 'budgets', 'categories', 'tags', 'accounts'];
+  try {
+    // 1. Delete ALL cloud rows for this user (nukes duplicates)
+    for (const table of tables) {
+      const { error } = await supabase.from(table).delete().eq('user_id', userId);
+      if (error) {
+        console.warn(`[sync] Purge failed for ${table}:`, error.message);
+        return { success: false, error: `Purge ${table}: ${error.message}` };
+      }
+    }
+
+    // 2. Re-push local data as single source of truth
+    const pushOrder: TableName[] = ['accounts', 'categories', 'tags', 'budgets', 'transactions'];
+    for (const table of pushOrder) {
+      const res = await pushTable(table, userId);
+      if (!res.success) {
+        return { success: false, error: `Re-push ${table}: ${res.error}` };
+      }
+    }
+
+    useAuthStore.getState().setLastSyncedAt(Date.now());
+    return { success: true };
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    console.warn('[sync] purgeAndRepushCloud exception:', msg);
+    return { success: false, error: msg };
   }
 }
 

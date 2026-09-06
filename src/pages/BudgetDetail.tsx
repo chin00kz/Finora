@@ -2,11 +2,12 @@ import { useState } from 'react';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { db } from '../db/db';
 import { differenceInDays } from 'date-fns';
-import { ChevronLeft, Check, X } from 'lucide-react';
+import { ChevronLeft, Check, X, Download } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { useUIStore } from '../store/uiStore';
 import { triggerSync } from '../sync/syncEngine';
 import { getBudgetStatus } from '../utils/budgetUtils';
+import ExportReportModal from '../components/ExportReportModal';
 
 export default function BudgetDetail() {
   const navigate = useNavigate();
@@ -22,6 +23,7 @@ export default function BudgetDetail() {
 
   const [isRenaming, setIsRenaming] = useState(false);
   const [renameValue, setRenameValue] = useState('');
+  const [isExportOpen, setIsExportOpen] = useState(false);
 
   // ── Active budget calculations ──────────────────────────────────────────────
   let spentThisPeriod = 0;
@@ -65,13 +67,22 @@ export default function BudgetDetail() {
   };
 
   return (
-    <div className="pb-24">
+    <div className="pb-28 max-w-5xl mx-auto">
       {/* Header */}
-      <div className="flex items-center p-4 pt-6 border-b border-border">
-        <button onClick={() => navigate('/')} className="p-2 -ml-2 text-muted-foreground active:scale-95">
-          <ChevronLeft size={24} />
+      <div className="flex items-center justify-between p-4 pt-6 border-b border-border">
+        <div className="flex items-center">
+          <button onClick={() => navigate('/')} className="p-2 -ml-2 text-muted-foreground active:scale-95">
+            <ChevronLeft size={24} />
+          </button>
+          <h2 className="text-xl font-medium text-foreground ml-1">Budget</h2>
+        </div>
+        <button
+          onClick={() => setIsExportOpen(true)}
+          className="flex items-center gap-1.5 px-3 py-1.5 bg-card border border-border hover:bg-muted text-xs font-medium rounded-xl text-foreground transition-colors shadow-xs"
+        >
+          <Download size={14} />
+          <span>Export Report</span>
         </button>
-        <h2 className="text-xl font-medium text-foreground ml-1">Budget</h2>
       </div>
 
       <div className="p-6 space-y-6">
@@ -228,6 +239,12 @@ export default function BudgetDetail() {
           </section>
         )}
       </div>
+
+      <ExportReportModal
+        isOpen={isExportOpen}
+        onClose={() => setIsExportOpen(false)}
+        defaultPeriod="current"
+      />
     </div>
   );
 }
