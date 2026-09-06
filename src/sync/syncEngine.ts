@@ -200,9 +200,7 @@ export async function pushTable(table: TableName, userId: string): Promise<{ suc
       return { success: true };
     }
 
-    const { error } = await supabase
-      .from(table)
-      .upsert(rows, { onConflict: 'id,user_id', ignoreDuplicates: false });
+    const { error } = await supabase.from(table).upsert(rows, { onConflict: 'id' });
 
     if (error) {
       console.warn(`[sync] Push failed for ${table}:`, error.message);
@@ -386,16 +384,21 @@ export async function syncAll(userId: string): Promise<{ success: boolean; error
         .select('id')
         .eq('user_id', userId);
 
-      const cloudIds = new Set((cloudAccounts || []).map((r: Record<string, unknown>) => String(r.id)));
-      const anyLocalInCloud = localAccounts.some(a => cloudIds.has(a.id));
+      // CRITICAL FIX: Only wipe local data if the cloud actually has data!
+      // If the cloud is empty, it's either a new user syncing their starter data,
+      // or a user recovering from a purge. Wiping local data here destroys everything.
+      if (cloudAccounts && cloudAccounts.length > 0) {
+        const cloudIds = new Set(cloudAccounts.map((r: Record<string, unknown>) => String(r.id)));
+        const anyLocalInCloud = localAccounts.some(a => cloudIds.has(a.id));
 
-      if (!anyLocalInCloud) {
-        // All local data is mock/starter data — wipe before syncing
-        await db.accounts.clear();
-        await db.transactions.clear();
-        await db.categories.clear();
-        await db.budgets.clear();
-        await db.tags.clear();
+        if (!anyLocalInCloud) {
+          // Cloud has real data, but local doesn't overlap at all — local must be mock data.
+          await db.accounts.clear();
+          await db.transactions.clear();
+          await db.categories.clear();
+          await db.budgets.clear();
+          await db.tags.clear();
+        }
       }
     }
   } catch {
