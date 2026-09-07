@@ -237,6 +237,7 @@ function MobileBottomNav({ syncStatus }: { syncStatus: 'idle' | 'syncing' | 'err
   const { setAddTransactionModalOpen } = useUIStore();
   const { frontItemIds, getHiddenItemIds, setCustomizeModalOpen } = useNavStore();
   const [isMoreOpen, setIsMoreOpen] = useState(false);
+  const { isMasked, toggleMask } = usePrivacyStore();
 
   const hiddenItemIds = getHiddenItemIds();
   const hasMore = hiddenItemIds.length > 0;
@@ -279,9 +280,22 @@ function MobileBottomNav({ syncStatus }: { syncStatus: 'idle' | 'syncing' | 'err
                   <span>Customize</span>
                 </button>
               </div>
-              <button onClick={() => setIsMoreOpen(false)} className="p-1 text-muted-foreground">
-                <X size={16} />
-              </button>
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={toggleMask}
+                  className={`p-1.5 rounded-lg border transition-colors ${
+                    isMasked
+                      ? 'bg-accent/20 border-accent/40 text-accent font-semibold'
+                      : 'bg-muted/40 border-border text-muted-foreground hover:text-foreground'
+                  }`}
+                  title={isMasked ? 'Reveal figures' : 'Mask figures (Privacy mode)'}
+                >
+                  {isMasked ? <EyeOff size={15} /> : <Eye size={15} />}
+                </button>
+                <button onClick={() => setIsMoreOpen(false)} className="p-1 text-muted-foreground">
+                  <X size={16} />
+                </button>
+              </div>
             </div>
 
             <div className={`grid ${hiddenItemIds.length <= 2 ? 'grid-cols-2' : 'grid-cols-3'} gap-2 pt-1`}>
@@ -382,7 +396,6 @@ function AppShell() {
   const { syncStatus } = useSync();
   const location = useLocation();
   const { setAddTransactionModalOpen } = useUIStore();
-  const { isMasked, toggleMask } = usePrivacyStore();
   const hideNav = location.pathname === '/auth' || location.pathname === '/reset-password';
 
   // Global Keyboard Shortcuts (N for new transaction)
@@ -414,39 +427,6 @@ function AppShell() {
 
       {/* Main Content Area */}
       <main className="flex-1 min-w-0 min-h-screen overflow-y-auto">
-        {/* Persistent Top Header on Mobile */}
-        {!hideNav && (
-          <header className="md:hidden sticky top-0 z-30 bg-background/90 backdrop-blur-md border-b border-border/50 px-4 py-2.5 flex items-center justify-between">
-            <Link to="/" className="flex items-center gap-2">
-              <Logo size={22} />
-              <span className="text-base font-bold tracking-tight text-foreground">Finora</span>
-            </Link>
-            <div className="flex items-center gap-2">
-              {syncStatus === 'syncing' && (
-                <span className="w-2 h-2 rounded-full bg-accent animate-pulse" title="Syncing" />
-              )}
-              {syncStatus === 'error' && (
-                <span className="text-amber-500" title="Sync error">
-                  <AlertTriangle size={14} />
-                </span>
-              )}
-              {syncStatus === 'idle' && (
-                <span className="w-2 h-2 rounded-full bg-emerald-500/60" title="Synchronized" />
-              )}
-              <button
-                onClick={toggleMask}
-                className={`p-1.5 rounded-xl border transition-colors ${
-                  isMasked
-                    ? 'bg-accent/20 border-accent/40 text-accent font-semibold'
-                    : 'bg-muted/40 border-border text-muted-foreground hover:text-foreground'
-                }`}
-                title={isMasked ? 'Reveal figures' : 'Mask figures (Privacy mode)'}
-              >
-                {isMasked ? <EyeOff size={16} /> : <Eye size={16} />}
-              </button>
-            </div>
-          </header>
-        )}
         {/*
           Guiding rule:
           "The dashboard minimalism rule is NOT mobile-only — it applies on desktop too.

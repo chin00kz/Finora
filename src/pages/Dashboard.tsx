@@ -2,7 +2,7 @@ import { useLiveQuery } from 'dexie-react-hooks';
 import { db } from '../db/db';
 import { differenceInDays } from 'date-fns';
 import { useNavigate } from 'react-router-dom';
-import { ChevronRight, ShieldCheck } from 'lucide-react';
+import { ChevronRight, ShieldCheck, Eye, EyeOff } from 'lucide-react';
 import { getBudgetStatus } from '../utils/budgetUtils';
 import SafeToSpendCard from '../components/SafeToSpendCard';
 import { usePrivacyStore } from '../store/privacyStore';
@@ -10,7 +10,7 @@ import MaskedAmount from '../components/MaskedAmount';
 
 export default function Dashboard() {
   const navigate = useNavigate();
-  const { showSafeToSpendHome, setShowSafeToSpendHome } = usePrivacyStore();
+  const { showSafeToSpendHome, setShowSafeToSpendHome, isMasked, toggleMask } = usePrivacyStore();
 
   const accounts = useLiveQuery(() => db.accounts.toArray()) || [];
   const budgets = useLiveQuery(() => db.budgets.toArray()) || [];
@@ -57,16 +57,29 @@ export default function Dashboard() {
             <span className="text-2xl align-top mr-1">LKR</span>
             <MaskedAmount amount={totalBalance} />
           </h1>
-          {!showSafeToSpendHome && (
+          <div className="flex items-center gap-1.5">
             <button
-              onClick={() => setShowSafeToSpendHome(true)}
-              className="px-2.5 py-1.5 bg-muted/60 hover:bg-muted text-muted-foreground hover:text-foreground border border-border/70 rounded-xl text-xs font-medium flex items-center gap-1.5 transition-colors"
-              title="Show Safe-to-Spend forecast card"
+              onClick={toggleMask}
+              className={`p-2 rounded-xl border transition-colors ${
+                isMasked
+                  ? 'bg-accent/20 border-accent/40 text-accent font-semibold'
+                  : 'bg-muted/40 border-border text-muted-foreground hover:text-foreground'
+              }`}
+              title={isMasked ? 'Reveal figures' : 'Mask figures (Privacy mode)'}
             >
-              <ShieldCheck size={14} className="text-emerald-500" />
-              <span>+ Safe-to-Spend</span>
+              {isMasked ? <EyeOff size={15} /> : <Eye size={15} />}
             </button>
-          )}
+            {!showSafeToSpendHome && (
+              <button
+                onClick={() => setShowSafeToSpendHome(true)}
+                className="px-2.5 py-1.5 bg-muted/60 hover:bg-muted text-muted-foreground hover:text-foreground border border-border/70 rounded-xl text-xs font-medium flex items-center gap-1.5 transition-colors"
+                title="Show Safe-to-Spend forecast card"
+              >
+                <ShieldCheck size={14} className="text-emerald-500" />
+                <span>+ Safe-to-Spend</span>
+              </button>
+            )}
+          </div>
         </div>
         <p className="text-muted-foreground text-sm font-medium mb-4">Available</p>
 
