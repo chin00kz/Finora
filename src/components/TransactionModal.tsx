@@ -1,5 +1,5 @@
-import { useState, useEffect } from 'react';
-import { X, ChevronDown, ChevronUp, Plus } from 'lucide-react';
+import { useState, useEffect, useMemo } from 'react';
+import { X, ChevronDown, ChevronUp, Plus, Sparkles } from 'lucide-react';
 import { db } from '../db/db';
 import type { TransactionType } from '../db/db';
 import { useLiveQuery } from 'dexie-react-hooks';
@@ -38,10 +38,97 @@ export default function TransactionModal() {
   const tags = useLiveQuery(() => db.tags.toArray()) || [];
   const allTransactions = useLiveQuery(() => db.transactions.toArray()) || [];
   
-  const pastNotes = Array.from(new Set(allTransactions.map(t => t.notes?.trim()).filter(Boolean))) as string[];
-  const filteredNotes = notes
-    ? pastNotes.filter(n => n.toLowerCase().includes(notes.toLowerCase()) && n.toLowerCase() !== notes.toLowerCase())
-    : [];
+  const [autoFillIndicator, setAutoFillIndicator] = useState<string | null>(null);
+
+  // Build merchant memory mapping: lowercased note -> most recent transaction details
+  const merchantMemory = useMemo(() => {
+    const map = new Map<string, {
+      canonicalNote: string;
+      txn: typeof allTransactions[0];
+      category?: typeof categories[0];
+      account?: typeof accounts[0];
+      tagNames: string[];
+    }>();
+
+    // Sort transactions by date descending so the first entry for a note is the most recent
+    const sorted = [...allTransactions].sort((a, b) => (b.date || 0) - (a.date || 0));
+
+    for (const t of sorted) {
+      const rawNote = t.notes?.trim();
+      if (!rawNote) continue;
+      const key = rawNote.toLowerCase();
+      if (!map.has(key)) {
+        const cat = categories.find(c => c.id === t.categoryId);
+        const acc = accounts.find(a => a.id === t.accountId);
+        const tagNames = (t.tagIds || [])
+          .map(tid => tags.find(tag => tag.id === tid)?.name)
+          .filter(Boolean) as string[];
+
+        map.set(key, {
+          canonicalNote: rawNote,
+          txn: t,
+          category: cat,
+          account: acc,
+          tagNames,
+        });
+      }
+    }
+    return map;
+  }, [allTransactions, categories, accounts, tags]);
+
+  const filteredSuggestions = useMemo(() => {
+    if (!notes.trim()) return [];
+    const query = notes.trim().toLowerCase();
+    const results = [];
+    for (const [key, item] of merchantMemory.entries()) {
+      if (key.includes(query) && key !== query) {
+        results.push(item);
+      }
+      if (results.length >= 6) break;
+    }
+    return results;
+  }, [notes, merchantMemory]);
+
+  const applyMerchantMemory = (item: {
+    canonicalNote: string;
+    txn: typeof allTransactions[0];
+    category?: typeof categories[0];
+    account?: typeof accounts[0];
+    tagNames: string[];
+  }) => {
+    setNotes(item.canonicalNote);
+    setShowNoteSuggestions(false);
+
+    const filledDetails: string[] = [];
+
+    // Auto-select category if valid
+    if (item.category) {
+      setCategoryId(item.category.id);
+      filledDetails.push(item.category.name);
+    }
+
+    // Auto-select account if valid
+    if (item.account) {
+      setAccountId(item.account.id);
+      filledDetails.push(item.account.name);
+    }
+
+    // Auto-set transaction type if not a transfer
+    if (item.txn.type && item.txn.type !== 'transfer') {
+      setType(item.txn.type);
+    }
+
+    // Auto-select tags if available
+    if (item.tagNames && item.tagNames.length > 0) {
+      setSelectedTags(item.tagNames);
+      filledDetails.push(item.tagNames.map(t => `#${t}`).join(' '));
+    }
+
+    if (filledDetails.length > 0) {
+      setAutoFillIndicator(`Auto-filled: ${filledDetails.join(' • ')}`);
+      setTimeout(() => setAutoFillIndicator(null), 3000);
+    }
+  };
 
   const filteredCategories = categories.filter(c => c.type === (type === 'transfer' ? 'expense' : type));
 
@@ -131,6 +218,7 @@ export default function TransactionModal() {
       setIsShared(false);
       setPersonalAmount('');
       setExcludeFromBudget(false);
+      setAutoFillIndicator(null);
       setAddTransactionModalOpen(false);
     } catch (error) {
       console.error("Failed to save transaction", error);
@@ -189,33 +277,71 @@ export default function TransactionModal() {
               </div>
             </div>
 
-            {/* Notes */}
+            {/* Notes with Merchant Memory */}
             <div>
-              <label className="block text-xs font-medium text-muted-foreground mb-2 uppercase tracking-wider">What is it for?</label>
+              <div className="flex items-center justify-between mb-2">
+                <label className="block text-xs font-medium text-muted-foreground uppercase tracking-wider">
+                  What is it for?
+                </label>
+                {autoFillIndicator && (
+                  <span className="flex items-center gap-1 text-[11px] font-medium text-accent animate-in fade-in">
+                    <Sparkles size={11} />
+                    <span>{autoFillIndicator}</span>
+                  </span>
+                )}
+              </div>
               <div className="relative">
                 <input
                   type="text"
                   value={notes}
                   onChange={e => setNotes(e.target.value)}
                   onFocus={() => setShowNoteSuggestions(true)}
-                  onBlur={() => setShowNoteSuggestions(false)}
+                  onBlur={() => {
+                    setTimeout(() => {
+                      setShowNoteSuggestions(false);
+                      const key = notes.trim().toLowerCase();
+                      if (key && merchantMemory.has(key)) {
+                        applyMerchantMemory(merchantMemory.get(key)!);
+                      }
+                    }, 200);
+                  }}
                   className="w-full p-4 bg-background border border-border rounded-xl font-medium text-foreground outline-none focus:border-foreground"
-                  placeholder="Optional description"
+                  placeholder="e.g. Keells, Uber, Coffee"
                 />
-                {showNoteSuggestions && filteredNotes.length > 0 && (
-                  <div className="absolute top-full left-0 right-0 mt-1 bg-card border border-border rounded-lg shadow-lg z-10 max-h-40 overflow-y-auto">
-                    {filteredNotes.map(n => (
+                {showNoteSuggestions && filteredSuggestions.length > 0 && (
+                  <div className="absolute top-full left-0 right-0 mt-1 bg-card border border-border rounded-xl shadow-xl z-20 max-h-52 overflow-y-auto divide-y divide-border/40">
+                    {filteredSuggestions.map(item => (
                       <button
-                        key={n}
+                        key={item.canonicalNote}
                         type="button"
                         onMouseDown={(e) => {
-                          e.preventDefault(); // prevent blur before click
-                          setNotes(n);
-                          setShowNoteSuggestions(false);
+                          e.preventDefault();
+                          applyMerchantMemory(item);
                         }}
-                        className="w-full text-left px-4 py-2 hover:bg-muted text-foreground text-sm"
+                        className="w-full text-left px-4 py-2.5 hover:bg-muted/70 flex items-center justify-between transition-colors group"
                       >
-                        {n}
+                        <div className="min-w-0 pr-2">
+                          <p className="text-sm font-medium text-foreground group-hover:text-accent transition-colors truncate">
+                            {item.canonicalNote}
+                          </p>
+                          <div className="flex items-center gap-2 text-[11px] text-muted-foreground mt-0.5 flex-wrap">
+                            {item.category && (
+                              <span className="flex items-center gap-1">
+                                <span className="w-2 h-2 rounded-full shrink-0" style={{ backgroundColor: item.category.color }} />
+                                <span>{item.category.name}</span>
+                              </span>
+                            )}
+                            {item.account && (
+                              <span>• {item.account.name}</span>
+                            )}
+                            {item.tagNames.length > 0 && (
+                              <span className="text-accent/80">• {item.tagNames.map(t => `#${t}`).join(' ')}</span>
+                            )}
+                          </div>
+                        </div>
+                        <span className="shrink-0 text-[10px] font-semibold text-muted-foreground/70 bg-muted px-2 py-1 rounded-md">
+                          Auto-fill
+                        </span>
                       </button>
                     ))}
                   </div>
