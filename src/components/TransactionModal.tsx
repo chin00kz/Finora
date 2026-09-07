@@ -1,13 +1,21 @@
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo, useRef } from 'react';
 import { X, ChevronDown, ChevronUp, Plus, Sparkles } from 'lucide-react';
 import { db } from '../db/db';
 import type { TransactionType } from '../db/db';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { useUIStore } from '../store/uiStore';
 import { triggerSync } from '../sync/syncEngine';
+import QuickAddChips from './QuickAddChips';
 
 export default function TransactionModal() {
-  const { isAddTransactionModalOpen, setAddTransactionModalOpen } = useUIStore();
+  const {
+    isAddTransactionModalOpen,
+    setAddTransactionModalOpen,
+    prefillData,
+    setPrefillData,
+  } = useUIStore();
+
+  const amountInputRef = useRef<HTMLInputElement>(null);
   
   const [amount, setAmount] = useState('');
   const [type, setType] = useState<TransactionType>('expense');
@@ -126,11 +134,41 @@ export default function TransactionModal() {
       filledDetails.push(item.tagNames.map(t => `#${t}`).join(' '));
     }
 
+    // Smart Amount Memory: Auto-fill amount if empty or 0
+    if (item.txn.amount && (!amount || amount === '0')) {
+      setAmount(item.txn.amount.toString());
+      filledDetails.push(`LKR ${item.txn.amount.toLocaleString()}`);
+      setTimeout(() => {
+        amountInputRef.current?.select();
+      }, 50);
+    }
+
     if (filledDetails.length > 0) {
       setAutoFillIndicator(`Auto-filled: ${filledDetails.join(' • ')}`);
       setTimeout(() => setAutoFillIndicator(null), 3000);
     }
   };
+
+  // Consume prefillData if opened via QuickAdd or Activity Repeat
+  useEffect(() => {
+    if (isAddTransactionModalOpen && prefillData) {
+      if (prefillData.notes !== undefined) setNotes(prefillData.notes);
+      if (prefillData.amount !== undefined) setAmount(prefillData.amount.toString());
+      if (prefillData.categoryId !== undefined) setCategoryId(prefillData.categoryId);
+      if (prefillData.accountId !== undefined) setAccountId(prefillData.accountId);
+      if (prefillData.type !== undefined) setType(prefillData.type);
+      if (prefillData.tagIds && prefillData.tagIds.length > 0) {
+        const tagNames = prefillData.tagIds
+          .map(tid => tags.find(t => t.id === tid)?.name)
+          .filter(Boolean) as string[];
+        setSelectedTags(tagNames);
+      }
+      setTimeout(() => {
+        amountInputRef.current?.select();
+      }, 80);
+      setPrefillData(null);
+    }
+  }, [isAddTransactionModalOpen, prefillData, tags, setPrefillData]);
 
   const filteredCategories = categories.filter(c => c.type === (type === 'transfer' ? 'expense' : type));
 
@@ -282,7 +320,29 @@ export default function TransactionModal() {
         {/* Form Content - Scrollable */}
         <div className="flex-1 overflow-y-auto">
           <form id="tx-form" onSubmit={handleSubmit} className="p-6 space-y-6">
-            
+
+            {/* Quick-Add Favorite Chips */}
+            <QuickAddChips
+              onSelectCandidate={(candidate) => {
+                setNotes(candidate.canonicalNote);
+                setAmount(candidate.amount.toString());
+                if (candidate.categoryId) setCategoryId(candidate.categoryId);
+                if (candidate.accountId) setAccountId(candidate.accountId);
+                if (candidate.type) setType(candidate.type);
+                if (candidate.tagIds && candidate.tagIds.length > 0) {
+                  const tagNames = candidate.tagIds
+                    .map(tid => tags.find(t => t.id === tid)?.name)
+                    .filter(Boolean) as string[];
+                  setSelectedTags(tagNames);
+                }
+                setAutoFillIndicator(`Selected: ${candidate.canonicalNote} · LKR ${candidate.amount.toLocaleString()}`);
+                setTimeout(() => {
+                  amountInputRef.current?.select();
+                  setAutoFillIndicator(null);
+                }, 100);
+              }}
+            />
+
             {/* Type Selector */}
             <div className="flex bg-muted p-1 rounded-xl">
               {(['expense', 'income', 'transfer'] as const).map(t => (
@@ -305,6 +365,7 @@ export default function TransactionModal() {
               <div className="flex items-center text-5xl font-light">
                 <span className="text-2xl text-muted-foreground mr-2">LKR</span>
                 <input
+                  ref={amountInputRef}
                   type="number"
                   inputMode="decimal"
                   autoFocus

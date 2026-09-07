@@ -28,6 +28,10 @@ export default function Settings() {
     setShowSafeToSpendHome,
     safeToSpendForecastDays,
     setSafeToSpendForecastDays,
+    oneTapLogMode,
+    setOneTapLogMode,
+    showQuickAddHome,
+    setShowQuickAddHome,
   } = usePrivacyStore();
 
   const [isSyncing, setIsSyncing] = useState(false);
@@ -594,6 +598,40 @@ export default function Settings() {
             >
               {isMasked ? 'Masked (Active)' : 'Unmasked'}
             </button>
+          </div>
+
+          {/* Quick-Add on Home Toggle */}
+          <div className="flex items-center justify-between pt-3 border-t border-border">
+            <div>
+              <p className="text-sm font-medium text-foreground">Quick-Add on Home</p>
+              <p className="text-xs text-muted-foreground">Show habitual transaction chips on the Home overview screen</p>
+            </div>
+            <label className="relative inline-flex items-center cursor-pointer">
+              <input
+                type="checkbox"
+                checked={showQuickAddHome}
+                onChange={(e) => setShowQuickAddHome(e.target.checked)}
+                className="sr-only peer"
+              />
+              <div className="w-11 h-6 bg-muted peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-border after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-foreground"></div>
+            </label>
+          </div>
+
+          {/* 1-Tap Instant Logging Toggle */}
+          <div className="flex items-center justify-between pt-3 border-t border-border">
+            <div>
+              <p className="text-sm font-medium text-foreground">1-Tap Instant Logging</p>
+              <p className="text-xs text-muted-foreground">Tapping a chip logs it instantly with an Undo toast instead of opening the form</p>
+            </div>
+            <label className="relative inline-flex items-center cursor-pointer">
+              <input
+                type="checkbox"
+                checked={oneTapLogMode}
+                onChange={(e) => setOneTapLogMode(e.target.checked)}
+                className="sr-only peer"
+              />
+              <div className="w-11 h-6 bg-muted peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-border after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-foreground"></div>
+            </label>
           </div>
         </div>
       </section>

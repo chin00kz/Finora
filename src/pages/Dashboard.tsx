@@ -2,15 +2,23 @@ import { useLiveQuery } from 'dexie-react-hooks';
 import { db } from '../db/db';
 import { differenceInDays } from 'date-fns';
 import { useNavigate } from 'react-router-dom';
-import { ChevronRight, ShieldCheck, Eye, EyeOff } from 'lucide-react';
+import { ChevronRight, ShieldCheck, Eye, EyeOff, Sparkles } from 'lucide-react';
 import { getBudgetStatus } from '../utils/budgetUtils';
 import SafeToSpendCard from '../components/SafeToSpendCard';
+import QuickAddChips from '../components/QuickAddChips';
 import { usePrivacyStore } from '../store/privacyStore';
 import MaskedAmount from '../components/MaskedAmount';
 
 export default function Dashboard() {
   const navigate = useNavigate();
-  const { showSafeToSpendHome, setShowSafeToSpendHome, isMasked, toggleMask } = usePrivacyStore();
+  const {
+    showSafeToSpendHome,
+    setShowSafeToSpendHome,
+    showQuickAddHome,
+    setShowQuickAddHome,
+    isMasked,
+    toggleMask,
+  } = usePrivacyStore();
 
   const accounts = useLiveQuery(() => db.accounts.toArray()) || [];
   const budgets = useLiveQuery(() => db.budgets.toArray()) || [];
@@ -69,6 +77,16 @@ export default function Dashboard() {
             >
               {isMasked ? <EyeOff size={15} /> : <Eye size={15} />}
             </button>
+            {!showQuickAddHome && (
+              <button
+                onClick={() => setShowQuickAddHome(true)}
+                className="px-2.5 py-1.5 bg-muted/60 hover:bg-muted text-muted-foreground hover:text-foreground border border-border/70 rounded-xl text-xs font-medium flex items-center gap-1.5 transition-colors"
+                title="Show Quick-Add favorite chips on Home"
+              >
+                <Sparkles size={13} className="text-accent" />
+                <span>+ Quick-Add</span>
+              </button>
+            )}
             {!showSafeToSpendHome && (
               <button
                 onClick={() => setShowSafeToSpendHome(true)}
@@ -102,6 +120,13 @@ export default function Dashboard() {
           ))}
         </div>
       </header>
+
+      {/* ── Quick-Add Favorite Habits (Gated by User Preference) ───────────── */}
+      {showQuickAddHome && (
+        <div className="mb-6 bg-card/60 border border-border/70 rounded-2xl p-4 shadow-2xs">
+          <QuickAddChips condensed />
+        </div>
+      )}
 
       {/* ── Safe-to-Spend Forecast (Gated by User Preference) ─────────────── */}
       {showSafeToSpendHome && <SafeToSpendCard />}

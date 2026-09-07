@@ -14,12 +14,16 @@ import {
   X,
   ChevronDown,
   UploadCloud,
+  RotateCcw,
 } from 'lucide-react';
 import { useLocation } from 'react-router-dom';
 import TransactionEditSheet from '../components/TransactionEditSheet';
 import ImportDataModal from '../components/ImportDataModal';
 import { triggerSync, deleteFromCloud } from '../sync/syncEngine';
 import { syncSettlementFromTransactionDelete } from '../utils/debtSettlementEngine';
+import { useUIStore } from '../store/uiStore';
+import { usePrivacyStore } from '../store/privacyStore';
+import MaskedAmount from '../components/MaskedAmount';
 
 export default function Activity() {
   const location = useLocation();
@@ -53,6 +57,69 @@ export default function Activity() {
   const [filterMinAmount, setFilterMinAmount] = useState('');
   const [filterMaxAmount, setFilterMaxAmount] = useState('');
   const [selectedTxn, setSelectedTxn] = useState<Transaction | null>(null);
+
+  const { oneTapLogMode } = usePrivacyStore();
+  const { setAddTransactionModalOpen, setPrefillData, showUndoToast } = useUIStore();
+
+  const handleRepeatTransaction = async (txn: Transaction, e: React.MouseEvent) => {
+    e.stopPropagation();
+
+    // Check account validity
+    const acc = accounts.find(a => a.id === txn.accountId);
+    const canOneTap = oneTapLogMode && acc && txn.type !== 'transfer' && (txn.type as string) !== 'debt_settlement';
+
+    if (!canOneTap) {
+      setPrefillData({
+        notes: txn.notes,
+        amount: txn.amount,
+        categoryId: txn.categoryId,
+        accountId: acc ? txn.accountId : undefined,
+        type: txn.type === 'income' ? 'income' : 'expense',
+        tagIds: txn.tagIds,
+      });
+      setAddTransactionModalOpen(true);
+      return;
+    }
+
+    try {
+      const id = `txn-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`;
+      const now = Date.now();
+
+      await db.transactions.add({
+        id,
+        amount: txn.amount,
+        type: txn.type,
+        categoryId: txn.categoryId,
+        accountId: txn.accountId,
+        date: now,
+        notes: txn.notes,
+        tagIds: txn.tagIds,
+        excludeFromBudget: txn.excludeFromBudget,
+        updatedAt: now,
+      });
+
+      const delta = txn.type === 'expense' ? -txn.amount : txn.amount;
+      await db.accounts.update(acc.id, {
+        balance: acc.balance + delta,
+        updatedAt: now,
+      });
+
+      triggerSync();
+
+      showUndoToast({
+        id: `undo-${id}`,
+        message: `Repeated "${txn.notes || 'Transaction'}" · LKR ${txn.amount.toLocaleString()} (${acc.name})`,
+        transactionId: id,
+        accountId: txn.accountId,
+        amount: txn.amount,
+        type: txn.type as 'expense' | 'income',
+        createdAt: now,
+        durationMs: 6000,
+      });
+    } catch (err) {
+      console.error('Failed to repeat transaction:', err);
+    }
+  };
 
   // Global / shortcut listener to focus search
   useEffect(() => {
@@ -711,12 +778,25 @@ export default function Activity() {
                             : 'text-muted-foreground'
                         }`}
                       >
-                        {txn.type === 'expense' || (txn.type === 'debt_settlement' && txn.debtDirection === 'iOweThem')
-                          ? '−'
-                          : txn.type === 'income' || (txn.type === 'debt_settlement' && txn.debtDirection === 'theyOweMe')
-                          ? '+'
-                          : ''}LKR{' '}
-                        {txn.amount.toLocaleString()}
+                        <div className="flex items-center justify-end gap-2">
+                          <span>
+                            {txn.type === 'expense' || (txn.type === 'debt_settlement' && txn.debtDirection === 'iOweThem')
+                              ? '−'
+                              : txn.type === 'income' || (txn.type === 'debt_settlement' && txn.debtDirection === 'theyOweMe')
+                              ? '+'
+                              : ''}LKR{' '}
+                            <MaskedAmount amount={txn.amount} />
+                          </span>
+
+                          <button
+                            type="button"
+                            onClick={(e) => handleRepeatTransaction(txn, e)}
+                            className="p-1 rounded-lg text-muted-foreground hover:text-foreground hover:bg-muted transition-colors opacity-60 hover:opacity-100"
+                            title="Log again today"
+                          >
+                            <RotateCcw size={13} />
+                          </button>
+                        </div>
                       </td>
                     </tr>
                   );
@@ -800,21 +880,32 @@ export default function Activity() {
                         </div>
                       </div>
                     </div>
-                    <div
-                      className={`font-medium text-sm ${
-                        txn.type === 'expense' || (txn.type === 'debt_settlement' && txn.debtDirection === 'iOweThem')
-                          ? 'text-foreground'
+                    <div className="flex items-center gap-2 shrink-0">
+                      <div
+                        className={`font-medium text-sm text-right ${
+                          txn.type === 'expense' || (txn.type === 'debt_settlement' && txn.debtDirection === 'iOweThem')
+                            ? 'text-foreground'
+                            : txn.type === 'income' || (txn.type === 'debt_settlement' && txn.debtDirection === 'theyOweMe')
+                            ? 'text-emerald-500'
+                            : 'text-muted-foreground'
+                        }`}
+                      >
+                        {txn.type === 'expense' || (txn.type === 'debt_settlement' && txn.debtDirection === 'iOweThem')
+                          ? '−'
                           : txn.type === 'income' || (txn.type === 'debt_settlement' && txn.debtDirection === 'theyOweMe')
-                          ? 'text-emerald-500'
-                          : 'text-muted-foreground'
-                      }`}
-                    >
-                      {txn.type === 'expense' || (txn.type === 'debt_settlement' && txn.debtDirection === 'iOweThem')
-                        ? '−'
-                        : txn.type === 'income' || (txn.type === 'debt_settlement' && txn.debtDirection === 'theyOweMe')
-                        ? '+'
-                        : ''}LKR{' '}
-                      {txn.amount.toLocaleString()}
+                          ? '+'
+                          : ''}LKR{' '}
+                        <MaskedAmount amount={txn.amount} />
+                      </div>
+
+                      <button
+                        type="button"
+                        onClick={(e) => handleRepeatTransaction(txn, e)}
+                        className="p-1.5 rounded-lg text-muted-foreground hover:text-foreground hover:bg-muted active:scale-95 transition-all"
+                        title="Log again today"
+                      >
+                        <RotateCcw size={13} />
+                      </button>
                     </div>
                   </div>
                 );

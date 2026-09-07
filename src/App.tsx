@@ -43,6 +43,7 @@ import FloatTools from './pages/FloatTools';
 import Auth from './pages/Auth';
 import ResetPassword from './pages/ResetPassword';
 import TransactionModal from './components/TransactionModal';
+import GlobalUndoToast from './components/GlobalUndoToast';
 import BudgetModal from './components/BudgetModal';
 import MigrateLocalDataBanner from './components/MigrateLocalDataBanner';
 import CustomizeNavModal from './components/CustomizeNavModal';
@@ -462,10 +463,11 @@ function AppShell() {
       {/* Mobile Bottom Nav */}
       {!hideNav && <MobileBottomNav syncStatus={syncStatus} />}
 
-      {/* Global Modals */}
+      {/* Global Modals & Toasts */}
       {!hideNav && <TransactionModal />}
       {!hideNav && <BudgetModal />}
       {!hideNav && <CustomizeNavModal />}
+      <GlobalUndoToast />
     </div>
   );
 }
