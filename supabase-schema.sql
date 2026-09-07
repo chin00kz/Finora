@@ -220,3 +220,4 @@ ALTER TABLE public.reimbursement_entries ENABLE ROW LEVEL SECURITY;
 DROP POLICY IF EXISTS "Users can manage their own reimbursement entries" ON public.reimbursement_entries;
 CREATE POLICY "Users can manage their own reimbursement entries" ON public.reimbursement_entries
   FOR ALL USING (auth.uid() = user_id) WITH CHECK (auth.uid() = user_id);
+
