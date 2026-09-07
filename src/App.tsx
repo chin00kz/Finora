@@ -33,6 +33,7 @@ import BudgetDetail from './pages/BudgetDetail';
 import Analytics from './pages/Analytics';
 import Recurring from './pages/Recurring';
 import Goals from './pages/Goals';
+import FloatTools from './pages/FloatTools';
 import Auth from './pages/Auth';
 import ResetPassword from './pages/ResetPassword';
 import TransactionModal from './components/TransactionModal';
@@ -397,6 +398,7 @@ function AppShell() {
             <Route path="/debts" element={<Debts />} />
             <Route path="/settings" element={<Settings />} />
             <Route path="/budget" element={<BudgetDetail />} />
+            <Route path="/float-tools" element={<FloatTools />} />
             <Route path="/auth" element={<Auth />} />
             <Route path="/reset-password" element={<ResetPassword />} />
           </Routes>

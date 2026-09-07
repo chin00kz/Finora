@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { db } from '../db/db';
-import { Trash2, Edit2, Check, X, Merge, Moon, Sun, Monitor, LogOut, UserX, CloudUpload, RefreshCw, Download, CheckCircle, Plus, FileSpreadsheet, UploadCloud } from 'lucide-react';
+import { Trash2, Edit2, Check, X, Merge, Moon, Sun, Monitor, LogOut, UserX, CloudUpload, RefreshCw, Download, CheckCircle, Plus, FileSpreadsheet, UploadCloud, CreditCard } from 'lucide-react';
 import { useThemeStore } from '../store/themeStore';
 import { useAuthStore } from '../store/authStore';
 import { syncAll, hydrateFromCloud, triggerSync, deleteFromCloud, purgeAndRepushCloud } from '../sync/syncEngine';
@@ -312,6 +312,31 @@ export default function Settings() {
             </div>
             <span className="px-3 py-1.5 bg-foreground text-background rounded-lg text-xs font-semibold">
               Import
+            </span>
+          </button>
+        </div>
+      </section>
+
+      {/* ── Advanced Tools (Power Users) ────────────────────────────────────── */}
+      <section className="bg-card rounded-2xl border border-border shadow-sm overflow-hidden mb-6">
+        <div className="p-5 border-b border-border bg-muted/50">
+          <h3 className="font-medium text-foreground">Advanced Tools</h3>
+          <p className="text-xs text-muted-foreground mt-1">Specialized power-user tools for credit float management and ledgers.</p>
+        </div>
+        <div className="p-5">
+          <button
+            onClick={() => navigate('/float-tools')}
+            className="flex items-center justify-between w-full p-3.5 bg-muted/40 hover:bg-muted/70 border border-border rounded-xl text-xs font-medium text-foreground transition-colors"
+          >
+            <div className="flex items-center gap-3">
+              <CreditCard size={20} className="text-accent" />
+              <div className="text-left">
+                <p className="font-medium text-sm text-foreground">Credit &amp; Float Tools</p>
+                <p className="text-[11px] text-muted-foreground">Multi-card float tracking, exposure stress-tests, installments &amp; ledgers</p>
+              </div>
+            </div>
+            <span className="px-3 py-1.5 bg-foreground text-background rounded-lg text-xs font-semibold">
+              Open
             </span>
           </button>
         </div>
