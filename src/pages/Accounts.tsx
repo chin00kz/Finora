@@ -4,6 +4,7 @@ import { db } from '../db/db';
 import type { AccountType } from '../db/db';
 import { Plus, X, Trash2 } from 'lucide-react';
 import { triggerSync, deleteFromCloud } from '../sync/syncEngine';
+import MaskedAmount from '../components/MaskedAmount';
 
 const ACCOUNT_TYPES: { id: AccountType; label: string; icon: string }[] = [
   { id: 'cash', label: 'Cash', icon: '💵' },
@@ -99,7 +100,7 @@ export default function Accounts() {
         <p className="text-sm text-muted-foreground font-medium mb-1">Net Worth</p>
         <p className="text-4xl font-light text-foreground">
           <span className="text-2xl mr-1">LKR</span>
-          {totalBalance.toLocaleString()}
+          <MaskedAmount amount={totalBalance} />
         </p>
         <p className="text-xs text-muted-foreground mt-2">Only includes accounts marked "Include in Total"</p>
       </div>
@@ -120,7 +121,7 @@ export default function Accounts() {
               </div>
             </div>
             <div className="font-medium text-foreground">
-              LKR {acc.balance.toLocaleString()}
+              <MaskedAmount amount={acc.balance} prefix="LKR " />
             </div>
           </div>
         ))}

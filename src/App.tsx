@@ -17,7 +17,10 @@ import {
   Moon,
   Laptop,
   SlidersHorizontal,
+  Eye,
+  EyeOff,
 } from 'lucide-react';
+import { usePrivacyStore } from './store/privacyStore';
 import { purgeMockData, deduplicateCategories } from './utils/initDb';
 import { processDueRecurringTransactions } from './utils/recurringEngine';
 import { useUIStore } from './store/uiStore';
@@ -86,6 +89,7 @@ function DesktopSidebar({ syncStatus }: { syncStatus: 'idle' | 'syncing' | 'erro
   const { setAddTransactionModalOpen } = useUIStore();
   const { user } = useAuthStore();
   const { theme, setTheme } = useThemeStore();
+  const { isMasked, toggleMask } = usePrivacyStore();
 
   const navItems = [
     { to: '/', label: 'Home', icon: Home },
@@ -107,11 +111,21 @@ function DesktopSidebar({ syncStatus }: { syncStatus: 'idle' | 'syncing' | 'erro
             <Logo size={26} className="transition-transform group-hover:scale-105" />
             <span className="text-xl font-bold tracking-tight text-foreground">Finora</span>
           </Link>
-          <div className="flex items-center gap-1 text-xs">
+          <div className="flex items-center gap-1.5 text-xs">
+            <button
+              onClick={toggleMask}
+              className={`p-1.5 rounded-lg transition-colors ${
+                isMasked
+                  ? 'bg-accent/20 text-accent'
+                  : 'text-muted-foreground hover:text-foreground hover:bg-muted'
+              }`}
+              title={isMasked ? 'Privacy Mask: Active (Click to Reveal)' : 'Privacy Mask: Inactive (Click to Mask)'}
+            >
+              {isMasked ? <EyeOff size={15} /> : <Eye size={15} />}
+            </button>
             {syncStatus === 'syncing' && (
               <span className="flex items-center gap-1 text-accent text-[11px]">
                 <span className="w-2 h-2 rounded-full bg-accent animate-pulse" />
-                Syncing
               </span>
             )}
             {syncStatus === 'error' && (
@@ -368,6 +382,7 @@ function AppShell() {
   const { syncStatus } = useSync();
   const location = useLocation();
   const { setAddTransactionModalOpen } = useUIStore();
+  const { isMasked, toggleMask } = usePrivacyStore();
   const hideNav = location.pathname === '/auth' || location.pathname === '/reset-password';
 
   // Global Keyboard Shortcuts (N for new transaction)
@@ -399,6 +414,39 @@ function AppShell() {
 
       {/* Main Content Area */}
       <main className="flex-1 min-w-0 min-h-screen overflow-y-auto">
+        {/* Persistent Top Header on Mobile */}
+        {!hideNav && (
+          <header className="md:hidden sticky top-0 z-30 bg-background/90 backdrop-blur-md border-b border-border/50 px-4 py-2.5 flex items-center justify-between">
+            <Link to="/" className="flex items-center gap-2">
+              <Logo size={22} />
+              <span className="text-base font-bold tracking-tight text-foreground">Finora</span>
+            </Link>
+            <div className="flex items-center gap-2">
+              {syncStatus === 'syncing' && (
+                <span className="w-2 h-2 rounded-full bg-accent animate-pulse" title="Syncing" />
+              )}
+              {syncStatus === 'error' && (
+                <span className="text-amber-500" title="Sync error">
+                  <AlertTriangle size={14} />
+                </span>
+              )}
+              {syncStatus === 'idle' && (
+                <span className="w-2 h-2 rounded-full bg-emerald-500/60" title="Synchronized" />
+              )}
+              <button
+                onClick={toggleMask}
+                className={`p-1.5 rounded-xl border transition-colors ${
+                  isMasked
+                    ? 'bg-accent/20 border-accent/40 text-accent font-semibold'
+                    : 'bg-muted/40 border-border text-muted-foreground hover:text-foreground'
+                }`}
+                title={isMasked ? 'Reveal figures' : 'Mask figures (Privacy mode)'}
+              >
+                {isMasked ? <EyeOff size={16} /> : <Eye size={16} />}
+              </button>
+            </div>
+          </header>
+        )}
         {/*
           Guiding rule:
           "The dashboard minimalism rule is NOT mobile-only — it applies on desktop too.

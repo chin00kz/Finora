@@ -13,6 +13,7 @@ import {
 import AddDebtModal from '../components/AddDebtModal';
 import SettleDebtModal from '../components/SettleDebtModal';
 import { getDebtSettlementStatus, reconcileSharedExpenses } from '../utils/debtSettlementEngine';
+import MaskedAmount from '../components/MaskedAmount';
 
 type FilterTab = 'all' | 'owed_to_me' | 'i_owe' | 'settled';
 
@@ -134,7 +135,7 @@ export default function Debts() {
           <div>
             <p className="text-2xl font-medium text-emerald-500">
               <span className="text-sm mr-1 font-normal text-muted-foreground">LKR</span>
-              {debtMetrics.totalOwedToMe.toLocaleString()}
+              <MaskedAmount amount={debtMetrics.totalOwedToMe} />
             </p>
             <p className="text-[11px] text-muted-foreground mt-1">Pending receivables</p>
           </div>
@@ -153,7 +154,7 @@ export default function Debts() {
           <div>
             <p className="text-2xl font-medium text-amber-500">
               <span className="text-sm mr-1 font-normal text-muted-foreground">LKR</span>
-              {debtMetrics.totalIOwe.toLocaleString()}
+              <MaskedAmount amount={debtMetrics.totalIOwe} />
             </p>
             <p className="text-[11px] text-muted-foreground mt-1">Pending payables</p>
           </div>
@@ -180,8 +181,7 @@ export default function Debts() {
               }`}
             >
               <span className="text-sm mr-1 font-normal text-muted-foreground">LKR</span>
-              {debtMetrics.netBalance > 0 ? '+' : ''}
-              {debtMetrics.netBalance.toLocaleString()}
+              <MaskedAmount amount={debtMetrics.netBalance} showSign />
             </p>
             <p className="text-[11px] text-muted-foreground mt-1">
               {debtMetrics.netBalance > 0
@@ -305,10 +305,10 @@ export default function Debts() {
                         : 'text-amber-500'
                     }`}
                   >
-                    LKR {remainingAmount.toLocaleString()}
+                    <MaskedAmount amount={remainingAmount} prefix="LKR " />
                   </p>
                   <p className="text-[11px] text-muted-foreground">
-                    of LKR {debt.amount.toLocaleString()}
+                    of <MaskedAmount amount={debt.amount} prefix="LKR " />
                   </p>
                 </div>
               </div>
@@ -317,8 +317,12 @@ export default function Debts() {
               {(settledAmount > 0 || isFullySettled) && (
                 <div className="space-y-1">
                   <div className="flex justify-between text-[10px] text-muted-foreground">
-                    <span>Settled: LKR {settledAmount.toLocaleString()} ({progressPercent}%)</span>
-                    <span>Remaining: LKR {remainingAmount.toLocaleString()}</span>
+                    <span>
+                      Settled: <MaskedAmount amount={settledAmount} prefix="LKR " /> ({progressPercent}%)
+                    </span>
+                    <span>
+                      Remaining: <MaskedAmount amount={remainingAmount} prefix="LKR " />
+                    </span>
                   </div>
                   <div className="w-full bg-muted rounded-full h-1.5 overflow-hidden">
                     <div

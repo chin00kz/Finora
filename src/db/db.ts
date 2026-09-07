@@ -231,6 +231,8 @@ export interface FloatGapHistory {
 export interface ReimbursementLedger {
   id: string;
   counterpartyName: string; // e.g. "Dad", "Roommate", "Business partner"
+  linkedCardId?: string; // Set if this ledger is tied to a specific credit card
+  isCardRelated?: boolean; // When true, positive ledger balances offset card bills in Safe-to-Spend
   updatedAt?: number;
 }
 

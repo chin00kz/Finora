@@ -1,14 +1,16 @@
 import { useState } from 'react';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { db } from '../db/db';
-import { Trash2, Edit2, Check, X, Merge, Moon, Sun, Monitor, LogOut, UserX, CloudUpload, RefreshCw, Download, CheckCircle, Plus, FileSpreadsheet, UploadCloud, CreditCard, SlidersHorizontal, FileJson } from 'lucide-react';
+import { Trash2, Edit2, Check, X, Merge, Moon, Sun, Monitor, LogOut, UserX, CloudUpload, RefreshCw, Download, CheckCircle, Plus, FileSpreadsheet, UploadCloud, CreditCard, SlidersHorizontal, FileJson, Sparkles, Eye, EyeOff } from 'lucide-react';
 import { useThemeStore } from '../store/themeStore';
 import { useAuthStore } from '../store/authStore';
 import { useNavStore } from '../store/navStore';
+import { usePrivacyStore } from '../store/privacyStore';
 import { syncAll, hydrateFromCloud, triggerSync, deleteFromCloud, purgeAndRepushCloud } from '../sync/syncEngine';
 import { useNavigate } from 'react-router-dom';
 import ExportReportModal from '../components/ExportReportModal';
 import ImportDataModal from '../components/ImportDataModal';
+import MonthlyDigestModal from '../components/MonthlyDigestModal';
 import { exportFullBackupJSON, restoreFullBackupJSON } from '../utils/jsonBackup';
 import Logo from '../components/Logo';
 
@@ -19,6 +21,14 @@ export default function Settings() {
   const { theme, setTheme } = useThemeStore();
   const { user, lastSyncedAt, signOut, deleteAccountData } = useAuthStore();
   const { setCustomizeModalOpen } = useNavStore();
+  const {
+    isMasked,
+    toggleMask,
+    showSafeToSpendHome,
+    setShowSafeToSpendHome,
+    safeToSpendForecastDays,
+    setSafeToSpendForecastDays,
+  } = usePrivacyStore();
 
   const [isSyncing, setIsSyncing] = useState(false);
   const [syncFeedback, setSyncFeedback] = useState<{ message: string; isError: boolean } | null>(null);
@@ -26,6 +36,7 @@ export default function Settings() {
   const [isExportModalOpen, setIsExportModalOpen] = useState(false);
   const [isImportModalOpen, setIsImportModalOpen] = useState(false);
   const [isRestoringJson, setIsRestoringJson] = useState(false);
+  const [isDigestModalOpen, setIsDigestModalOpen] = useState(false);
 
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editName, setEditName] = useState('');
@@ -288,6 +299,23 @@ export default function Settings() {
           <p className="text-xs text-muted-foreground mt-1">Export or restore transaction history, accounts and categories.</p>
         </div>
         <div className="p-5 space-y-3">
+          {/* Monthly Financial Digest */}
+          <button
+            onClick={() => setIsDigestModalOpen(true)}
+            className="flex items-center justify-between w-full p-3.5 bg-muted/40 hover:bg-muted/70 border border-border rounded-xl text-xs font-medium text-foreground transition-colors"
+          >
+            <div className="flex items-center gap-3">
+              <Sparkles size={20} className="text-amber-500" />
+              <div className="text-left">
+                <p className="font-medium text-sm text-foreground">Monthly Financial Digest</p>
+                <p className="text-[11px] text-muted-foreground">60-second summary of real spending, savings rate, and category shifts</p>
+              </div>
+            </div>
+            <span className="px-3 py-1.5 bg-foreground text-background rounded-lg text-xs font-semibold">
+              View Digest
+            </span>
+          </button>
+
           <button
             onClick={() => setIsExportModalOpen(true)}
             className="flex items-center justify-between w-full p-3.5 bg-muted/40 hover:bg-muted/70 border border-border rounded-xl text-xs font-medium text-foreground transition-colors"
@@ -497,6 +525,76 @@ export default function Settings() {
               Customize
             </span>
           </button>
+        </div>
+      </section>
+
+      {/* ── Home & Privacy Preferences ──────────────────────────────────────── */}
+      <section className="bg-card rounded-2xl border border-border shadow-sm overflow-hidden mb-8">
+        <div className="p-5 border-b border-border bg-muted/50">
+          <h3 className="font-medium text-foreground">Home &amp; Privacy Preferences</h3>
+          <p className="text-xs text-muted-foreground mt-1">Configure cashflow forecasting and privacy masking preferences.</p>
+        </div>
+        <div className="p-5 space-y-5">
+          {/* Safe-to-Spend Toggle */}
+          <div className="flex items-center justify-between">
+            <div>
+              <p className="text-sm font-medium text-foreground">Safe-to-Spend Forecast</p>
+              <p className="text-xs text-muted-foreground">Show forward-looking cashflow liquidity card on Home Overview</p>
+            </div>
+            <label className="relative inline-flex items-center cursor-pointer">
+              <input
+                type="checkbox"
+                checked={showSafeToSpendHome}
+                onChange={(e) => setShowSafeToSpendHome(e.target.checked)}
+                className="sr-only peer"
+              />
+              <div className="w-11 h-6 bg-muted peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-border after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-foreground"></div>
+            </label>
+          </div>
+
+          {/* Forecast Days Selector */}
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 pt-3 border-t border-border">
+            <div>
+              <p className="text-xs font-medium text-foreground">Forecast Horizon</p>
+              <p className="text-[11px] text-muted-foreground">Days ahead to calculate upcoming recurring expenses</p>
+            </div>
+            <div className="flex items-center gap-1 bg-muted p-1 rounded-xl">
+              {[7, 14, 30].map(days => (
+                <button
+                  key={days}
+                  onClick={() => setSafeToSpendForecastDays(days)}
+                  className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-all ${
+                    safeToSpendForecastDays === days
+                      ? 'bg-card text-foreground shadow-xs'
+                      : 'text-muted-foreground hover:text-foreground'
+                  }`}
+                >
+                  {days} Days
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {/* Privacy Incognito Mode */}
+          <div className="flex items-center justify-between pt-3 border-t border-border">
+            <div className="flex items-center gap-2.5">
+              {isMasked ? <EyeOff size={18} className="text-amber-500" /> : <Eye size={18} className="text-muted-foreground" />}
+              <div>
+                <p className="text-sm font-medium text-foreground">Privacy Masking</p>
+                <p className="text-xs text-muted-foreground">Mask all monetary figures across the app with •••••</p>
+              </div>
+            </div>
+            <button
+              onClick={toggleMask}
+              className={`px-3.5 py-1.5 rounded-xl text-xs font-medium transition-colors ${
+                isMasked
+                  ? 'bg-amber-500/10 text-amber-600 dark:text-amber-400 border border-amber-500/20'
+                  : 'bg-muted text-foreground hover:bg-muted/80'
+              }`}
+            >
+              {isMasked ? 'Masked (Active)' : 'Unmasked'}
+            </button>
+          </div>
         </div>
       </section>
 
@@ -721,6 +819,11 @@ export default function Settings() {
       <ImportDataModal
         isOpen={isImportModalOpen}
         onClose={() => setIsImportModalOpen(false)}
+      />
+
+      <MonthlyDigestModal
+        isOpen={isDigestModalOpen}
+        onClose={() => setIsDigestModalOpen(false)}
       />
     </div>
   );

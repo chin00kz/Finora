@@ -10,6 +10,7 @@ import {
   Calendar,
   ArrowUpRight,
   ArrowDownRight,
+  Sparkles,
 } from 'lucide-react';
 import {
   format,
@@ -21,6 +22,8 @@ import {
   isSameDay,
 } from 'date-fns';
 import ExportReportModal from '../components/ExportReportModal';
+import MonthlyDigestModal from '../components/MonthlyDigestModal';
+import MaskedAmount from '../components/MaskedAmount';
 
 export default function Analytics() {
   const budgets = useLiveQuery(() => db.budgets.toArray()) || [];
@@ -33,6 +36,7 @@ export default function Analytics() {
 
   const [periodKey, setPeriodKey] = useState<string>('current');
   const [isExportModalOpen, setIsExportModalOpen] = useState(false);
+  const [isDigestModalOpen, setIsDigestModalOpen] = useState(false);
 
   // Derive active date range and filter transactions
   const { periodTransactions, periodLabel, dateRangeStr, budgetTarget } = useMemo(() => {
@@ -252,6 +256,14 @@ export default function Analytics() {
           </div>
 
           <button
+            onClick={() => setIsDigestModalOpen(true)}
+            className="flex items-center gap-1.5 px-3.5 py-2 bg-foreground text-background rounded-xl text-xs font-medium hover:opacity-90 active:scale-95 transition-all shadow-sm"
+          >
+            <Sparkles size={14} />
+            <span>Monthly Digest</span>
+          </button>
+
+          <button
             onClick={() => setIsExportModalOpen(true)}
             className="flex items-center gap-1.5 px-3.5 py-2 bg-card border border-border rounded-xl text-xs font-medium text-foreground hover:bg-muted active:scale-95 transition-all shadow-sm"
           >
@@ -268,7 +280,7 @@ export default function Analytics() {
             Total Spent
           </p>
           <p className="text-2xl font-light text-foreground">
-            LKR {totalSpent.toLocaleString()}
+            <MaskedAmount amount={totalSpent} prefix="LKR " />
           </p>
           <p className="text-[11px] text-muted-foreground mt-1">
             {periodLabel} &middot; {dateRangeStr}
@@ -285,10 +297,10 @@ export default function Analytics() {
                 totalSpent > budgetTarget ? 'text-red-500 font-normal' : 'text-foreground'
               }`}
             >
-              LKR {Math.abs(budgetTarget - totalSpent).toLocaleString()}
+              <MaskedAmount amount={Math.abs(budgetTarget - totalSpent)} prefix="LKR " />
             </p>
             <p className="text-[11px] text-muted-foreground mt-1">
-              Budget target: LKR {budgetTarget.toLocaleString()}
+              Budget target: <MaskedAmount amount={budgetTarget} prefix="LKR " />
             </p>
           </div>
         ) : (
@@ -297,7 +309,7 @@ export default function Analytics() {
               Total Income
             </p>
             <p className="text-2xl font-light text-emerald-500">
-              LKR {totalIncome.toLocaleString()}
+              <MaskedAmount amount={totalIncome} prefix="LKR " />
             </p>
             <p className="text-[11px] text-muted-foreground mt-1">For selected period</p>
           </div>
@@ -308,10 +320,10 @@ export default function Analytics() {
             Daily Average
           </p>
           <p className="text-2xl font-light text-foreground">
-            LKR{' '}
-            {dailySpending.length > 0
-              ? Math.round(totalSpent / dailySpending.length).toLocaleString()
-              : '0'}
+            <MaskedAmount
+              amount={dailySpending.length > 0 ? Math.round(totalSpent / dailySpending.length) : 0}
+              prefix="LKR "
+            />
           </p>
           <p className="text-[11px] text-muted-foreground mt-1">
             Across {dailySpending.length} days recorded
@@ -538,6 +550,11 @@ export default function Analytics() {
         isOpen={isExportModalOpen}
         onClose={() => setIsExportModalOpen(false)}
         defaultPeriod={periodKey}
+      />
+
+      <MonthlyDigestModal
+        isOpen={isDigestModalOpen}
+        onClose={() => setIsDigestModalOpen(false)}
       />
     </div>
   );

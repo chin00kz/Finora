@@ -1071,6 +1071,47 @@ export default function FloatTools() {
                       <button onClick={() => { void handleDeleteLedger(ledger); }} className="text-[11px] text-red-400 hover:text-red-500">Delete ledger</button>
                     </div>
                   </div>
+
+                  {/* Card-related linkage for Safe-to-Spend */}
+                  <div className="mt-4 pt-3 border-t border-border flex items-center justify-between flex-wrap gap-2 text-xs">
+                    <label className="flex items-center gap-2 cursor-pointer text-muted-foreground hover:text-foreground">
+                      <input
+                        type="checkbox"
+                        checked={Boolean(ledger.isCardRelated)}
+                        onChange={async (e) => {
+                          await db.reimbursementLedgers.update(ledger.id, {
+                            isCardRelated: e.target.checked,
+                            updatedAt: Date.now(),
+                          });
+                          triggerSync();
+                        }}
+                        className="rounded border-border text-accent focus:ring-accent"
+                      />
+                      <span>Card-related ledger (offsets card bills in Safe-to-Spend)</span>
+                    </label>
+
+                    {ledger.isCardRelated && (
+                      <div className="flex items-center gap-1.5">
+                        <span className="text-muted-foreground text-[11px]">Offset card:</span>
+                        <select
+                          value={ledger.linkedCardId || ''}
+                          onChange={async (e) => {
+                            await db.reimbursementLedgers.update(ledger.id, {
+                              linkedCardId: e.target.value || undefined,
+                              updatedAt: Date.now(),
+                            });
+                            triggerSync();
+                          }}
+                          className="p-1 px-2 bg-background border border-border rounded-lg text-xs font-medium outline-none"
+                        >
+                          <option value="">General (all cards)</option>
+                          {cards.map(c => (
+                            <option key={c.id} value={c.id}>{c.name}</option>
+                          ))}
+                        </select>
+                      </div>
+                    )}
+                  </div>
                 </div>
 
                 <div>

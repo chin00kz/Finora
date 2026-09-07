@@ -2,11 +2,16 @@ import { useLiveQuery } from 'dexie-react-hooks';
 import { db } from '../db/db';
 import { differenceInDays } from 'date-fns';
 import { useNavigate } from 'react-router-dom';
-import { ChevronRight } from 'lucide-react';
+import { ChevronRight, ShieldCheck } from 'lucide-react';
 import { getBudgetStatus } from '../utils/budgetUtils';
+import SafeToSpendCard from '../components/SafeToSpendCard';
+import { usePrivacyStore } from '../store/privacyStore';
+import MaskedAmount from '../components/MaskedAmount';
 
 export default function Dashboard() {
   const navigate = useNavigate();
+  const { showSafeToSpendHome, setShowSafeToSpendHome } = usePrivacyStore();
+
   const accounts = useLiveQuery(() => db.accounts.toArray()) || [];
   const budgets = useLiveQuery(() => db.budgets.toArray()) || [];
   const activeBudget = budgets.find(b => b.status === 'active');
@@ -47,10 +52,22 @@ export default function Dashboard() {
     <div className="p-6 pb-36">
       {/* ── Available balance ──────────────────────────────────────────────── */}
       <header className="mb-6 mt-4">
-        <h1 className="text-5xl font-light tracking-tight text-foreground mb-1">
-          <span className="text-2xl align-top mr-1">LKR</span>
-          {totalBalance.toLocaleString()}
-        </h1>
+        <div className="flex items-center justify-between">
+          <h1 className="text-5xl font-light tracking-tight text-foreground mb-1">
+            <span className="text-2xl align-top mr-1">LKR</span>
+            <MaskedAmount amount={totalBalance} />
+          </h1>
+          {!showSafeToSpendHome && (
+            <button
+              onClick={() => setShowSafeToSpendHome(true)}
+              className="px-2.5 py-1.5 bg-muted/60 hover:bg-muted text-muted-foreground hover:text-foreground border border-border/70 rounded-xl text-xs font-medium flex items-center gap-1.5 transition-colors"
+              title="Show Safe-to-Spend forecast card"
+            >
+              <ShieldCheck size={14} className="text-emerald-500" />
+              <span>+ Safe-to-Spend</span>
+            </button>
+          )}
+        </div>
         <p className="text-muted-foreground text-sm font-medium mb-4">Available</p>
 
         {/* Account pills — read-only glance */}
@@ -65,11 +82,16 @@ export default function Dashboard() {
             >
               <span>{accIcon(acc.type)}</span>
               <span>{acc.name}</span>
-              <span className="text-muted-foreground">LKR {acc.balance.toLocaleString()}</span>
+              <span className="text-muted-foreground">
+                LKR <MaskedAmount amount={acc.balance} />
+              </span>
             </div>
           ))}
         </div>
       </header>
+
+      {/* ── Safe-to-Spend Forecast (Gated by User Preference) ─────────────── */}
+      {showSafeToSpendHome && <SafeToSpendCard />}
 
       {/* ── Budget glance — tap to manage ─────────────────────────────────── */}
       <button
@@ -82,7 +104,7 @@ export default function Dashboard() {
               <div>
                 <p className="text-xs text-muted-foreground font-medium mb-1">{activeBudget.name}</p>
                 <p className="text-3xl font-light text-foreground">
-                  LKR {budgetStatus.remaining.toLocaleString()}
+                  LKR <MaskedAmount amount={budgetStatus.remaining} />
                   <span className={`text-sm font-normal ml-2 ${budgetStatus.isOverspent ? 'text-red-500 font-medium' : 'text-muted-foreground'}`}>
                     {budgetStatus.label}
                   </span>
@@ -100,7 +122,10 @@ export default function Dashboard() {
               />
             </div>
             <div className="flex justify-between text-xs text-muted-foreground font-medium">
-              <span>LKR {spentThisPeriod.toLocaleString()} of LKR {activeBudget.amount.toLocaleString()} spent</span>
+              <span>
+                LKR <MaskedAmount amount={spentThisPeriod} /> of LKR{' '}
+                <MaskedAmount amount={activeBudget.amount} /> spent
+              </span>
               <span>{daysLeft}d left</span>
             </div>
           </div>
@@ -137,7 +162,8 @@ export default function Dashboard() {
                 </div>
               </div>
               <span className={`font-medium text-sm ${txn.type === 'expense' ? 'text-foreground' : txn.type === 'income' ? 'text-green-500' : 'text-muted-foreground'}`}>
-                {txn.type === 'expense' ? '−' : txn.type === 'income' ? '+' : ''}LKR {txn.amount.toLocaleString()}
+                {txn.type === 'expense' ? '−' : txn.type === 'income' ? '+' : ''}LKR{' '}
+                <MaskedAmount amount={txn.amount} />
               </span>
             </div>
           ))}
