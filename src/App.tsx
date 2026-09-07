@@ -16,12 +16,15 @@ import {
   Sun,
   Moon,
   Laptop,
+  SlidersHorizontal,
 } from 'lucide-react';
 import { purgeMockData, deduplicateCategories } from './utils/initDb';
 import { processDueRecurringTransactions } from './utils/recurringEngine';
 import { useUIStore } from './store/uiStore';
 import { useThemeStore } from './store/themeStore';
 import { useAuthStore } from './store/authStore';
+import { useNavStore, ALL_NAV_ITEMS } from './store/navStore';
+import type { NavItemId } from './store/navStore';
 import { supabase } from './lib/supabase';
 import { useSync } from './hooks/useSync';
 import Dashboard from './pages/Dashboard';
@@ -39,6 +42,7 @@ import ResetPassword from './pages/ResetPassword';
 import TransactionModal from './components/TransactionModal';
 import BudgetModal from './components/BudgetModal';
 import MigrateLocalDataBanner from './components/MigrateLocalDataBanner';
+import CustomizeNavModal from './components/CustomizeNavModal';
 
 // ── Theme initializer ────────────────────────────────────────────────────────
 function ThemeInitializer() {
@@ -191,12 +195,35 @@ function DesktopSidebar({ syncStatus }: { syncStatus: 'idle' | 'syncing' | 'erro
   );
 }
 
+function getNavIcon(id: NavItemId) {
+  switch (id) {
+    case 'home':
+      return Home;
+    case 'accounts':
+      return PieChart;
+    case 'activity':
+      return List;
+    case 'debts':
+      return Users;
+    case 'analytics':
+      return BarChart3;
+    case 'goals':
+      return Target;
+    case 'recurring':
+      return Repeat;
+  }
+}
+
 // ── Mobile Bottom Nav ────────────────────────────────────────────────────────
 function MobileBottomNav({ syncStatus }: { syncStatus: 'idle' | 'syncing' | 'error' }) {
   const location = useLocation();
   const isActive = (path: string) => location.pathname === path;
   const { setAddTransactionModalOpen } = useUIStore();
+  const { frontItemIds, getHiddenItemIds, setCustomizeModalOpen } = useNavStore();
   const [isMoreOpen, setIsMoreOpen] = useState(false);
+
+  const hiddenItemIds = getHiddenItemIds();
+  const hasMore = hiddenItemIds.length > 0;
 
   return (
     <>
@@ -210,7 +237,7 @@ function MobileBottomNav({ syncStatus }: { syncStatus: 'idle' | 'syncing' | 'err
         </button>
       </div>
 
-      {/* Mobile "More" Drawer for Analytics, Goals, Recurring */}
+      {/* Mobile "More" Drawer for hidden items */}
       {isMoreOpen && (
         <div
           className="md:hidden fixed inset-0 z-40 bg-background/70 backdrop-blur-sm flex flex-col justify-end p-4 animate-in fade-in duration-150"
@@ -221,38 +248,48 @@ function MobileBottomNav({ syncStatus }: { syncStatus: 'idle' | 'syncing' | 'err
             onClick={e => e.stopPropagation()}
           >
             <div className="flex items-center justify-between pb-2 border-b border-border">
-              <span className="text-xs font-semibold uppercase text-muted-foreground tracking-wider">
-                Explore More
-              </span>
+              <div className="flex items-center gap-2">
+                <span className="text-xs font-semibold uppercase text-muted-foreground tracking-wider">
+                  Explore More
+                </span>
+                <button
+                  onClick={() => {
+                    setIsMoreOpen(false);
+                    setCustomizeModalOpen(true);
+                  }}
+                  className="flex items-center gap-1 text-[11px] font-medium text-accent hover:underline ml-1"
+                >
+                  <SlidersHorizontal size={12} />
+                  <span>Customize</span>
+                </button>
+              </div>
               <button onClick={() => setIsMoreOpen(false)} className="p-1 text-muted-foreground">
                 <X size={16} />
               </button>
             </div>
-            <div className="grid grid-cols-3 gap-2 pt-1">
-              <Link
-                to="/analytics"
-                onClick={() => setIsMoreOpen(false)}
-                className="flex flex-col items-center justify-center p-3 rounded-xl bg-muted/50 hover:bg-muted text-foreground text-xs font-medium"
-              >
-                <BarChart3 size={20} className="mb-1 text-muted-foreground" />
-                <span>Analytics</span>
-              </Link>
-              <Link
-                to="/goals"
-                onClick={() => setIsMoreOpen(false)}
-                className="flex flex-col items-center justify-center p-3 rounded-xl bg-muted/50 hover:bg-muted text-foreground text-xs font-medium"
-              >
-                <Target size={20} className="mb-1 text-muted-foreground" />
-                <span>Goals</span>
-              </Link>
-              <Link
-                to="/recurring"
-                onClick={() => setIsMoreOpen(false)}
-                className="flex flex-col items-center justify-center p-3 rounded-xl bg-muted/50 hover:bg-muted text-foreground text-xs font-medium"
-              >
-                <Repeat size={20} className="mb-1 text-muted-foreground" />
-                <span>Recurring</span>
-              </Link>
+
+            <div className={`grid ${hiddenItemIds.length <= 2 ? 'grid-cols-2' : 'grid-cols-3'} gap-2 pt-1`}>
+              {hiddenItemIds.map(id => {
+                const item = ALL_NAV_ITEMS.find(i => i.id === id);
+                if (!item) return null;
+                const Icon = getNavIcon(id);
+                const active = isActive(item.to);
+                return (
+                  <Link
+                    key={id}
+                    to={item.to}
+                    onClick={() => setIsMoreOpen(false)}
+                    className={`flex flex-col items-center justify-center p-3 rounded-xl transition-colors ${
+                      active
+                        ? 'bg-accent text-accent-foreground font-semibold'
+                        : 'bg-muted/50 hover:bg-muted text-foreground'
+                    } text-xs font-medium`}
+                  >
+                    <Icon size={20} className="mb-1" />
+                    <span>{item.label}</span>
+                  </Link>
+                );
+              })}
             </div>
           </div>
         </div>
@@ -261,55 +298,42 @@ function MobileBottomNav({ syncStatus }: { syncStatus: 'idle' | 'syncing' | 'err
       {/* Mobile Fixed Bottom Nav */}
       <nav className="md:hidden fixed bottom-0 left-0 right-0 w-full max-w-md mx-auto bg-background/95 backdrop-blur-md border-t border-border pb-safe z-40">
         <div className="flex justify-around items-center h-16 px-1">
-          <Link
-            to="/"
-            className={`flex flex-col items-center justify-center w-full h-full ${
-              isActive('/') ? 'text-foreground' : 'text-muted-foreground'
-            }`}
-          >
-            <Home size={22} />
-            <span className="text-[10px] mt-1 font-medium">Home</span>
-          </Link>
-          <Link
-            to="/accounts"
-            className={`flex flex-col items-center justify-center w-full h-full ${
-              isActive('/accounts') ? 'text-foreground' : 'text-muted-foreground'
-            }`}
-          >
-            <PieChart size={22} />
-            <span className="text-[10px] mt-1 font-medium">Accounts</span>
-          </Link>
-          <Link
-            to="/activity"
-            className={`flex flex-col items-center justify-center w-full h-full ${
-              isActive('/activity') ? 'text-foreground' : 'text-muted-foreground'
-            }`}
-          >
-            <List size={22} />
-            <span className="text-[10px] mt-1 font-medium">Activity</span>
-          </Link>
-          <Link
-            to="/debts"
-            className={`flex flex-col items-center justify-center w-full h-full ${
-              isActive('/debts') ? 'text-foreground' : 'text-muted-foreground'
-            }`}
-          >
-            <Users size={22} />
-            <span className="text-[10px] mt-1 font-medium">IOUs</span>
-          </Link>
+          {frontItemIds.map(id => {
+            const item = ALL_NAV_ITEMS.find(i => i.id === id);
+            if (!item) return null;
+            const Icon = getNavIcon(id);
+            const active = isActive(item.to);
+            return (
+              <Link
+                key={id}
+                to={item.to}
+                className={`flex flex-col items-center justify-center w-full h-full ${
+                  active ? 'text-foreground' : 'text-muted-foreground'
+                }`}
+              >
+                <Icon size={22} />
+                <span className="text-[10px] mt-1 font-medium">{item.label}</span>
+              </Link>
+            );
+          })}
 
           {/* More Menu on Mobile */}
-          <button
-            onClick={() => setIsMoreOpen(!isMoreOpen)}
-            className={`flex flex-col items-center justify-center w-full h-full ${
-              isMoreOpen || isActive('/analytics') || isActive('/goals') || isActive('/recurring')
-                ? 'text-foreground'
-                : 'text-muted-foreground'
-            }`}
-          >
-            <MoreHorizontal size={22} />
-            <span className="text-[10px] mt-1 font-medium">More</span>
-          </button>
+          {hasMore && (
+            <button
+              onClick={() => setIsMoreOpen(!isMoreOpen)}
+              className={`flex flex-col items-center justify-center w-full h-full ${
+                isMoreOpen || hiddenItemIds.some(id => {
+                  const it = ALL_NAV_ITEMS.find(i => i.id === id);
+                  return it && isActive(it.to);
+                })
+                  ? 'text-foreground'
+                  : 'text-muted-foreground'
+              }`}
+            >
+              <MoreHorizontal size={22} />
+              <span className="text-[10px] mt-1 font-medium">More</span>
+            </button>
+          )}
 
           {/* Settings */}
           <Link
@@ -411,6 +435,7 @@ function AppShell() {
       {/* Global Modals */}
       {!hideNav && <TransactionModal />}
       {!hideNav && <BudgetModal />}
+      {!hideNav && <CustomizeNavModal />}
     </div>
   );
 }

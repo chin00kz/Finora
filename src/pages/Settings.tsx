@@ -1,9 +1,10 @@
 import { useState } from 'react';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { db } from '../db/db';
-import { Trash2, Edit2, Check, X, Merge, Moon, Sun, Monitor, LogOut, UserX, CloudUpload, RefreshCw, Download, CheckCircle, Plus, FileSpreadsheet, UploadCloud, CreditCard } from 'lucide-react';
+import { Trash2, Edit2, Check, X, Merge, Moon, Sun, Monitor, LogOut, UserX, CloudUpload, RefreshCw, Download, CheckCircle, Plus, FileSpreadsheet, UploadCloud, CreditCard, SlidersHorizontal } from 'lucide-react';
 import { useThemeStore } from '../store/themeStore';
 import { useAuthStore } from '../store/authStore';
+import { useNavStore } from '../store/navStore';
 import { syncAll, hydrateFromCloud, triggerSync, deleteFromCloud, purgeAndRepushCloud } from '../sync/syncEngine';
 import { useNavigate } from 'react-router-dom';
 import ExportReportModal from '../components/ExportReportModal';
@@ -15,6 +16,7 @@ export default function Settings() {
   const categories = useLiveQuery(() => db.categories.toArray()) || [];
   const { theme, setTheme } = useThemeStore();
   const { user, lastSyncedAt, signOut, deleteAccountData } = useAuthStore();
+  const { setCustomizeModalOpen } = useNavStore();
 
   const [isSyncing, setIsSyncing] = useState(false);
   const [syncFeedback, setSyncFeedback] = useState<{ message: string; isError: boolean } | null>(null);
@@ -403,6 +405,31 @@ export default function Settings() {
               </button>
             ))}
           </div>
+        </div>
+      </section>
+
+      {/* ── Navigation Preferences ─────────────────────────────────────────── */}
+      <section className="bg-card rounded-2xl border border-border shadow-sm overflow-hidden mb-8">
+        <div className="p-5 border-b border-border bg-muted/50">
+          <h3 className="font-medium text-foreground">Bottom Navigation Bar</h3>
+          <p className="text-xs text-muted-foreground mt-1">Customize which destinations appear on your mobile bottom bar.</p>
+        </div>
+        <div className="p-5">
+          <button
+            onClick={() => setCustomizeModalOpen(true)}
+            className="flex items-center justify-between w-full p-3.5 bg-muted/40 hover:bg-muted/70 border border-border rounded-xl text-xs font-medium text-foreground transition-colors"
+          >
+            <div className="flex items-center gap-3">
+              <SlidersHorizontal size={20} className="text-accent" />
+              <div className="text-left">
+                <p className="font-medium text-sm text-foreground">Customize Bottom Bar</p>
+                <p className="text-[11px] text-muted-foreground">Toggle front vs hidden items (4 to 6 options)</p>
+              </div>
+            </div>
+            <span className="px-3 py-1.5 bg-accent text-accent-foreground rounded-lg text-xs font-semibold">
+              Customize
+            </span>
+          </button>
         </div>
       </section>
 
