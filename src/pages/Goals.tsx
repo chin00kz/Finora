@@ -14,7 +14,7 @@ import {
   MinusCircle,
 } from 'lucide-react';
 import { format, differenceInDays, differenceInMonths } from 'date-fns';
-import { triggerSync } from '../sync/syncEngine';
+import { triggerSync, deleteFromCloud } from '../sync/syncEngine';
 
 const GOAL_COLORS = [
   '#10b981', // emerald
@@ -109,6 +109,7 @@ export default function Goals() {
   const handleDeleteGoal = async (goal: SavingsGoal) => {
     if (!confirm(`Delete savings goal "${goal.name}"?`)) return;
     await db.savingsGoals.delete(goal.id);
+    await deleteFromCloud('savings_goals', goal.id);
     triggerSync();
   };
 

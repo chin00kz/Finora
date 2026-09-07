@@ -5,7 +5,7 @@ import type { RecurringTransaction, RecurringFrequency } from '../db/db';
 import { Plus, Repeat, Pause, Play, Edit2, Trash2, X, Clock } from 'lucide-react';
 import { format, differenceInDays } from 'date-fns';
 import { processDueRecurringTransactions } from '../utils/recurringEngine';
-import { triggerSync } from '../sync/syncEngine';
+import { triggerSync, deleteFromCloud } from '../sync/syncEngine';
 
 export default function Recurring() {
   const recurringRules = useLiveQuery(() => db.recurringTransactions.toArray()) || [];
@@ -106,6 +106,7 @@ export default function Recurring() {
   const handleDeleteRule = async (rule: RecurringTransaction) => {
     if (!confirm(`Delete recurring rule "${rule.name}"? Past generated transactions will stay safe.`)) return;
     await db.recurringTransactions.delete(rule.id);
+    await deleteFromCloud('recurring_transactions', rule.id);
     triggerSync();
   };
 

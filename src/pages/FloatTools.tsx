@@ -12,6 +12,7 @@ import type {
 } from '../db/db';
 import { Link } from 'react-router-dom';
 import { format, differenceInDays } from 'date-fns';
+import { triggerSync, deleteFromCloud } from '../sync/syncEngine';
 import {
   ChevronLeft,
   Plus,
@@ -320,6 +321,7 @@ export default function FloatTools() {
     } else {
       await db.creditCards.add({ id: `cc-${Date.now()}-${uid()}`, ...payload });
     }
+    triggerSync();
     resetCardForm();
   }
 
@@ -332,31 +334,67 @@ export default function FloatTools() {
   async function handleDeleteCard(id: string) {
     if (!confirm('Delete this card and all its associated data?')) return;
     await db.creditCards.delete(id);
+    await deleteFromCloud('credit_cards', id);
+
+    const offsetIds = (await db.cashOffsetSources.where('linkedCardId').equals(id).toArray()).map(o => o.id);
     await db.cashOffsetSources.where('linkedCardId').equals(id).delete();
+    for (const oid of offsetIds) await deleteFromCloud('cash_offset_sources', oid);
+
+    const planIds = (await db.installmentPlans.where('linkedCardId').equals(id).toArray()).map(p => p.id);
     await db.installmentPlans.where('linkedCardId').equals(id).delete();
+    for (const pid of planIds) await deleteFromCloud('installment_plans', pid);
+
+    const promoIds = (await db.cardPromos.where('linkedCardId').equals(id).toArray()).map(pr => pr.id);
     await db.cardPromos.where('linkedCardId').equals(id).delete();
+    for (const pid of promoIds) await deleteFromCloud('card_promos', pid);
+
+    const gapIds = (await db.floatGapHistory.where('cardId').equals(id).toArray()).map(g => g.id);
     await db.floatGapHistory.where('cardId').equals(id).delete();
+    for (const gid of gapIds) await deleteFromCloud('float_gap_history', gid);
+
+    triggerSync();
   }
 
   async function handleSaveOffset() {
     if (!offsetForm.name.trim() || !offsetForm.linkedCardId) return;
     await db.cashOffsetSources.add({ id: `cos-${Date.now()}-${uid()}`, name: offsetForm.name.trim(), linkedCardId: offsetForm.linkedCardId, expectedMonthlyAmount: parseFloat(offsetForm.expectedMonthlyAmount) || 0, category: offsetForm.category.trim() || undefined, updatedAt: Date.now() });
+    triggerSync();
     setOffsetForm({ name: '', linkedCardId: '', expectedMonthlyAmount: '', category: '' });
     setIsAddingOffset(false);
+  }
+
+  async function handleDeleteOffset(id: string) {
+    await db.cashOffsetSources.delete(id);
+    await deleteFromCloud('cash_offset_sources', id);
+    triggerSync();
   }
 
   async function handleSaveFD() {
     if (!fdForm.name.trim()) return;
     await db.fixedDeposits.add({ id: `fd-${Date.now()}-${uid()}`, name: fdForm.name.trim(), principal: parseFloat(fdForm.principal) || 0, ratePercent: parseFloat(fdForm.ratePercent) || 0, maturityIntervalMonths: parseInt(fdForm.maturityIntervalMonths) || 12, linkedCardId: fdForm.linkedCardId || undefined, updatedAt: Date.now() });
+    triggerSync();
     setFdForm({ name: '', principal: '', ratePercent: '', maturityIntervalMonths: '12', linkedCardId: '' });
     setIsAddingFD(false);
+  }
+
+  async function handleDeleteFD(id: string) {
+    await db.fixedDeposits.delete(id);
+    await deleteFromCloud('fixed_deposits', id);
+    triggerSync();
   }
 
   async function handleSaveMMA() {
     if (!mmaForm.name.trim()) return;
     await db.moneyMarketAccounts.add({ id: `mma-${Date.now()}-${uid()}`, name: mmaForm.name.trim(), balance: parseFloat(mmaForm.balance) || 0, currentRatePercent: parseFloat(mmaForm.currentRatePercent) || 0, minimumBalanceForRate: parseFloat(mmaForm.minimumBalanceForRate) || 0, baseRatePercent: parseFloat(mmaForm.baseRatePercent) || 0, updatedAt: Date.now() });
+    triggerSync();
     setMmaForm({ name: '', balance: '', currentRatePercent: '', minimumBalanceForRate: '', baseRatePercent: '' });
     setIsAddingMMA(false);
+  }
+
+  async function handleDeleteMMA(id: string) {
+    await db.moneyMarketAccounts.delete(id);
+    await deleteFromCloud('money_market_accounts', id);
+    triggerSync();
   }
 
   async function handleSavePlan() {
@@ -364,6 +402,7 @@ export default function FloatTools() {
     const totalMonths = parseInt(planForm.totalMonths) || 1;
     const monthsPaid  = parseInt(planForm.monthsPaid)  || 0;
     await db.installmentPlans.add({ id: `plan-${Date.now()}-${uid()}`, linkedCardId: planForm.linkedCardId, description: planForm.description.trim(), totalAmount: parseFloat(planForm.totalAmount) || 0, monthlyAmount: parseFloat(planForm.monthlyAmount) || 0, totalMonths, monthsPaid, active: monthsPaid < totalMonths, updatedAt: Date.now() });
+    triggerSync();
     setPlanForm({ linkedCardId: '', description: '', totalAmount: '', monthlyAmount: '', totalMonths: '', monthsPaid: '0' });
     setIsAddingPlan(false);
   }
@@ -371,11 +410,19 @@ export default function FloatTools() {
   async function handleMarkPlanPaid(plan: InstallmentPlan) {
     const next = plan.monthsPaid + 1;
     await db.installmentPlans.update(plan.id, { monthsPaid: next, active: next < plan.totalMonths, updatedAt: Date.now() });
+    triggerSync();
+  }
+
+  async function handleDeletePlan(id: string) {
+    await db.installmentPlans.delete(id);
+    await deleteFromCloud('installment_plans', id);
+    triggerSync();
   }
 
   async function handleSavePromo() {
     if (!promoForm.description.trim() || !promoForm.linkedCardId) return;
     await db.cardPromos.add({ id: `promo-${Date.now()}-${uid()}`, linkedCardId: promoForm.linkedCardId, description: promoForm.description.trim(), spendThreshold: parseFloat(promoForm.spendThreshold) || 0, minTransactionCount: parseInt(promoForm.minTransactionCount) || 0, windowStart: promoForm.windowStart ? new Date(promoForm.windowStart).getTime() : Date.now(), windowEnd: promoForm.windowEnd ? new Date(promoForm.windowEnd).getTime() : Date.now(), cashbackPercent: parseFloat(promoForm.cashbackPercent) || 0, cashbackCap: parseFloat(promoForm.cashbackCap) || 0, currentSpend: parseFloat(promoForm.currentSpend) || 0, currentTransactionCount: parseInt(promoForm.currentTransactionCount) || 0, updatedAt: Date.now() });
+    triggerSync();
     setPromoForm({ linkedCardId: '', description: '', spendThreshold: '', minTransactionCount: '', windowStart: '', windowEnd: '', cashbackPercent: '', cashbackCap: '', currentSpend: '0', currentTransactionCount: '0' });
     setIsAddingPromo(false);
   }
@@ -385,6 +432,13 @@ export default function FloatTools() {
       ? { currentSpend: parseFloat(value) || 0, updatedAt: Date.now() }
       : { currentTransactionCount: parseInt(value) || 0, updatedAt: Date.now() };
     await db.cardPromos.update(promo.id, updates);
+    triggerSync();
+  }
+
+  async function handleDeletePromo(id: string) {
+    await db.cardPromos.delete(id);
+    await deleteFromCloud('card_promos', id);
+    triggerSync();
   }
 
   async function handleAddGapEntry() {
@@ -396,25 +450,29 @@ export default function FloatTools() {
     const sortedFresh = fresh.sort((a, b) => a.cycleLabel.localeCompare(b.cycleLabel));
     const prevCumulative = sortedFresh.length > 0 ? sortedFresh[sortedFresh.length - 1].cumulativeGap : 0;
     await db.floatGapHistory.add({ id: `gap-${Date.now()}-${uid()}`, cardId: resolvedCardId, cycleLabel: gapForm.cycleLabel, totalBill, cashReceived, delta, cumulativeGap: prevCumulative + delta, updatedAt: Date.now() });
+    triggerSync();
     setGapForm({ cycleLabel: '', totalBill: '', cashReceived: '' });
     setIsAddingGap(false);
   }
 
   async function handleDeleteGapEntry(entry: FloatGapHistory) {
     await db.floatGapHistory.delete(entry.id);
+    await deleteFromCloud('float_gap_history', entry.id);
     const fresh = await db.floatGapHistory.where('cardId').equals(entry.cardId).toArray();
     const sorted = fresh.sort((a, b) => a.cycleLabel.localeCompare(b.cycleLabel));
     let running = 0;
     for (const h of sorted) {
       running += h.delta;
-      await db.floatGapHistory.update(h.id, { cumulativeGap: running });
+      await db.floatGapHistory.update(h.id, { cumulativeGap: running, updatedAt: Date.now() });
     }
+    triggerSync();
   }
 
   async function handleAddLedger() {
     if (!newLedgerName.trim()) return;
     const id = `ledger-${Date.now()}-${uid()}`;
     await db.reimbursementLedgers.add({ id, counterpartyName: newLedgerName.trim(), updatedAt: Date.now() });
+    triggerSync();
     setNewLedgerName('');
     setIsAddingLedger(false);
     setSelectedLedgerId(id);
@@ -422,8 +480,12 @@ export default function FloatTools() {
 
   async function handleDeleteLedger(ledger: ReimbursementLedger) {
     if (!confirm(`Delete the "${ledger.counterpartyName}" ledger and all its entries?`)) return;
+    const entryIds = (await db.reimbursementEntries.where('ledgerId').equals(ledger.id).toArray()).map(e => e.id);
     await db.reimbursementEntries.where('ledgerId').equals(ledger.id).delete();
+    for (const eid of entryIds) await deleteFromCloud('reimbursement_entries', eid);
     await db.reimbursementLedgers.delete(ledger.id);
+    await deleteFromCloud('reimbursement_ledgers', ledger.id);
+    triggerSync();
     setSelectedLedgerId('');
   }
 
@@ -432,8 +494,15 @@ export default function FloatTools() {
     const amountOwed = parseFloat(entryForm.amountOwed) || 0;
     const amountPaid = parseFloat(entryForm.amountPaid) || 0;
     await db.reimbursementEntries.add({ id: `entry-${Date.now()}-${uid()}`, ledgerId: resolvedLedgerId, date: entryForm.dateStr ? new Date(entryForm.dateStr).getTime() : Date.now(), note: entryForm.note.trim(), amountOwed, amountPaid, delta: amountPaid - amountOwed, updatedAt: Date.now() });
+    triggerSync();
     setEntryForm({ note: '', amountOwed: '', amountPaid: '', dateStr: new Date().toISOString().slice(0, 10) });
     setIsAddingEntry(false);
+  }
+
+  async function handleDeleteEntry(id: string) {
+    await db.reimbursementEntries.delete(id);
+    await deleteFromCloud('reimbursement_entries', id);
+    triggerSync();
   }
 
   return (
@@ -767,7 +836,7 @@ export default function FloatTools() {
             )}
             {offsets.length === 0 && !isAddingOffset
               ? <p className="text-sm text-muted-foreground">No offset sources yet.</p>
-              : <div className="space-y-2">{offsets.map(src => { const card = cards.find(c => c.id === src.linkedCardId); return (<div key={src.id} className={`${cardCls} p-4 flex items-center justify-between`}><div><p className="font-semibold text-foreground text-sm">{src.name}</p><p className="text-xs text-muted-foreground font-mono">LKR {fmt(src.expectedMonthlyAmount)}/mo · {card?.name ?? '-'}{src.category ? ` · ${src.category}` : ''}</p></div><button onClick={() => { void db.cashOffsetSources.delete(src.id); }} className="p-1.5 text-muted-foreground hover:text-red-500"><Trash2 size={13} /></button></div>); })}</div>
+              : <div className="space-y-2">{offsets.map(src => { const card = cards.find(c => c.id === src.linkedCardId); return (<div key={src.id} className={`${cardCls} p-4 flex items-center justify-between`}><div><p className="font-semibold text-foreground text-sm">{src.name}</p><p className="text-xs text-muted-foreground font-mono">LKR {fmt(src.expectedMonthlyAmount)}/mo · {card?.name ?? '-'}{src.category ? ` · ${src.category}` : ''}</p></div><button onClick={() => { void handleDeleteOffset(src.id); }} className="p-1.5 text-muted-foreground hover:text-red-500"><Trash2 size={13} /></button></div>); })}</div>
             }
           </section>
 
@@ -788,7 +857,7 @@ export default function FloatTools() {
             )}
             {fds.length === 0 && !isAddingFD
               ? <p className="text-sm text-muted-foreground">No fixed deposits yet.</p>
-              : <div className="space-y-2">{fds.map(fd => { const annual = (fd.principal * fd.ratePercent) / 100; const card = cards.find(c => c.id === fd.linkedCardId); return (<div key={fd.id} className={`${cardCls} p-4 flex items-center justify-between`}><div><p className="font-semibold text-foreground text-sm">{fd.name}</p><p className="text-xs text-muted-foreground font-mono">LKR {fmt(fd.principal)} · {fd.ratePercent}% p.a. · Annual return: LKR {fmt(Math.round(annual))}{card ? ` · Secured: ${card.name}` : ''}</p></div><button onClick={() => { void db.fixedDeposits.delete(fd.id); }} className="p-1.5 text-muted-foreground hover:text-red-500"><Trash2 size={13} /></button></div>); })}</div>
+              : <div className="space-y-2">{fds.map(fd => { const annual = (fd.principal * fd.ratePercent) / 100; const card = cards.find(c => c.id === fd.linkedCardId); return (<div key={fd.id} className={`${cardCls} p-4 flex items-center justify-between`}><div><p className="font-semibold text-foreground text-sm">{fd.name}</p><p className="text-xs text-muted-foreground font-mono">LKR {fmt(fd.principal)} · {fd.ratePercent}% p.a. · Annual return: LKR {fmt(Math.round(annual))}{card ? ` · Secured: ${card.name}` : ''}</p></div><button onClick={() => { void handleDeleteFD(fd.id); }} className="p-1.5 text-muted-foreground hover:text-red-500"><Trash2 size={13} /></button></div>); })}</div>
             }
           </section>
 
@@ -809,7 +878,7 @@ export default function FloatTools() {
             )}
             {mmas.length === 0 && !isAddingMMA
               ? <p className="text-sm text-muted-foreground">No money market accounts yet.</p>
-              : <div className="space-y-2">{mmas.map(mma => { const eff = mma.balance >= mma.minimumBalanceForRate ? mma.currentRatePercent : mma.baseRatePercent; const annual = (mma.balance * eff) / 100; const below = mma.balance < mma.minimumBalanceForRate; return (<div key={mma.id} className={`${cardCls} p-4 flex items-center justify-between`}><div><p className="font-semibold text-foreground text-sm">{mma.name}</p><p className="text-xs text-muted-foreground font-mono">LKR {fmt(mma.balance)} · {eff}% effective · Annual: LKR {fmt(Math.round(annual))}</p>{below && <p className="text-[11px] text-amber-500 mt-0.5">Below minimum — base rate {mma.baseRatePercent}%</p>}</div><button onClick={() => { void db.moneyMarketAccounts.delete(mma.id); }} className="p-1.5 text-muted-foreground hover:text-red-500"><Trash2 size={13} /></button></div>); })}</div>
+              : <div className="space-y-2">{mmas.map(mma => { const eff = mma.balance >= mma.minimumBalanceForRate ? mma.currentRatePercent : mma.baseRatePercent; const annual = (mma.balance * eff) / 100; const below = mma.balance < mma.minimumBalanceForRate; return (<div key={mma.id} className={`${cardCls} p-4 flex items-center justify-between`}><div><p className="font-semibold text-foreground text-sm">{mma.name}</p><p className="text-xs text-muted-foreground font-mono">LKR {fmt(mma.balance)} · {eff}% effective · Annual: LKR {fmt(Math.round(annual))}</p>{below && <p className="text-[11px] text-amber-500 mt-0.5">Below minimum — base rate {mma.baseRatePercent}%</p>}</div><button onClick={() => { void handleDeleteMMA(mma.id); }} className="p-1.5 text-muted-foreground hover:text-red-500"><Trash2 size={13} /></button></div>); })}</div>
             }
           </section>
 
@@ -831,7 +900,7 @@ export default function FloatTools() {
             )}
             {plans.length === 0 && !isAddingPlan
               ? <p className="text-sm text-muted-foreground">No installment plans yet.</p>
-              : <div className="space-y-2">{plans.map(plan => { const card = cards.find(c => c.id === plan.linkedCardId); const pct = plan.totalMonths > 0 ? (plan.monthsPaid / plan.totalMonths) * 100 : 0; const done = !plan.active && plan.monthsPaid >= plan.totalMonths; return (<div key={plan.id} className={`${cardCls} p-4`}><div className="flex items-start justify-between mb-2"><div className="flex-1 min-w-0"><div className="flex items-center gap-2"><p className="font-semibold text-foreground text-sm truncate">{plan.description}</p>{done && <span className="text-[10px] px-1.5 py-0.5 bg-emerald-500/10 text-emerald-500 rounded font-semibold shrink-0">Done</span>}</div><p className="text-xs text-muted-foreground font-mono">{card?.name ?? '-'} · LKR {fmt(plan.monthlyAmount)}/mo · {plan.monthsPaid}/{plan.totalMonths} paid</p></div><div className="flex items-center gap-1.5 ml-3 shrink-0">{plan.active && <button onClick={() => { void handleMarkPlanPaid(plan); }} className="text-xs px-2.5 py-1 bg-muted text-foreground rounded-lg hover:bg-muted/70 font-medium">Mark Paid</button>}<button onClick={() => { void db.installmentPlans.delete(plan.id); }} className="p-1.5 text-muted-foreground hover:text-red-500"><Trash2 size={13} /></button></div></div><div className="h-1 bg-muted rounded-full overflow-hidden"><div className={`h-full rounded-full ${done ? 'bg-emerald-500' : 'bg-blue-500'}`} style={{ width: `${pct}%` }} /></div></div>); })}</div>
+              : <div className="space-y-2">{plans.map(plan => { const card = cards.find(c => c.id === plan.linkedCardId); const pct = plan.totalMonths > 0 ? (plan.monthsPaid / plan.totalMonths) * 100 : 0; const done = !plan.active && plan.monthsPaid >= plan.totalMonths; return (<div key={plan.id} className={`${cardCls} p-4`}><div className="flex items-start justify-between mb-2"><div className="flex-1 min-w-0"><div className="flex items-center gap-2"><p className="font-semibold text-foreground text-sm truncate">{plan.description}</p>{done && <span className="text-[10px] px-1.5 py-0.5 bg-emerald-500/10 text-emerald-500 rounded font-semibold shrink-0">Done</span>}</div><p className="text-xs text-muted-foreground font-mono">{card?.name ?? '-'} · LKR {fmt(plan.monthlyAmount)}/mo · {plan.monthsPaid}/{plan.totalMonths} paid</p></div><div className="flex items-center gap-1.5 ml-3 shrink-0">{plan.active && <button onClick={() => { void handleMarkPlanPaid(plan); }} className="text-xs px-2.5 py-1 bg-muted text-foreground rounded-lg hover:bg-muted/70 font-medium">Mark Paid</button>}<button onClick={() => { void handleDeletePlan(plan.id); }} className="p-1.5 text-muted-foreground hover:text-red-500"><Trash2 size={13} /></button></div></div><div className="h-1 bg-muted rounded-full overflow-hidden"><div className={`h-full rounded-full ${done ? 'bg-emerald-500' : 'bg-blue-500'}`} style={{ width: `${pct}%` }} /></div></div>); })}</div>
             }
           </section>
 
@@ -857,7 +926,7 @@ export default function FloatTools() {
             )}
             {promos.length === 0 && !isAddingPromo
               ? <p className="text-sm text-muted-foreground">No promos yet.</p>
-              : <div className="space-y-3">{promos.map(promo => { const card = cards.find(c => c.id === promo.linkedCardId); const expired = promo.windowEnd <= Date.now(); const dl = differenceInDays(new Date(promo.windowEnd), new Date()); return (<div key={promo.id} className={`${cardCls} p-4 ${expired ? 'opacity-60' : ''}`}><div className="flex items-start justify-between mb-3"><div><div className="flex items-center gap-2"><p className="font-semibold text-foreground text-sm">{promo.description}</p>{expired && <span className="text-[10px] px-1.5 py-0.5 bg-muted text-muted-foreground rounded">Expired</span>}</div><p className="text-xs text-muted-foreground">{card?.name ?? '-'} · {expired ? 'Ended' : `${dl}d left`} · {promo.cashbackPercent}% back (cap LKR {fmt(promo.cashbackCap)})</p></div><button onClick={() => { void db.cardPromos.delete(promo.id); }} className="p-1.5 text-muted-foreground hover:text-red-500 shrink-0 ml-2"><Trash2 size={13} /></button></div><div className="grid grid-cols-2 gap-3"><div><label className={labelCls}>Current Spend (LKR)</label><input type="number" className={inputCls} value={promo.currentSpend} onChange={e => { void handleUpdatePromoProgress(promo, 'currentSpend', e.target.value); }} /></div><div><label className={labelCls}>Transaction Count</label><input type="number" className={inputCls} value={promo.currentTransactionCount} onChange={e => { void handleUpdatePromoProgress(promo, 'currentTransactionCount', e.target.value); }} /></div></div></div>); })}</div>
+              : <div className="space-y-3">{promos.map(promo => { const card = cards.find(c => c.id === promo.linkedCardId); const expired = promo.windowEnd <= Date.now(); const dl = differenceInDays(new Date(promo.windowEnd), new Date()); return (<div key={promo.id} className={`${cardCls} p-4 ${expired ? 'opacity-60' : ''}`}><div className="flex items-start justify-between mb-3"><div><div className="flex items-center gap-2"><p className="font-semibold text-foreground text-sm">{promo.description}</p>{expired && <span className="text-[10px] px-1.5 py-0.5 bg-muted text-muted-foreground rounded">Expired</span>}</div><p className="text-xs text-muted-foreground">{card?.name ?? '-'} · {expired ? 'Ended' : `${dl}d left`} · {promo.cashbackPercent}% back (cap LKR {fmt(promo.cashbackCap)})</p></div><button onClick={() => { void handleDeletePromo(promo.id); }} className="p-1.5 text-muted-foreground hover:text-red-500 shrink-0 ml-2"><Trash2 size={13} /></button></div><div className="grid grid-cols-2 gap-3"><div><label className={labelCls}>Current Spend (LKR)</label><input type="number" className={inputCls} value={promo.currentSpend} onChange={e => { void handleUpdatePromoProgress(promo, 'currentSpend', e.target.value); }} /></div><div><label className={labelCls}>Transaction Count</label><input type="number" className={inputCls} value={promo.currentTransactionCount} onChange={e => { void handleUpdatePromoProgress(promo, 'currentTransactionCount', e.target.value); }} /></div></div></div>); })}</div>
             }
           </section>
         </div>
@@ -1029,7 +1098,7 @@ export default function FloatTools() {
                   )}
                   {selectedLedgerEntries.length === 0
                     ? <p className="text-sm text-muted-foreground">No entries yet.</p>
-                    : <div className={`${cardCls} divide-y divide-border`}>{[...selectedLedgerEntries].reverse().map(entry => (<div key={entry.id} className="flex items-center justify-between p-4"><div><p className="font-medium text-foreground text-sm">{entry.note}</p><p className="text-xs text-muted-foreground font-mono mt-0.5">{format(new Date(entry.date), 'MMM d, yyyy')} · Owed: LKR {fmt(entry.amountOwed)} · Received: LKR {fmt(entry.amountPaid)}</p></div><div className="flex items-center gap-3"><p className={`font-mono font-semibold text-sm ${entry.delta >= 0 ? 'text-emerald-500' : 'text-red-400'}`}>{entry.delta >= 0 ? '+' : '-'}LKR {fmt(Math.abs(entry.delta))}</p><button onClick={() => { void db.reimbursementEntries.delete(entry.id); }} className="p-1 text-muted-foreground hover:text-red-500"><Trash2 size={13} /></button></div></div>))}</div>
+                    : <div className={`${cardCls} divide-y divide-border`}>{[...selectedLedgerEntries].reverse().map(entry => (<div key={entry.id} className="flex items-center justify-between p-4"><div><p className="font-medium text-foreground text-sm">{entry.note}</p><p className="text-xs text-muted-foreground font-mono mt-0.5">{format(new Date(entry.date), 'MMM d, yyyy')} · Owed: LKR {fmt(entry.amountOwed)} · Received: LKR {fmt(entry.amountPaid)}</p></div><div className="flex items-center gap-3"><p className={`font-mono font-semibold text-sm ${entry.delta >= 0 ? 'text-emerald-500' : 'text-red-400'}`}>{entry.delta >= 0 ? '+' : '-'}LKR {fmt(Math.abs(entry.delta))}</p><button onClick={() => { void handleDeleteEntry(entry.id); }} className="p-1 text-muted-foreground hover:text-red-500"><Trash2 size={13} /></button></div></div>))}</div>
                   }
                 </div>
               </div>
