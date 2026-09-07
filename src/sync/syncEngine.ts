@@ -369,43 +369,6 @@ export async function syncAll(userId: string): Promise<{ success: boolean; error
   await migrateLegacyIds();
   const tables: TableName[] = ['accounts', 'categories', 'tags', 'budgets', 'transactions'];
 
-  // ── Mock-data guard ────────────────────────────────────────────────────────
-  // Before pushing anything, check whether any local account IDs actually belong
-  // to this user in the cloud. If none of the local accounts are in the cloud:
-  //   • New account  → cloud is empty, local is mock/starter data → clear
-  //   • Existing user signing in after guest session → local is still mock data
-  //                                                    (different IDs) → clear
-  // This prevents mock data from ever being pushed to a real account.
-  try {
-    const localAccounts = await db.accounts.toArray();
-    if (localAccounts.length > 0) {
-      const { data: cloudAccounts } = await supabase
-        .from('accounts')
-        .select('id')
-        .eq('user_id', userId);
-
-      // CRITICAL FIX: Only wipe local data if the cloud actually has data!
-      // If the cloud is empty, it's either a new user syncing their starter data,
-      // or a user recovering from a purge. Wiping local data here destroys everything.
-      if (cloudAccounts && cloudAccounts.length > 0) {
-        const cloudIds = new Set(cloudAccounts.map((r: Record<string, unknown>) => String(r.id)));
-        const anyLocalInCloud = localAccounts.some(a => cloudIds.has(a.id));
-
-        if (!anyLocalInCloud) {
-          // Cloud has real data, but local doesn't overlap at all — local must be mock data.
-          await db.accounts.clear();
-          await db.transactions.clear();
-          await db.categories.clear();
-          await db.budgets.clear();
-          await db.tags.clear();
-        }
-      }
-    }
-  } catch {
-    // Non-fatal: if the check fails, proceed normally
-  }
-  // ───────────────────────────────────────────────────────────────────────────
-
   // 1. Push all local tables
   const pushResults = await Promise.all(tables.map(t => pushTable(t, userId)));
   const failedPush = pushResults.find(r => !r.success);
@@ -457,25 +420,7 @@ export async function hydrateFromCloud(userId: string): Promise<{ restoredCount:
     return { restoredCount: 0 };
   }
 
-  // If cloud has real data, remove starter mock data from Dexie so it doesn't
-  // collide with what we're about to hydrate. We identify mock data by checking
-  // whether *any* local account ID already exists in the cloud data. If none
-  // of the local accounts are known to the cloud, they must be the freshly-seeded
-  // mock rows (which use dynamic IDs that were never synced), so it's safe to
-  // clear them. This also handles the legacy 'acc-cash' / 'acc-bank' IDs.
-  const localAccounts = await db.accounts.toArray();
-  if (localAccounts.length > 0 && accsRes.data && accsRes.data.length > 0) {
-    const cloudAccountIds = new Set(accsRes.data.map((r: Record<string, unknown>) => String(r.id)));
-    const anyLocalExistsInCloud = localAccounts.some(a => cloudAccountIds.has(a.id));
-    if (!anyLocalExistsInCloud) {
-      // All local data is mock/starter data — clear it before hydrating
-      await db.accounts.clear();
-      await db.transactions.clear();
-      await db.categories.clear();
-      await db.budgets.clear();
-      await db.tags.clear();
-    }
-  }
+
 
   let count = 0;
   if (accsRes.data?.length) {

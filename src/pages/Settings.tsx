@@ -314,6 +314,46 @@ export default function Settings() {
               Import
             </span>
           </button>
+
+          <button
+            onClick={async () => {
+              if (!confirm('Are you sure you want to delete ALL local data (accounts, transactions, categories, budgets, tags)?\n\nThis will completely wipe local storage on this device.')) return;
+              await Promise.all([
+                db.accounts.clear(),
+                db.transactions.clear(),
+                db.categories.clear(),
+                db.tags.clear(),
+                db.budgets.clear(),
+                db.recurringTransactions.clear(),
+                db.savingsGoals.clear(),
+                db.creditCards.clear(),
+                db.cashOffsetSources.clear(),
+                db.fixedDeposits.clear(),
+                db.moneyMarketAccounts.clear(),
+                db.installmentPlans.clear(),
+                db.cardPromos.clear(),
+                db.floatGapHistory.clear(),
+                db.reimbursementLedgers.clear(),
+                db.reimbursementEntries.clear(),
+                db.people.clear(),
+                db.debts.clear(),
+              ]);
+              localStorage.removeItem('finora-pending-sync');
+              alert('All local data has been cleared.');
+            }}
+            className="flex items-center justify-between w-full p-3.5 bg-red-500/5 hover:bg-red-500/10 border border-red-500/20 rounded-xl text-xs font-medium text-red-500 transition-colors"
+          >
+            <div className="flex items-center gap-3">
+              <Trash2 size={20} className="text-red-500" />
+              <div className="text-left">
+                <p className="font-medium text-sm text-red-500">Clear All Local Data</p>
+                <p className="text-[11px] text-muted-foreground">Wipe all accounts, tags, categories, transactions and reset storage</p>
+              </div>
+            </div>
+            <span className="px-3 py-1.5 bg-red-500 text-white rounded-lg text-xs font-semibold">
+              Wipe
+            </span>
+          </button>
         </div>
       </section>
 

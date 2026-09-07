@@ -1,7 +1,6 @@
 import { create } from 'zustand';
 import { supabase } from '../lib/supabase';
 import { db } from '../db/db';
-import { initDbWithMockData } from '../utils/initDb';
 import type { User, Session } from '@supabase/supabase-js';
 
 interface AuthState {
@@ -57,7 +56,6 @@ export const useAuthStore = create<AuthState>((set, get) => ({
       db.tags.clear(),
       db.categories.clear(),
     ]);
-    await initDbWithMockData();
   },
 
   sendPasswordReset: async (email) => {

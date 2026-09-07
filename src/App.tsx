@@ -17,7 +17,7 @@ import {
   Moon,
   Laptop,
 } from 'lucide-react';
-import { initDbWithMockData, deduplicateCategories } from './utils/initDb';
+import { purgeMockData, deduplicateCategories } from './utils/initDb';
 import { processDueRecurringTransactions } from './utils/recurringEngine';
 import { useUIStore } from './store/uiStore';
 import { useThemeStore } from './store/themeStore';
@@ -435,7 +435,7 @@ function App() {
   }, [setUser, setAuthLoading]);
 
   useEffect(() => {
-    initDbWithMockData();
+    purgeMockData();
     deduplicateCategories();
     processDueRecurringTransactions();
   }, []);
