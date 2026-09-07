@@ -22,6 +22,7 @@ export default function TransactionModal() {
   const [toAccountId, setToAccountId] = useState(''); // For transfers
   const [isShared, setIsShared] = useState(false);
   const [personalAmount, setPersonalAmount] = useState(''); // For shared expenses
+  const [sharedPersonName, setSharedPersonName] = useState('');
   const [excludeFromBudget, setExcludeFromBudget] = useState(false);
 
   const [showNoteSuggestions, setShowNoteSuggestions] = useState(false);
@@ -36,6 +37,7 @@ export default function TransactionModal() {
   const accounts = useLiveQuery(() => db.accounts.toArray()) || [];
   const categories = useLiveQuery(() => db.categories.toArray()) || [];
   const tags = useLiveQuery(() => db.tags.toArray()) || [];
+  const people = useLiveQuery(() => db.people.toArray()) || [];
   const allTransactions = useLiveQuery(() => db.transactions.toArray()) || [];
   
   const [autoFillIndicator, setAutoFillIndicator] = useState<string | null>(null);
@@ -150,7 +152,7 @@ export default function TransactionModal() {
     const numAmount = Number(amount);
 
     try {
-      await db.transaction('rw', db.transactions, db.accounts, db.tags, async () => {
+      await db.transaction('rw', [db.transactions, db.accounts, db.tags, db.debts, db.people], async () => {
         // Resolve tags (create if new)
         const tagsToProcess = [...selectedTags];
         if (tagInput.trim() && !tagsToProcess.includes(tagInput.trim())) {
@@ -171,10 +173,11 @@ export default function TransactionModal() {
         }
 
         const now = Date.now();
+        const txnId = `txn-${now}`;
 
         // 1. Add transaction record
         await db.transactions.add({
-          id: `txn-${now}`,
+          id: txnId,
           type,
           amount: numAmount,
           date: now,
@@ -189,7 +192,43 @@ export default function TransactionModal() {
           updatedAt: now,
         });
 
-        // 2. Update account balances
+        // 2. Auto-generate debt record if shared expense
+        if (type === 'expense' && isShared && personalAmount !== '') {
+          const myShare = Number(personalAmount);
+          const owedAmount = numAmount - myShare;
+          if (owedAmount > 0) {
+            const trimmedName = sharedPersonName.trim() || 'Friend';
+            const allPeople = await db.people.toArray();
+            const existingPerson = allPeople.find(
+              p => p.name.toLowerCase() === trimmedName.toLowerCase()
+            );
+            let personId = existingPerson?.id;
+            if (!existingPerson && trimmedName !== 'Friend') {
+              personId = `person-${now}-${Math.random().toString(36).substring(2, 6)}`;
+              await db.people.add({
+                id: personId,
+                name: trimmedName,
+                updatedAt: now,
+              });
+            }
+
+            await db.debts.add({
+              id: `debt-${now}-${Math.random().toString(36).substring(2, 6)}`,
+              source: 'shared_expense',
+              direction: 'theyOweMe',
+              personId,
+              personName: trimmedName,
+              amount: owedAmount,
+              note: notes ? `Split: ${notes}` : 'Shared expense split',
+              date: now,
+              relatedTransactionId: txnId,
+              settlements: [],
+              updatedAt: now,
+            });
+          }
+        }
+
+        // 3. Update account balances
         const fromAcc = await db.accounts.get(accountId);
         if (fromAcc) {
           if (type === 'expense') {
@@ -217,6 +256,7 @@ export default function TransactionModal() {
       setShowAdvanced(false);
       setIsShared(false);
       setPersonalAmount('');
+      setSharedPersonName('');
       setExcludeFromBudget(false);
       setAutoFillIndicator(null);
       setAddTransactionModalOpen(false);
@@ -581,18 +621,37 @@ export default function TransactionModal() {
                       </label>
                       
                       {isShared && (
-                        <div className="pl-8 animate-in fade-in slide-in-from-top-2">
-                          <label className="block text-xs font-medium text-muted-foreground mb-2 uppercase tracking-wider">My Share (LKR)</label>
-                          <input
-                            type="number"
-                            value={personalAmount}
-                            onChange={e => setPersonalAmount(e.target.value)}
-                            className="w-full p-3 bg-card border border-border rounded-xl font-medium text-foreground outline-none focus:border-blue-500"
-                            placeholder="How much is actually yours?"
-                          />
-                          <p className="text-xs text-muted-foreground mt-2">
-                            The full {amount || '0'} will be deducted from your account, but only your share will count against your budget.
-                          </p>
+                        <div className="pl-8 space-y-3 animate-in fade-in slide-in-from-top-2">
+                          <div>
+                            <label className="block text-xs font-medium text-muted-foreground mb-2 uppercase tracking-wider">My Share (LKR)</label>
+                            <input
+                              type="number"
+                              value={personalAmount}
+                              onChange={e => setPersonalAmount(e.target.value)}
+                              className="w-full p-3 bg-card border border-border rounded-xl font-medium text-foreground outline-none focus:border-blue-500"
+                              placeholder="How much is actually yours?"
+                            />
+                            <p className="text-xs text-muted-foreground mt-1">
+                              The full {amount || '0'} will be deducted from your account, but only your share will count against your budget.
+                            </p>
+                          </div>
+
+                          <div>
+                            <label className="block text-xs font-medium text-muted-foreground mb-2 uppercase tracking-wider">Who owes you? (IOU)</label>
+                            <input
+                              type="text"
+                              list="shared-people-list"
+                              value={sharedPersonName}
+                              onChange={e => setSharedPersonName(e.target.value)}
+                              className="w-full p-3 bg-card border border-border rounded-xl font-medium text-foreground outline-none focus:border-blue-500"
+                              placeholder="e.g. John, Sarah (creates an IOU)"
+                            />
+                            <datalist id="shared-people-list">
+                              {people.map(p => (
+                                <option key={p.id} value={p.name} />
+                              ))}
+                            </datalist>
+                          </div>
                         </div>
                       )}
                     </div>

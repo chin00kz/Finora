@@ -19,6 +19,7 @@ import { useLocation } from 'react-router-dom';
 import TransactionEditSheet from '../components/TransactionEditSheet';
 import ImportDataModal from '../components/ImportDataModal';
 import { triggerSync, deleteFromCloud } from '../sync/syncEngine';
+import { syncSettlementFromTransactionDelete } from '../utils/debtSettlementEngine';
 
 export default function Activity() {
   const location = useLocation();
@@ -188,7 +189,14 @@ export default function Activity() {
       for (const txn of txnsToDelete) {
         const acc = await db.accounts.get(txn.accountId);
         if (acc) {
-          const delta = txn.type === 'expense' ? txn.amount : txn.type === 'income' ? -txn.amount : 0;
+          const delta =
+            txn.type === 'expense'
+              ? txn.amount
+              : txn.type === 'income'
+              ? -txn.amount
+              : txn.type === 'debt_settlement'
+              ? (txn.debtDirection === 'theyOweMe' ? -txn.amount : txn.amount)
+              : 0;
           await db.accounts.update(txn.accountId, {
             balance: acc.balance + delta,
             updatedAt: Date.now(),
@@ -198,8 +206,11 @@ export default function Activity() {
       await db.transactions.bulkDelete(idsToDelete);
     });
 
-    for (const id of idsToDelete) {
-      await deleteFromCloud('transactions', id);
+    for (const txn of txnsToDelete) {
+      if (txn.type === 'debt_settlement') {
+        await syncSettlementFromTransactionDelete(txn);
+      }
+      await deleteFromCloud('transactions', txn.id);
     }
     triggerSync();
     setSelectedIds(new Set());
@@ -430,15 +441,21 @@ export default function Activity() {
                 Type
               </label>
               <div className="flex bg-muted p-1 rounded-xl">
-                {['all', 'expense', 'income', 'transfer'].map(t => (
+                {[
+                  { key: 'all', label: 'All' },
+                  { key: 'expense', label: 'Expense' },
+                  { key: 'income', label: 'Income' },
+                  { key: 'transfer', label: 'Transfer' },
+                  { key: 'debt_settlement', label: 'Settlement' },
+                ].map(t => (
                   <button
-                    key={t}
-                    onClick={() => setFilterType(t)}
+                    key={t.key}
+                    onClick={() => setFilterType(t.key)}
                     className={`flex-1 py-1.5 text-xs font-medium rounded-lg capitalize transition-colors ${
-                      filterType === t ? 'bg-card shadow-sm text-foreground' : 'text-muted-foreground'
+                      filterType === t.key ? 'bg-card shadow-sm text-foreground' : 'text-muted-foreground'
                     }`}
                   >
-                    {t}
+                    {t.label}
                   </button>
                 ))}
               </div>
@@ -634,7 +651,7 @@ export default function Activity() {
                         </div>
                       </td>
                       <td className="p-3.5 font-medium text-foreground max-w-xs truncate">
-                        {txn.notes || category?.name || (txn.type === 'transfer' ? 'Transfer' : 'Transaction')}
+                        {txn.notes || (txn.type === 'debt_settlement' ? 'Debt Settlement' : category?.name) || (txn.type === 'transfer' ? 'Transfer' : 'Transaction')}
                       </td>
                       <td className="p-3.5">
                         {category ? (
@@ -647,6 +664,11 @@ export default function Activity() {
                           >
                             <span className="w-1.5 h-1.5 rounded-full" style={{ backgroundColor: category.color }} />
                             {category.name}
+                          </span>
+                        ) : txn.type === 'debt_settlement' ? (
+                          <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-medium bg-purple-500/10 text-purple-600 dark:text-purple-400">
+                            <span>🤝</span>
+                            <span>Settlement</span>
                           </span>
                         ) : (
                           <span className="text-xs text-muted-foreground">—</span>
@@ -682,14 +704,18 @@ export default function Activity() {
                       </td>
                       <td
                         className={`p-3.5 pr-5 text-right font-medium whitespace-nowrap ${
-                          txn.type === 'expense'
+                          txn.type === 'expense' || (txn.type === 'debt_settlement' && txn.debtDirection === 'iOweThem')
                             ? 'text-foreground'
-                            : txn.type === 'income'
+                            : txn.type === 'income' || (txn.type === 'debt_settlement' && txn.debtDirection === 'theyOweMe')
                             ? 'text-emerald-500'
                             : 'text-muted-foreground'
                         }`}
                       >
-                        {txn.type === 'expense' ? '−' : txn.type === 'income' ? '+' : ''}LKR{' '}
+                        {txn.type === 'expense' || (txn.type === 'debt_settlement' && txn.debtDirection === 'iOweThem')
+                          ? '−'
+                          : txn.type === 'income' || (txn.type === 'debt_settlement' && txn.debtDirection === 'theyOweMe')
+                          ? '+'
+                          : ''}LKR{' '}
                         {txn.amount.toLocaleString()}
                       </td>
                     </tr>
@@ -735,15 +761,15 @@ export default function Activity() {
                           color: category?.color || 'var(--foreground)',
                         }}
                       >
-                        {txn.type === 'expense' ? '💸' : txn.type === 'income' ? '💰' : '🔄'}
+                        {txn.type === 'expense' ? '💸' : txn.type === 'income' ? '💰' : txn.type === 'debt_settlement' ? '🤝' : '🔄'}
                       </div>
                       <div>
                         <p className="font-medium text-foreground text-sm">
-                          {txn.notes || category?.name || (txn.type === 'transfer' ? 'Transfer' : 'Transaction')}
+                          {txn.notes || (txn.type === 'debt_settlement' ? 'Debt Settlement' : category?.name) || (txn.type === 'transfer' ? 'Transfer' : 'Transaction')}
                         </p>
                         <p className="text-xs text-muted-foreground mt-0.5">
                           {format(new Date(txn.date), 'h:mm a')}
-                          {category && txn.notes ? ` · ${category.name}` : ''}
+                          {txn.type === 'debt_settlement' ? ' · Settlement' : (category && txn.notes ? ` · ${category.name}` : '')}
                         </p>
                         {txn.tagIds && txn.tagIds.length > 0 && (
                           <div className="flex gap-1 mt-1">
@@ -776,14 +802,18 @@ export default function Activity() {
                     </div>
                     <div
                       className={`font-medium text-sm ${
-                        txn.type === 'expense'
+                        txn.type === 'expense' || (txn.type === 'debt_settlement' && txn.debtDirection === 'iOweThem')
                           ? 'text-foreground'
-                          : txn.type === 'income'
+                          : txn.type === 'income' || (txn.type === 'debt_settlement' && txn.debtDirection === 'theyOweMe')
                           ? 'text-emerald-500'
                           : 'text-muted-foreground'
                       }`}
                     >
-                      {txn.type === 'expense' ? '−' : txn.type === 'income' ? '+' : ''}LKR{' '}
+                      {txn.type === 'expense' || (txn.type === 'debt_settlement' && txn.debtDirection === 'iOweThem')
+                        ? '−'
+                        : txn.type === 'income' || (txn.type === 'debt_settlement' && txn.debtDirection === 'theyOweMe')
+                        ? '+'
+                        : ''}LKR{' '}
                       {txn.amount.toLocaleString()}
                     </div>
                   </div>

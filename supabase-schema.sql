@@ -58,8 +58,13 @@ CREATE POLICY "Users can manage their own people" ON public.people
 CREATE TABLE IF NOT EXISTS public.debts (
   id TEXT PRIMARY KEY,
   user_id UUID REFERENCES auth.users(id) ON DELETE CASCADE NOT NULL,
-  person_id TEXT NOT NULL,
+  person_id TEXT,
+  person_name TEXT NOT NULL DEFAULT 'Friend',
   amount NUMERIC NOT NULL,
+  source TEXT NOT NULL DEFAULT 'manual',
+  direction TEXT NOT NULL DEFAULT 'theyOweMe',
+  note TEXT,
+  settlements JSONB DEFAULT '[]'::jsonb,
   related_transaction_id TEXT,
   date BIGINT NOT NULL,
   updated_at BIGINT NOT NULL
@@ -68,6 +73,19 @@ ALTER TABLE public.debts ENABLE ROW LEVEL SECURITY;
 DROP POLICY IF EXISTS "Users can manage their own debts" ON public.debts;
 CREATE POLICY "Users can manage their own debts" ON public.debts
   FOR ALL USING (auth.uid() = user_id) WITH CHECK (auth.uid() = user_id);
+
+-- Migration helpers for existing databases
+ALTER TABLE public.debts ADD COLUMN IF NOT EXISTS source TEXT DEFAULT 'manual';
+ALTER TABLE public.debts ADD COLUMN IF NOT EXISTS direction TEXT DEFAULT 'theyOweMe';
+ALTER TABLE public.debts ADD COLUMN IF NOT EXISTS person_name TEXT;
+ALTER TABLE public.debts ADD COLUMN IF NOT EXISTS note TEXT;
+ALTER TABLE public.debts ADD COLUMN IF NOT EXISTS settlements JSONB DEFAULT '[]'::jsonb;
+ALTER TABLE public.debts ALTER COLUMN person_id DROP NOT NULL;
+
+-- Transaction support for debt settlements
+ALTER TABLE public.transactions ADD COLUMN IF NOT EXISTS debt_id TEXT;
+ALTER TABLE public.transactions ADD COLUMN IF NOT EXISTS debt_direction TEXT;
+ALTER TABLE public.transactions ADD COLUMN IF NOT EXISTS debt_settlement_id TEXT;
 
 -- 4. Credit Cards
 CREATE TABLE IF NOT EXISTS public.credit_cards (

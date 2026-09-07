@@ -2,7 +2,7 @@ import Dexie from 'dexie';
 import type { EntityTable } from 'dexie';
 
 export type AccountType = 'cash' | 'bank' | 'card' | 'savings' | 'wallet' | 'other';
-export type TransactionType = 'expense' | 'income' | 'transfer';
+export type TransactionType = 'expense' | 'income' | 'transfer' | 'debt_settlement';
 export type PeriodType = 'days' | 'weeks' | 'months';
 
 export interface Account {
@@ -60,6 +60,11 @@ export interface Transaction {
   // Out of budget expenses
   excludeFromBudget?: boolean;
 
+  // For debt settlements
+  debtId?: string;
+  debtDirection?: 'theyOweMe' | 'iOweThem';
+  debtSettlementId?: string;
+
   updatedAt?: number;
 }
 
@@ -81,12 +86,29 @@ export interface Person {
   updatedAt?: number;
 }
 
+export interface DebtSettlement {
+  id: string;
+  amount: number;
+  method: 'account' | 'exclude'; // 'account' = adjusted bank/cash balance, 'exclude' = in-kind/favor
+  accountId?: string;
+  date: number;
+  note?: string;
+  transactionId?: string; // id of created debt_settlement transaction if method === 'account'
+}
+
+export type DebtDirection = 'theyOweMe' | 'iOweThem';
+
 export interface Debt {
   id: string;
-  personId: string;
-  amount: number; // Positive if they owe user, Negative if user owes them
-  relatedTransactionId?: string;
-  date: number;
+  source: 'shared_expense' | 'manual';
+  direction: DebtDirection;
+  personId?: string;
+  personName: string;
+  amount: number; // Original debt amount
+  note?: string;
+  date: number; // Unix timestamp
+  relatedTransactionId?: string; // If source === 'shared_expense'
+  settlements?: DebtSettlement[]; // History log of all partial / full settlements
   updatedAt?: number;
 }
 
@@ -300,6 +322,18 @@ db.version(6).stores({
   reimbursementEntries: 'id, ledgerId, date, updatedAt',
 });
 
-
+// v7 — IOUs: manual debt entry, direction, and settlement history
+db.version(7).stores({
+  debts: 'id, personId, source, direction, relatedTransactionId, updatedAt',
+  transactions: 'id, type, date, accountId, categoryId, debtId, updatedAt',
+}).upgrade(async tx => {
+  await tx.table('debts').toCollection().modify((debt: any) => {
+    if (!debt.source) debt.source = debt.relatedTransactionId ? 'shared_expense' : 'manual';
+    if (!debt.direction) debt.direction = (debt.amount >= 0) ? 'theyOweMe' : 'iOweThem';
+    if (debt.amount < 0) debt.amount = Math.abs(debt.amount);
+    if (!debt.personName) debt.personName = 'Friend';
+    if (!debt.settlements) debt.settlements = [];
+  });
+});
 
 export { db };

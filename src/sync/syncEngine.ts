@@ -162,6 +162,9 @@ function toSupabaseTransaction(userId: string, t: Transaction) {
     personal_amount: t.personalAmount != null ? t.personalAmount : null,
     is_settled: t.isSettled || null,
     exclude_from_budget: t.excludeFromBudget || null,
+    debt_id: t.debtId || null,
+    debt_direction: t.debtDirection || null,
+    debt_settlement_id: t.debtSettlementId || null,
     updated_at: t.updatedAt || Date.now(),
   };
 }
@@ -181,6 +184,9 @@ function fromSupabaseTransaction(row: Record<string, unknown>): Transaction {
     personalAmount: row.personal_amount != null ? Number(row.personal_amount) : undefined,
     isSettled: Boolean(row.is_settled),
     excludeFromBudget: Boolean(row.exclude_from_budget),
+    debtId: row.debt_id ? String(row.debt_id) : undefined,
+    debtDirection: (row.debt_direction as Transaction['debtDirection']) || undefined,
+    debtSettlementId: row.debt_settlement_id ? String(row.debt_settlement_id) : undefined,
     updatedAt: Number(row.updated_at) || Date.now(),
   };
 }
@@ -342,8 +348,13 @@ function toSupabaseDebt(userId: string, d: Debt) {
   return {
     id: d.id,
     user_id: userId,
-    person_id: d.personId,
+    person_id: d.personId || null,
+    person_name: d.personName || 'Friend',
     amount: d.amount,
+    source: d.source || 'manual',
+    direction: d.direction || 'theyOweMe',
+    note: d.note || null,
+    settlements: d.settlements || [],
     related_transaction_id: d.relatedTransactionId || null,
     date: d.date,
     updated_at: d.updatedAt || Date.now(),
@@ -351,10 +362,26 @@ function toSupabaseDebt(userId: string, d: Debt) {
 }
 
 function fromSupabaseDebt(row: Record<string, unknown>): Debt {
+  let settlements: Debt['settlements'] = [];
+  if (Array.isArray(row.settlements)) {
+    settlements = row.settlements as Debt['settlements'];
+  } else if (typeof row.settlements === 'string') {
+    try {
+      settlements = JSON.parse(row.settlements);
+    } catch {
+      settlements = [];
+    }
+  }
+
   return {
     id: String(row.id),
-    personId: String(row.person_id),
+    personId: row.person_id ? String(row.person_id) : undefined,
+    personName: String(row.person_name || 'Friend'),
     amount: Number(row.amount) || 0,
+    source: (row.source as Debt['source']) || (row.related_transaction_id ? 'shared_expense' : 'manual'),
+    direction: (row.direction as Debt['direction']) || 'theyOweMe',
+    note: row.note ? String(row.note) : undefined,
+    settlements,
     relatedTransactionId: row.related_transaction_id ? String(row.related_transaction_id) : undefined,
     date: Number(row.date) || Date.now(),
     updatedAt: Number(row.updated_at) || Date.now(),

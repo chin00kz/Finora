@@ -4,6 +4,7 @@ import { db } from '../db/db';
 import type { Transaction, TransactionType } from '../db/db';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { triggerSync, deleteFromCloud } from '../sync/syncEngine';
+import { syncSettlementFromTransactionDelete, syncSettlementFromTransactionEdit } from '../utils/debtSettlementEngine';
 
 interface Props {
   transaction: Transaction;
@@ -60,6 +61,9 @@ export default function TransactionEditSheet({ transaction, onClose }: Props) {
         await db.accounts.update(transaction.accountId, { balance: fromAcc.balance + oldAmount });
         await db.accounts.update(transaction.toAccountId, { balance: toAcc.balance - oldAmount });
       }
+    } else if (transaction.type === 'debt_settlement') {
+      const delta = transaction.debtDirection === 'theyOweMe' ? -oldAmount : oldAmount;
+      await db.accounts.update(transaction.accountId, { balance: fromAcc.balance + delta });
     }
   };
 
@@ -78,6 +82,9 @@ export default function TransactionEditSheet({ transaction, onClose }: Props) {
         await db.accounts.update(newAccountId, { balance: fromAcc.balance - newAmount });
         await db.accounts.update(newToAccountId, { balance: toAcc.balance + newAmount });
       }
+    } else if (type === 'debt_settlement') {
+      const delta = transaction.debtDirection === 'theyOweMe' ? newAmount : -newAmount;
+      await db.accounts.update(newAccountId, { balance: fromAcc.balance + delta });
     }
   };
 
@@ -125,14 +132,19 @@ export default function TransactionEditSheet({ transaction, onClose }: Props) {
           amount: numAmount,
           accountId,
           toAccountId: type === 'transfer' ? toAccountId : undefined,
-          categoryId: type !== 'transfer' ? categoryId : undefined,
+          categoryId: type !== 'transfer' && type !== 'debt_settlement' ? categoryId : undefined,
           notes,
           tagIds: resolvedTagIds.length > 0 ? resolvedTagIds : undefined,
-          isShared,
-          personalAmount: isShared ? Number(personalAmount) : undefined,
+          isShared: type === 'expense' ? isShared : false,
+          personalAmount: (type === 'expense' && isShared) ? Number(personalAmount) : undefined,
           excludeFromBudget: type === 'expense' ? excludeFromBudget : undefined,
           updatedAt: now,
         });
+
+        // If this was a debt settlement transaction, sync the parent debt settlement entry
+        if (transaction.type === 'debt_settlement') {
+          await syncSettlementFromTransactionEdit(transaction, numAmount, accountId, notes);
+        }
       });
       triggerSync();
       onClose();
@@ -149,6 +161,9 @@ export default function TransactionEditSheet({ transaction, onClose }: Props) {
         await reverseBalance();
         await db.transactions.delete(transaction.id);
       });
+      if (transaction.type === 'debt_settlement') {
+        await syncSettlementFromTransactionDelete(transaction);
+      }
       await deleteFromCloud('transactions', transaction.id);
       triggerSync();
       onClose();
@@ -180,7 +195,14 @@ export default function TransactionEditSheet({ transaction, onClose }: Props) {
     return t ? t.name : tid; // fallback to raw value (new tag name)
   };
 
-  const typeLabel = type === 'expense' ? 'Expense' : type === 'income' ? 'Income' : 'Transfer';
+  const typeLabel =
+    type === 'expense'
+      ? 'Expense'
+      : type === 'income'
+      ? 'Income'
+      : type === 'transfer'
+      ? 'Transfer'
+      : 'Debt Settlement';
 
   return (
     <div className="fixed inset-0 z-50 flex flex-col justify-end bg-black/40 backdrop-blur-sm animate-in fade-in duration-200">
@@ -284,7 +306,7 @@ export default function TransactionEditSheet({ transaction, onClose }: Props) {
           )}
 
           {/* Category */}
-          {type !== 'transfer' && filteredCategories.length >= 0 && (
+          {type !== 'transfer' && type !== 'debt_settlement' && filteredCategories.length >= 0 && (
             <div>
               <label className="block text-xs font-medium text-muted-foreground mb-2 uppercase tracking-wider">Category</label>
               <div className="grid grid-cols-3 gap-2">
