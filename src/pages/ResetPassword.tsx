@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Lock, Eye, EyeOff, CheckCircle } from 'lucide-react';
 import { supabase } from '../lib/supabase';
+import Logo from '../components/Logo';
 
 export default function ResetPassword() {
   const navigate = useNavigate();
@@ -71,6 +72,11 @@ export default function ResetPassword() {
   return (
     <div className="min-h-screen bg-background flex flex-col justify-center px-6">
       <div className="max-w-sm mx-auto w-full">
+        <div className="flex items-center gap-3 mb-6">
+          <Logo size={36} />
+          <span className="text-2xl font-bold tracking-tight text-foreground">Finora</span>
+        </div>
+
         <div className="mb-8">
           <h1 className="text-2xl font-medium text-foreground mb-1">Set new password</h1>
           <p className="text-sm text-muted-foreground">Choose a new password for your account.</p>

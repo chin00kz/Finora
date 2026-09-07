@@ -43,6 +43,7 @@ import TransactionModal from './components/TransactionModal';
 import BudgetModal from './components/BudgetModal';
 import MigrateLocalDataBanner from './components/MigrateLocalDataBanner';
 import CustomizeNavModal from './components/CustomizeNavModal';
+import Logo from './components/Logo';
 
 // ── Theme initializer ────────────────────────────────────────────────────────
 function ThemeInitializer() {
@@ -102,7 +103,8 @@ function DesktopSidebar({ syncStatus }: { syncStatus: 'idle' | 'syncing' | 'erro
       <div className="space-y-6">
         {/* Brand & Sync indicator */}
         <div className="flex items-center justify-between px-2 pt-2">
-          <Link to="/" className="flex items-center gap-2">
+          <Link to="/" className="flex items-center gap-2.5 group">
+            <Logo size={26} className="transition-transform group-hover:scale-105" />
             <span className="text-xl font-bold tracking-tight text-foreground">Finora</span>
           </Link>
           <div className="flex items-center gap-1 text-xs">

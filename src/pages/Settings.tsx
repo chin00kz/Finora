@@ -10,6 +10,7 @@ import { useNavigate } from 'react-router-dom';
 import ExportReportModal from '../components/ExportReportModal';
 import ImportDataModal from '../components/ImportDataModal';
 import { exportFullBackupJSON, restoreFullBackupJSON } from '../utils/jsonBackup';
+import Logo from '../components/Logo';
 
 export default function Settings() {
   const navigate = useNavigate();
@@ -704,6 +705,13 @@ export default function Settings() {
           )}
         </div>
       </section>
+
+      {/* App Branding & Version */}
+      <div className="flex flex-col items-center justify-center pt-8 pb-4 text-center opacity-75">
+        <Logo size={32} className="mb-2.5" />
+        <p className="text-xs font-semibold text-foreground">Finora</p>
+        <p className="text-[11px] text-muted-foreground mt-0.5">Minimal Budget & Expense Tracker</p>
+      </div>
 
       <ExportReportModal
         isOpen={isExportModalOpen}

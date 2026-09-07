@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { ArrowLeft, Mail, Lock, Eye, EyeOff } from 'lucide-react';
 import { useAuthStore } from '../store/authStore';
+import Logo from '../components/Logo';
 
 type Mode = 'signin' | 'signup' | 'forgot';
 
@@ -81,6 +82,11 @@ export default function Auth() {
       {/* Card */}
       <div className="flex-1 flex flex-col justify-center px-6 pb-16">
         <div className="max-w-sm mx-auto w-full">
+          <div className="flex items-center gap-3 mb-6">
+            <Logo size={36} />
+            <span className="text-2xl font-bold tracking-tight text-foreground">Finora</span>
+          </div>
+
           <div className="mb-8">
             <h1 className="text-2xl font-medium text-foreground mb-1">
               {mode === 'signin' && 'Sign in'}
