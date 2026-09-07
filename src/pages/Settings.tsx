@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { db } from '../db/db';
-import { Trash2, Edit2, Check, X, Merge, Moon, Sun, Monitor, LogOut, UserX, CloudUpload, RefreshCw, Download, CheckCircle, Plus, FileSpreadsheet, UploadCloud, CreditCard, SlidersHorizontal } from 'lucide-react';
+import { Trash2, Edit2, Check, X, Merge, Moon, Sun, Monitor, LogOut, UserX, CloudUpload, RefreshCw, Download, CheckCircle, Plus, FileSpreadsheet, UploadCloud, CreditCard, SlidersHorizontal, Database, FileJson, Copy } from 'lucide-react';
 import { useThemeStore } from '../store/themeStore';
 import { useAuthStore } from '../store/authStore';
 import { useNavStore } from '../store/navStore';
@@ -9,6 +9,7 @@ import { syncAll, hydrateFromCloud, triggerSync, deleteFromCloud, purgeAndRepush
 import { useNavigate } from 'react-router-dom';
 import ExportReportModal from '../components/ExportReportModal';
 import ImportDataModal from '../components/ImportDataModal';
+import { exportFullBackupJSON, restoreFullBackupJSON } from '../utils/jsonBackup';
 
 export default function Settings() {
   const navigate = useNavigate();
@@ -23,6 +24,9 @@ export default function Settings() {
   const [isDeletingAccount, setIsDeletingAccount] = useState(false);
   const [isExportModalOpen, setIsExportModalOpen] = useState(false);
   const [isImportModalOpen, setIsImportModalOpen] = useState(false);
+  const [isSqlModalOpen, setIsSqlModalOpen] = useState(false);
+  const [copiedSql, setCopiedSql] = useState(false);
+  const [isRestoringJson, setIsRestoringJson] = useState(false);
 
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editName, setEditName] = useState('');
@@ -236,6 +240,14 @@ export default function Settings() {
                 <RefreshCw size={14} className={isSyncing ? 'animate-spin' : ''} />
                 Fix Cloud Duplicates
               </button>
+
+              <button
+                onClick={() => setIsSqlModalOpen(true)}
+                className="flex items-center justify-center gap-2 w-full mt-2 py-2.5 px-3 bg-accent/10 border border-accent/20 text-accent rounded-xl text-xs font-medium active:scale-[0.98] transition-transform"
+              >
+                <Database size={14} />
+                Setup Cloud Tables (SQL)
+              </button>
             </div>
 
             <div className="pt-2 border-t border-border space-y-2">
@@ -316,6 +328,70 @@ export default function Settings() {
               Import
             </span>
           </button>
+
+          {/* Complete JSON Backup */}
+          <button
+            onClick={async () => {
+              await exportFullBackupJSON();
+            }}
+            className="flex items-center justify-between w-full p-3.5 bg-muted/40 hover:bg-muted/70 border border-border rounded-xl text-xs font-medium text-foreground transition-colors"
+          >
+            <div className="flex items-center gap-3">
+              <FileJson size={20} className="text-emerald-500" />
+              <div className="text-left">
+                <p className="font-medium text-sm text-foreground">Complete JSON Backup</p>
+                <p className="text-[11px] text-muted-foreground">Export all 18 tables: recurring, goals, IOUs, credit float, and accounts</p>
+              </div>
+            </div>
+            <span className="px-3 py-1.5 bg-emerald-600 text-white rounded-lg text-xs font-semibold">
+              Backup
+            </span>
+          </button>
+
+          {/* Restore JSON Backup */}
+          <div className="relative">
+            <input
+              type="file"
+              accept=".json"
+              id="json-restore-input"
+              className="hidden"
+              onChange={async (e) => {
+                const file = e.target.files?.[0];
+                if (!file) return;
+                setIsRestoringJson(true);
+                try {
+                  const text = await file.text();
+                  const res = await restoreFullBackupJSON(text);
+                  if (res.success) {
+                    alert(`Successfully restored ${res.restoredCount} items across all tables!`);
+                  } else {
+                    alert(`Restore failed: ${res.error}`);
+                  }
+                } catch (err) {
+                  alert(`Restore error: ${err instanceof Error ? err.message : 'Unknown'}`);
+                } finally {
+                  setIsRestoringJson(false);
+                  e.target.value = '';
+                }
+              }}
+            />
+            <button
+              onClick={() => document.getElementById('json-restore-input')?.click()}
+              disabled={isRestoringJson}
+              className="flex items-center justify-between w-full p-3.5 bg-muted/40 hover:bg-muted/70 border border-border rounded-xl text-xs font-medium text-foreground transition-colors disabled:opacity-60"
+            >
+              <div className="flex items-center gap-3">
+                <UploadCloud size={20} className="text-emerald-500" />
+                <div className="text-left">
+                  <p className="font-medium text-sm text-foreground">Restore Complete Backup</p>
+                  <p className="text-[11px] text-muted-foreground">Restore full database from a previously exported Finora JSON backup</p>
+                </div>
+              </div>
+              <span className="px-3 py-1.5 bg-muted border border-border rounded-lg text-xs font-semibold text-foreground">
+                {isRestoringJson ? 'Restoring…' : 'Restore'}
+              </span>
+            </button>
+          </div>
 
           <button
             onClick={async () => {
@@ -648,6 +724,282 @@ export default function Settings() {
         isOpen={isImportModalOpen}
         onClose={() => setIsImportModalOpen(false)}
       />
+
+      {/* SQL Setup Modal */}
+      {isSqlModalOpen && (
+        <div
+          className="fixed inset-0 z-50 bg-background/80 backdrop-blur-sm flex items-center justify-center p-4 animate-in fade-in duration-150"
+          onClick={() => setIsSqlModalOpen(false)}
+        >
+          <div
+            className="bg-card border border-border rounded-2xl w-full max-w-xl shadow-2xl overflow-hidden animate-in zoom-in-95 duration-150 flex flex-col max-h-[85vh]"
+            onClick={e => e.stopPropagation()}
+          >
+            <div className="p-5 border-b border-border flex items-center justify-between bg-muted/40">
+              <div className="flex items-center gap-2.5">
+                <div className="p-2 rounded-xl bg-accent text-accent-foreground">
+                  <Database size={18} />
+                </div>
+                <div>
+                  <h3 className="font-semibold text-foreground text-base">Setup Advanced Cloud Tables</h3>
+                  <p className="text-xs text-muted-foreground">
+                    Enables cloud sync for Recurring, Goals, IOUs &amp; Float Tools
+                  </p>
+                </div>
+              </div>
+              <button
+                onClick={() => setIsSqlModalOpen(false)}
+                className="p-1.5 text-muted-foreground hover:text-foreground rounded-lg transition-colors"
+              >
+                <X size={18} />
+              </button>
+            </div>
+
+            <div className="p-5 space-y-4 overflow-y-auto flex-1 text-xs">
+              <p className="text-muted-foreground">
+                To sync your <strong>Recurring Transactions</strong>, <strong>Savings Goals</strong>, <strong>IOUs &amp; Debts</strong>, and <strong>Credit Cards / Float Tools</strong> to your Supabase account:
+              </p>
+              <ol className="list-decimal pl-4 space-y-1 text-muted-foreground">
+                <li>Click <strong>Copy Setup SQL</strong> below.</li>
+                <li>Open your <a href="https://supabase.com/dashboard/project/sjmwvbajuutsvwgqlayc/sql/new" target="_blank" rel="noreferrer" className="text-accent underline font-medium">Supabase SQL Editor</a>.</li>
+                <li>Paste the script and click <strong>Run</strong>.</li>
+              </ol>
+
+              <div className="relative">
+                <pre className="p-3 bg-muted rounded-xl text-[11px] font-mono text-muted-foreground max-h-56 overflow-y-auto border border-border select-all whitespace-pre-wrap">
+                  {ADVANCED_TABLES_SQL}
+                </pre>
+              </div>
+            </div>
+
+            <div className="p-4 border-t border-border bg-muted/40 flex items-center justify-between">
+              <span className="text-[11px] text-muted-foreground">
+                Safe to run anytime (uses IF NOT EXISTS).
+              </span>
+              <button
+                onClick={() => {
+                  navigator.clipboard.writeText(ADVANCED_TABLES_SQL);
+                  setCopiedSql(true);
+                  setTimeout(() => setCopiedSql(false), 3000);
+                }}
+                className="flex items-center gap-2 px-4 py-2 bg-accent text-accent-foreground font-semibold rounded-xl text-xs active:scale-95 transition-transform"
+              >
+                {copiedSql ? <Check size={14} /> : <Copy size={14} />}
+                <span>{copiedSql ? 'Copied to Clipboard!' : 'Copy Setup SQL'}</span>
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
+
+const ADVANCED_TABLES_SQL = `-- 1. Recurring Transactions
+CREATE TABLE IF NOT EXISTS public.recurring_transactions (
+  id TEXT PRIMARY KEY,
+  user_id UUID REFERENCES auth.users(id) ON DELETE CASCADE NOT NULL,
+  name TEXT NOT NULL,
+  amount NUMERIC NOT NULL,
+  account_id TEXT NOT NULL,
+  category_id TEXT,
+  frequency TEXT NOT NULL,
+  next_due_date BIGINT NOT NULL,
+  type TEXT NOT NULL,
+  active BOOLEAN NOT NULL DEFAULT TRUE,
+  updated_at BIGINT NOT NULL
+);
+ALTER TABLE public.recurring_transactions ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS "Users can manage their own recurring transactions" ON public.recurring_transactions;
+CREATE POLICY "Users can manage their own recurring transactions" ON public.recurring_transactions
+  FOR ALL USING (auth.uid() = user_id) WITH CHECK (auth.uid() = user_id);
+
+-- 2. Savings Goals
+CREATE TABLE IF NOT EXISTS public.savings_goals (
+  id TEXT PRIMARY KEY,
+  user_id UUID REFERENCES auth.users(id) ON DELETE CASCADE NOT NULL,
+  name TEXT NOT NULL,
+  target_amount NUMERIC NOT NULL,
+  current_amount NUMERIC NOT NULL DEFAULT 0,
+  target_date BIGINT,
+  linked_account_id TEXT,
+  color TEXT,
+  updated_at BIGINT NOT NULL
+);
+ALTER TABLE public.savings_goals ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS "Users can manage their own savings goals" ON public.savings_goals;
+CREATE POLICY "Users can manage their own savings goals" ON public.savings_goals
+  FOR ALL USING (auth.uid() = user_id) WITH CHECK (auth.uid() = user_id);
+
+-- 3. People & Debts
+CREATE TABLE IF NOT EXISTS public.people (
+  id TEXT PRIMARY KEY,
+  user_id UUID REFERENCES auth.users(id) ON DELETE CASCADE NOT NULL,
+  name TEXT NOT NULL,
+  updated_at BIGINT NOT NULL
+);
+ALTER TABLE public.people ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS "Users can manage their own people" ON public.people;
+CREATE POLICY "Users can manage their own people" ON public.people
+  FOR ALL USING (auth.uid() = user_id) WITH CHECK (auth.uid() = user_id);
+
+CREATE TABLE IF NOT EXISTS public.debts (
+  id TEXT PRIMARY KEY,
+  user_id UUID REFERENCES auth.users(id) ON DELETE CASCADE NOT NULL,
+  person_id TEXT NOT NULL,
+  amount NUMERIC NOT NULL,
+  related_transaction_id TEXT,
+  date BIGINT NOT NULL,
+  updated_at BIGINT NOT NULL
+);
+ALTER TABLE public.debts ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS "Users can manage their own debts" ON public.debts;
+CREATE POLICY "Users can manage their own debts" ON public.debts
+  FOR ALL USING (auth.uid() = user_id) WITH CHECK (auth.uid() = user_id);
+
+-- 4. Credit & Float Tools tables
+CREATE TABLE IF NOT EXISTS public.credit_cards (
+  id TEXT PRIMARY KEY,
+  user_id UUID REFERENCES auth.users(id) ON DELETE CASCADE NOT NULL,
+  name TEXT NOT NULL,
+  credit_limit NUMERIC NOT NULL,
+  current_balance NUMERIC NOT NULL DEFAULT 0,
+  apr_percent NUMERIC NOT NULL DEFAULT 0,
+  grace_min_days INTEGER NOT NULL DEFAULT 0,
+  grace_max_days INTEGER NOT NULL DEFAULT 0,
+  due_date BIGINT NOT NULL,
+  cycle_start_day INTEGER NOT NULL DEFAULT 1,
+  is_secured_against TEXT,
+  pay_in_full_intent BOOLEAN NOT NULL DEFAULT TRUE,
+  updated_at BIGINT NOT NULL
+);
+ALTER TABLE public.credit_cards ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS "Users can manage their own credit cards" ON public.credit_cards;
+CREATE POLICY "Users can manage their own credit cards" ON public.credit_cards
+  FOR ALL USING (auth.uid() = user_id) WITH CHECK (auth.uid() = user_id);
+
+CREATE TABLE IF NOT EXISTS public.cash_offset_sources (
+  id TEXT PRIMARY KEY,
+  user_id UUID REFERENCES auth.users(id) ON DELETE CASCADE NOT NULL,
+  name TEXT NOT NULL,
+  linked_card_id TEXT NOT NULL,
+  expected_monthly_amount NUMERIC NOT NULL,
+  category TEXT,
+  updated_at BIGINT NOT NULL
+);
+ALTER TABLE public.cash_offset_sources ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS "Users can manage their own cash offset sources" ON public.cash_offset_sources;
+CREATE POLICY "Users can manage their own cash offset sources" ON public.cash_offset_sources
+  FOR ALL USING (auth.uid() = user_id) WITH CHECK (auth.uid() = user_id);
+
+CREATE TABLE IF NOT EXISTS public.fixed_deposits (
+  id TEXT PRIMARY KEY,
+  user_id UUID REFERENCES auth.users(id) ON DELETE CASCADE NOT NULL,
+  name TEXT NOT NULL,
+  principal NUMERIC NOT NULL,
+  rate_percent NUMERIC NOT NULL,
+  maturity_interval_months INTEGER NOT NULL,
+  linked_card_id TEXT,
+  updated_at BIGINT NOT NULL
+);
+ALTER TABLE public.fixed_deposits ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS "Users can manage their own fixed deposits" ON public.fixed_deposits;
+CREATE POLICY "Users can manage their own fixed deposits" ON public.fixed_deposits
+  FOR ALL USING (auth.uid() = user_id) WITH CHECK (auth.uid() = user_id);
+
+CREATE TABLE IF NOT EXISTS public.money_market_accounts (
+  id TEXT PRIMARY KEY,
+  user_id UUID REFERENCES auth.users(id) ON DELETE CASCADE NOT NULL,
+  name TEXT NOT NULL,
+  balance NUMERIC NOT NULL,
+  current_rate_percent NUMERIC NOT NULL,
+  minimum_balance_for_rate NUMERIC NOT NULL DEFAULT 0,
+  base_rate_percent NUMERIC NOT NULL DEFAULT 0,
+  updated_at BIGINT NOT NULL
+);
+ALTER TABLE public.money_market_accounts ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS "Users can manage their own MMAs" ON public.money_market_accounts;
+CREATE POLICY "Users can manage their own MMAs" ON public.money_market_accounts
+  FOR ALL USING (auth.uid() = user_id) WITH CHECK (auth.uid() = user_id);
+
+CREATE TABLE IF NOT EXISTS public.installment_plans (
+  id TEXT PRIMARY KEY,
+  user_id UUID REFERENCES auth.users(id) ON DELETE CASCADE NOT NULL,
+  linked_card_id TEXT NOT NULL,
+  description TEXT NOT NULL,
+  total_amount NUMERIC NOT NULL,
+  monthly_amount NUMERIC NOT NULL,
+  total_months INTEGER NOT NULL,
+  months_paid INTEGER NOT NULL,
+  active BOOLEAN NOT NULL DEFAULT TRUE,
+  updated_at BIGINT NOT NULL
+);
+ALTER TABLE public.installment_plans ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS "Users can manage their own installment plans" ON public.installment_plans;
+CREATE POLICY "Users can manage their own installment plans" ON public.installment_plans
+  FOR ALL USING (auth.uid() = user_id) WITH CHECK (auth.uid() = user_id);
+
+CREATE TABLE IF NOT EXISTS public.card_promos (
+  id TEXT PRIMARY KEY,
+  user_id UUID REFERENCES auth.users(id) ON DELETE CASCADE NOT NULL,
+  linked_card_id TEXT NOT NULL,
+  description TEXT NOT NULL,
+  spend_threshold NUMERIC NOT NULL DEFAULT 0,
+  min_transaction_count INTEGER NOT NULL DEFAULT 0,
+  window_start BIGINT NOT NULL,
+  window_end BIGINT NOT NULL,
+  cashback_percent NUMERIC NOT NULL DEFAULT 0,
+  cashback_cap NUMERIC NOT NULL DEFAULT 0,
+  current_spend NUMERIC NOT NULL DEFAULT 0,
+  current_transaction_count INTEGER NOT NULL DEFAULT 0,
+  updated_at BIGINT NOT NULL
+);
+ALTER TABLE public.card_promos ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS "Users can manage their own promos" ON public.card_promos;
+CREATE POLICY "Users can manage their own promos" ON public.card_promos
+  FOR ALL USING (auth.uid() = user_id) WITH CHECK (auth.uid() = user_id);
+
+CREATE TABLE IF NOT EXISTS public.float_gap_history (
+  id TEXT PRIMARY KEY,
+  user_id UUID REFERENCES auth.users(id) ON DELETE CASCADE NOT NULL,
+  card_id TEXT NOT NULL,
+  cycle_label TEXT NOT NULL,
+  total_bill NUMERIC NOT NULL,
+  cash_received NUMERIC NOT NULL,
+  delta NUMERIC NOT NULL,
+  cumulative_gap NUMERIC NOT NULL,
+  updated_at BIGINT NOT NULL
+);
+ALTER TABLE public.float_gap_history ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS "Users can manage their own float gap history" ON public.float_gap_history;
+CREATE POLICY "Users can manage their own float gap history" ON public.float_gap_history
+  FOR ALL USING (auth.uid() = user_id) WITH CHECK (auth.uid() = user_id);
+
+-- 5. Reimbursement Ledgers & Entries
+CREATE TABLE IF NOT EXISTS public.reimbursement_ledgers (
+  id TEXT PRIMARY KEY,
+  user_id UUID REFERENCES auth.users(id) ON DELETE CASCADE NOT NULL,
+  counterparty_name TEXT NOT NULL,
+  updated_at BIGINT NOT NULL
+);
+ALTER TABLE public.reimbursement_ledgers ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS "Users can manage their own ledgers" ON public.reimbursement_ledgers;
+CREATE POLICY "Users can manage their own ledgers" ON public.reimbursement_ledgers
+  FOR ALL USING (auth.uid() = user_id) WITH CHECK (auth.uid() = user_id);
+
+CREATE TABLE IF NOT EXISTS public.reimbursement_entries (
+  id TEXT PRIMARY KEY,
+  user_id UUID REFERENCES auth.users(id) ON DELETE CASCADE NOT NULL,
+  ledger_id TEXT NOT NULL,
+  date BIGINT NOT NULL,
+  note TEXT,
+  amount_owed NUMERIC NOT NULL,
+  amount_paid NUMERIC NOT NULL,
+  delta NUMERIC NOT NULL,
+  updated_at BIGINT NOT NULL
+);
+ALTER TABLE public.reimbursement_entries ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS "Users can manage their own reimbursement entries" ON public.reimbursement_entries;
+CREATE POLICY "Users can manage their own reimbursement entries" ON public.reimbursement_entries
+  FOR ALL USING (auth.uid() = user_id) WITH CHECK (auth.uid() = user_id);`;
+

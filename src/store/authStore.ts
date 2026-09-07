@@ -48,13 +48,26 @@ export const useAuthStore = create<AuthState>((set, get) => ({
     await supabase.auth.signOut();
     localStorage.removeItem('finora-pending-sync');
     set({ user: null, session: null, lastSyncedAt: null });
-    // Clear local user data
+    // Clear all local user data
     await Promise.all([
       db.accounts.clear(),
       db.transactions.clear(),
       db.budgets.clear(),
       db.tags.clear(),
       db.categories.clear(),
+      db.people.clear(),
+      db.debts.clear(),
+      db.recurringTransactions.clear(),
+      db.savingsGoals.clear(),
+      db.creditCards.clear(),
+      db.cashOffsetSources.clear(),
+      db.fixedDeposits.clear(),
+      db.moneyMarketAccounts.clear(),
+      db.installmentPlans.clear(),
+      db.cardPromos.clear(),
+      db.floatGapHistory.clear(),
+      db.reimbursementLedgers.clear(),
+      db.reimbursementEntries.clear(),
     ]);
   },
 
@@ -71,10 +84,31 @@ export const useAuthStore = create<AuthState>((set, get) => ({
     const user = get().user;
     if (!user) return 'Not logged in.';
     try {
-      const tables = ['accounts', 'transactions', 'budgets', 'tags', 'categories'] as const;
+      const tables = [
+        'accounts',
+        'transactions',
+        'budgets',
+        'tags',
+        'categories',
+        'recurring_transactions',
+        'savings_goals',
+        'people',
+        'debts',
+        'credit_cards',
+        'cash_offset_sources',
+        'fixed_deposits',
+        'money_market_accounts',
+        'installment_plans',
+        'card_promos',
+        'float_gap_history',
+        'reimbursement_ledgers',
+        'reimbursement_entries',
+      ] as const;
       for (const table of tables) {
         const { error } = await supabase.from(table).delete().eq('user_id', user.id);
-        if (error) return error.message;
+        if (error && !error.message.includes('does not exist') && !error.message.includes('schema cache')) {
+          return error.message;
+        }
       }
       await supabase.auth.signOut();
       set({ user: null, session: null });
