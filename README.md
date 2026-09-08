@@ -164,7 +164,7 @@ The everyday surface is disciplined, distraction-free, and lightning-fast. Deep 
 - **Deposit & Withdrawal Workflows**: Log transfers in or out of goals with immediate balance synchronization.
 
 ### 10. Data Portability, Full JSON Backup & CSV Engine
-- **Complete JSON Snapshot Backup**: One-click export (`exportFullBackupJSON`) and restore (`restoreFullBackupJSON`) covering all 18 Dexie tables with automated schema validation.
+- **Complete JSON Snapshot Backup**: One-click export (`exportFullBackupJSON`) and restore (`restoreFullBackupJSON`) covering all 20 Dexie tables with automated schema validation.
 - **CSV Import with Smart Matching**: Auto-maps column headers, deduplicates existing rows, and dynamically creates missing accounts and categories.
 - **Itemized CSV & Formatted PDF Reports**: Download itemized transaction spreadsheets or printer-friendly PDF financial summaries.
 
@@ -175,15 +175,18 @@ The everyday surface is disciplined, distraction-free, and lightning-fast. Deep 
 - **Cloud Duplicate Resolver**: Dedicated tool in Settings to clean up remote duplicate IDs and align cloud state with local storage.
 
 ### 12. Standalone PDF Statement Reader (`/statements`)
-*A client-side credit card PDF statement interpreter designed for Commercial Bank of Ceylon statements.*
-- **Strict Standalone Boundary**: Completely decoupled from manual entries (`Activity`), accounts (`Accounts`), and `Credit & Float Tools`. Statement data is never auto-imported or cross-referenced against your regular ledger to prevent double-counting or overwriting manually maintained figures.
-- **100% In-Browser Privacy**: Raw PDF bytes and extracted text are parsed purely in the client browser using `pdfjs-dist`. Zero network requests are made with statement data.
-- **Header Summary Card**: Displays Total Outstanding, Minimum Payment Due, Payment Due Date, Credit Limit, and countdown to due date.
-- **Reconciliation Strip**: Evaluates printed statement math ($Opening + Purchases - Payments = Closing$) and flags any discrepancy.
-- **0% Installment Plan Detection**: Scans transaction descriptions for installment patterns (e.g. `FLEXIPLAN ... N of M`) and shows monthly payment amounts, completion percentage, and estimated remaining liability.
-- **Grouped Categorized Breakdown**: Categorizes statement spending into grouped sums (Supermarkets, Dining, Transport, Utilities, etc.) with expandable itemized transactions.
-- **Payments Received List**: Dedicated section listing all `CR`-flagged credits and payments logged this cycle.
-- **Local History**: Parsed statements are saved in local Dexie storage so past statements remain browsable without re-uploading.
+*A client-side credit card PDF statement interpreter engineered specifically for Commercial Bank of Ceylon (Combank) monthly statements.*
+- **Strict Standalone Boundary**: Completely decoupled from manual entries (`Activity`), accounts (`Accounts`), and `Credit & Float Tools`. Statement data is isolated in dedicated Dexie tables (`statementCards`, `parsedStatements`) and is never auto-imported or cross-referenced against your regular ledger, preventing double-counting or balance distortion.
+- **100% In-Browser Privacy**: Raw PDF bytes and extracted text layers are parsed purely client-side using `pdfjs-dist` and bundled Web Workers (`pdf.worker.min.mjs`). Zero network requests are made with statement data.
+- **Two-Column Coordinate Layout Preservation**: Solves multi-column PDF overlap quirks. Separates left-side transaction table rows ($x < 460\text{ pt}$) from right-side summary blocks ($x \ge 460\text{ pt}$), preventing line collisions between purchase descriptions and printed summary numbers.
+- **Zero-Friction Card & Metadata Auto-Detection**: Drop a statement PDF without pre-configuring card names. Finora automatically inspects the document to detect the cardholder name (e.g. `CHANUKA DILSHAN`), masked card number (e.g. `4378 4002 **** 6135`), and card tier (e.g. `Visa Platinum`). It either links to an existing card profile matching the last 4 digits (`6135`) or auto-creates `Combank Visa Platinum - 6135`.
+- **Max Rewards Points & Dual APR**: Extracts `MAX REWARDS TOTAL POINTS BALANCE` (e.g. `687 Max Rewards`) and detects both annual APR (`28% p.a.`) and monthly interest rates (`2.33% / mo`).
+- **Date Expansion Engine**: Expands `DD/MM` transaction rows into full `DD/MM/YYYY` dates using statement billing context, and normalizes 2-digit years (`05/09/26` → `05/09/2026`).
+- **3-Digit Installment Plan Tracker**: Scans for `FLEXIPLAN` tenures with up to 3-digit installment counts (e.g. `003 of 012`, `009 of 024`). Distinct plans sharing identical category labels are keyed individually by term and amount so concurrent plans never collapse. Renders progress bars, cycle payments, and remaining liability.
+- **Reconciliation Strip**: Evaluates printed statement math ($\text{Opening} + \text{Purchases} - \text{Payments} = \text{Closing}$) and renders a green `✓ Balanced Statement` badge or flags discrepancies.
+- **Grouped Categorized Spending Breakdown**: Categorizes statement debits into clean grouped sums (Supermarkets & Groceries, Food & Dining, Transport & Fuel, Utilities, Shopping, Installments, etc.) without overwhelming charts, with full real-time search.
+- **Payments Received Ledger**: Dedicated section isolating all `CR`-flagged credits and settlements received this cycle with full payment dates and amounts.
+- **Back-Page Fine-Print Filter**: Automatically skips terms and conditions pages (e.g. Page 5 with explanatory payment instructions and interest calculation examples) so illustrative numbers never corrupt real billing figures.
 
 ---
 
