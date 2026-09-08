@@ -253,6 +253,7 @@ export interface StatementCard {
   label: string; // e.g. "Combank Visa Platinum"
   last4?: string; // e.g. "4582"
   bankName: string; // e.g. "Commercial Bank of Ceylon"
+  cardType?: string; // e.g. "Visa Platinum"
   updatedAt: number;
 }
 
@@ -301,6 +302,12 @@ export interface ParsedStatement {
   // Rates
   annualInterestRate?: number;
   monthlyInterestRate?: number;
+
+  // Metadata detected from statement
+  cardNumberMasked?: string; // e.g. "4378 4002 **** 6135"
+  cardType?: string; // e.g. "Visa Platinum"
+  cardholderName?: string; // e.g. "CHANUKA DILSHAN"
+  rewardsPoints?: number; // e.g. 687
 
   // Extracted Transactions & Plans
   transactions: StatementTransaction[];

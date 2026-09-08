@@ -17,6 +17,7 @@ import {
   Search,
   RefreshCw,
   Clock,
+  Award,
 } from 'lucide-react';
 
 export default function StatementReader() {
@@ -107,45 +108,70 @@ export default function StatementReader() {
     setParseError(null);
 
     try {
-      // 1. Resolve card
-      let targetCardId = uploadCardId;
-      let targetCardLabel = '';
-
-      if (isCreatingCard || !targetCardId) {
-        if (!newCardLabel.trim()) {
-          throw new Error('Please enter a name for this credit card (e.g. Combank Visa Platinum - 4582).');
-        }
-        targetCardId = `scard-${Date.now()}`;
-        targetCardLabel = newCardLabel.trim();
-        await db.statementCards.add({
-          id: targetCardId,
-          label: targetCardLabel,
-          bankName: 'Commercial Bank of Ceylon',
-          updatedAt: Date.now(),
-        });
-      } else {
-        const found = cards.find(c => c.id === targetCardId);
-        targetCardLabel = found ? found.label : 'Credit Card';
-      }
-
-      // 2. Client-side extraction via pdfjs-dist
+      // 1. Client-side extraction via pdfjs-dist
       const lines = await extractLinesFromPdf(file);
       if (lines.length === 0) {
         throw new Error('No readable text found in PDF. Make sure it is not a scanned image.');
       }
 
-      // 3. Parse Combank layout
-      const parsed = parseCombankStatement(lines, targetCardId, targetCardLabel);
+      // 2. Initial parse to inspect layout and metadata
+      const initialParsed = parseCombankStatement(lines, 'temp', 'temp');
 
-      // 4. Save to Dexie
-      await db.parsedStatements.add(parsed);
+      // 3. Resolve target card (auto-detect if user did not specify)
+      let targetCardId = uploadCardId;
+      let targetCardLabel = '';
+      const last4 = initialParsed.cardNumberMasked ? initialParsed.cardNumberMasked.slice(-4) : undefined;
+
+      if (isCreatingCard && newCardLabel.trim()) {
+        targetCardId = `scard-${Date.now()}`;
+        targetCardLabel = newCardLabel.trim();
+        await db.statementCards.add({
+          id: targetCardId,
+          label: targetCardLabel,
+          last4,
+          cardType: initialParsed.cardType,
+          bankName: 'Commercial Bank of Ceylon',
+          updatedAt: Date.now(),
+        });
+      } else if (targetCardId && targetCardId !== '__new__') {
+        const found = cards.find(c => c.id === targetCardId);
+        targetCardLabel = found ? found.label : 'Credit Card';
+      } else {
+        // Auto-detect matching card from database or auto-create one
+        const existingCard = last4 ? cards.find(c => c.last4 === last4) : null;
+        if (existingCard) {
+          targetCardId = existingCard.id;
+          targetCardLabel = existingCard.label;
+        } else {
+          targetCardId = `scard-${Date.now()}`;
+          const typeName = initialParsed.cardType || 'Credit Card';
+          targetCardLabel = `Combank ${typeName}${last4 ? ` - ${last4}` : ''}`;
+          await db.statementCards.add({
+            id: targetCardId,
+            label: targetCardLabel,
+            last4,
+            cardType: initialParsed.cardType,
+            bankName: 'Commercial Bank of Ceylon',
+            updatedAt: Date.now(),
+          });
+        }
+      }
+
+      // 4. Update statement with resolved card
+      initialParsed.cardId = targetCardId;
+      initialParsed.cardLabel = targetCardLabel;
+      initialParsed.id = `stmt-${targetCardId}-${initialParsed.statementPeriod}-${Date.now()}`;
+
+      // 5. Save to Dexie
+      await db.parsedStatements.add(initialParsed);
 
       // Select newly parsed statement
       setSelectedCardId(targetCardId);
-      setSelectedStatementId(parsed.id);
+      setSelectedStatementId(initialParsed.id);
       setIsUploadModalOpen(false);
       setIsCreatingCard(false);
       setNewCardLabel('');
+      setUploadCardId('');
     } catch (err: any) {
       console.error('PDF Statement parsing failed:', err);
       setParseError(err.message || 'Failed to parse PDF statement.');
@@ -247,19 +273,43 @@ export default function StatementReader() {
         <div className="space-y-6">
           {/* Header Summary Card */}
           <div className="bg-card rounded-2xl border border-border p-6 shadow-sm space-y-6">
-            <div className="flex flex-col sm:flex-row sm:items-center justify-between pb-4 border-b border-border gap-2">
-              <div className="flex items-center gap-2.5">
-                <CreditCard size={18} className="text-accent" />
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between pb-4 border-b border-border gap-3">
+              <div className="flex items-center gap-3">
+                <div className="p-2 bg-accent/10 rounded-xl text-accent">
+                  <CreditCard size={20} />
+                </div>
                 <div>
-                  <h2 className="text-sm font-semibold text-foreground">{activeStatement.cardLabel}</h2>
-                  <p className="text-[11px] text-muted-foreground">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <h2 className="text-base font-semibold text-foreground">{activeStatement.cardLabel}</h2>
+                    {activeStatement.cardNumberMasked && (
+                      <span className="font-mono text-[11px] text-muted-foreground bg-muted px-2 py-0.5 rounded-md border border-border/50">
+                        {activeStatement.cardNumberMasked}
+                      </span>
+                    )}
+                    {activeStatement.cardType && (
+                      <span className="text-[11px] px-2 py-0.5 rounded-md bg-accent/15 text-accent font-medium">
+                        {activeStatement.cardType}
+                      </span>
+                    )}
+                  </div>
+                  <p className="text-[11px] text-muted-foreground mt-1">
+                    {activeStatement.cardholderName && (
+                      <span className="font-medium text-foreground mr-1.5">{activeStatement.cardholderName} ·</span>
+                    )}
                     Statement Period: <span className="font-medium text-foreground">{activeStatement.statementPeriod}</span> · Billing Date: {activeStatement.billingDate}
                   </p>
                 </div>
               </div>
-              <div className="flex items-center gap-2">
+              <div className="flex flex-wrap items-center gap-2">
+                {activeStatement.rewardsPoints !== undefined && (
+                  <span className="text-[11px] px-2.5 py-1 bg-amber-500/10 text-amber-600 dark:text-amber-400 font-medium rounded-lg flex items-center gap-1.5">
+                    <Award size={13} />
+                    {activeStatement.rewardsPoints.toLocaleString()} Max Rewards
+                  </span>
+                )}
                 <span className="text-[11px] px-2.5 py-1 bg-muted rounded-lg text-muted-foreground">
                   APR: {activeStatement.annualInterestRate ? `${activeStatement.annualInterestRate}% p.a.` : 'N/A'}
+                  {activeStatement.monthlyInterestRate ? ` (${activeStatement.monthlyInterestRate}% / mo)` : ''}
                 </span>
                 <button
                   onClick={() => handleDeleteStatement(activeStatement.id)}
@@ -563,7 +613,7 @@ export default function StatementReader() {
             {/* Step A: Pick / Name the Card */}
             <div className="space-y-2">
               <label className="block text-xs font-semibold text-foreground uppercase tracking-wider">
-                1. Select or Name the Card
+                1. Card Profile (Optional — Auto-detected from PDF)
               </label>
               {cards.length > 0 && !isCreatingCard ? (
                 <div className="space-y-2">
@@ -579,20 +629,20 @@ export default function StatementReader() {
                     }}
                     className="w-full bg-muted border border-border rounded-xl px-3 py-2 text-xs font-medium text-foreground focus:outline-none focus:ring-1 focus:ring-accent"
                   >
-                    <option value="">-- Choose existing card label --</option>
+                    <option value="">⚡ Auto-detect card profile from statement PDF</option>
                     {cards.map(c => (
                       <option key={c.id} value={c.id}>
-                        {c.label}
+                        {c.label} {c.last4 ? `(•••• ${c.last4})` : ''}
                       </option>
                     ))}
-                    <option value="__new__">+ Add new card label</option>
+                    <option value="__new__">+ Specify custom card name</option>
                   </select>
                 </div>
               ) : (
                 <div className="space-y-1.5">
                   <input
                     type="text"
-                    placeholder="e.g. Combank Rewards (4582)"
+                    placeholder="e.g. Combank Visa Platinum (or leave blank to auto-detect)"
                     value={newCardLabel}
                     onChange={(e) => setNewCardLabel(e.target.value)}
                     className="w-full bg-muted border border-border rounded-xl px-3 py-2 text-xs font-medium text-foreground focus:outline-none focus:ring-1 focus:ring-accent"
@@ -603,7 +653,7 @@ export default function StatementReader() {
                       onClick={() => setIsCreatingCard(false)}
                       className="text-[11px] text-muted-foreground hover:text-foreground underline"
                     >
-                      Choose existing card label instead
+                      Choose existing card profile instead
                     </button>
                   )}
                 </div>
