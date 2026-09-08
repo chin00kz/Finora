@@ -19,9 +19,9 @@
 
 ## 📖 Table of Contents
 
-- [💡 Why Finora?](#-why-finora)
-- [🏛️ Architectural Philosophy](#️-architectural-philosophy)
-- [✨ System Features](#-system-features)
+- [ Why Finora?](#-why-finora)
+- [ Architectural Philosophy](#️-architectural-philosophy)
+- [ System Features](#-system-features)
   - [1. Minimalist Home Dashboard & Ergonomics](#1-minimalist-home-dashboard--ergonomics)
   - [2. Fast-Entry Transaction Suite (Habitual Shortcuts)](#2-fast-entry-transaction-suite-habitual-shortcuts)
   - [3. Safe-to-Spend Cashflow Forecast](#3-safe-to-spend-cashflow-forecast)
@@ -34,16 +34,16 @@
   - [10. Data Portability, Full JSON Backup & CSV Engine](#10-data-portability-full-json-backup--csv-engine)
   - [11. Local-First Engine & Cloud Sync Engine](#11-local-first-engine--cloud-sync-engine)
   - [12. Standalone PDF Statement Reader (`/statements`)](#12-standalone-pdf-statement-reader-statements)
-- [🗄️ Database Schema & Entities](#️-database-schema--entities)
-- [🛠️ Tech Stack](#️-tech-stack)
-- [📁 Project Structure](#-project-structure)
-- [🚀 Getting Started](#-getting-started)
-- [⌨️ Keyboard Shortcuts](#️-keyboard-shortcuts)
-- [📄 License & Authors](#-license--authors)
+- [ Database Schema & Entities](#️-database-schema--entities)
+- [ Tech Stack](#️-tech-stack)
+- [ Project Structure](#-project-structure)
+- [ Getting Started](#-getting-started)
+- [⌨ Keyboard Shortcuts](#️-keyboard-shortcuts)
+- [ License & Authors](#-license--authors)
 
 ---
 
-## 💡 Why Finora?
+##  Why Finora?
 
 Personal finance software typically suffers from one of two extremes:
 1. **The Toy App**: Visually clean, but falls apart when handling multiple accounts, credit float cycles, shared split bills, irregular habitual spending, or debt settlements.
@@ -54,7 +54,7 @@ The everyday surface is disciplined, distraction-free, and lightning-fast. Deep 
 
 ---
 
-## 🏛️ Architectural Philosophy
+##  Architectural Philosophy
 
 ```text
 ┌─────────────────────────────────────────────────────────────────────────┐
@@ -87,7 +87,7 @@ The everyday surface is disciplined, distraction-free, and lightning-fast. Deep 
 
 ---
 
-## ✨ System Features
+##  System Features
 
 ### 1. Minimalist Home Dashboard & Ergonomics
 - **Glance Metrics**: View your **Available Balance**, **Spent This Period**, and dynamic **Daily Spending Pace** in under three seconds.
@@ -103,7 +103,7 @@ The everyday surface is disciplined, distraction-free, and lightning-fast. Deep 
   - *Midday* (11:00 AM – 4:00 PM)
   - *Evening* (4:00 PM – 9:00 PM)
   - *Night* (9:00 PM – 5:00 AM)
-- **Account & Category Memory**: Remembers the last-used account and category per canonical note. If an account was deleted, displays an amber `⚠️ Pick Acc` badge and redirects to the form to avoid silent misbooking.
+- **Account & Category Memory**: Remembers the last-used account and category per canonical note. If an account was deleted, displays an amber ` Pick Acc` badge and redirects to the form to avoid silent misbooking.
 - **Quick-Add Favorite Chips (`QuickAddChips.tsx`)**: Tappable pills embedded at the top of the transaction modal and optionally on the Home Dashboard.
 - **Smart Amount Memory & Instant Select**: Typing a description automatically fills the last logged price and highlights the numeric field (`amountInputRef.select()`), allowing instant overwrite with a single tap.
 - **Inline "Log Again Today" Repeat Action**: One-click repeat button (`RotateCcw`) on every row in the Activity table and mobile card view.
@@ -164,6 +164,7 @@ The everyday surface is disciplined, distraction-free, and lightning-fast. Deep 
 - **Deposit & Withdrawal Workflows**: Log transfers in or out of goals with immediate balance synchronization.
 
 ### 10. Data Portability, Full JSON Backup & CSV Engine
+- **Complete JSON Snapshot Backup**: One-click export (`exportFullBackupJSON`) and restore (`restoreFullBackupJSON`) covering all 18 Dexie tables with automated schema validation.
 - **Complete JSON Snapshot Backup**: One-click export (`exportFullBackupJSON`) and restore (`restoreFullBackupJSON`) covering all 20 Dexie tables with automated schema validation.
 - **CSV Import with Smart Matching**: Auto-maps column headers, deduplicates existing rows, and dynamically creates missing accounts and categories.
 - **Itemized CSV & Formatted PDF Reports**: Download itemized transaction spreadsheets or printer-friendly PDF financial summaries.
@@ -175,6 +176,15 @@ The everyday surface is disciplined, distraction-free, and lightning-fast. Deep 
 - **Cloud Duplicate Resolver**: Dedicated tool in Settings to clean up remote duplicate IDs and align cloud state with local storage.
 
 ### 12. Standalone PDF Statement Reader (`/statements`)
+*A client-side credit card PDF statement interpreter designed for Commercial Bank of Ceylon statements.*
+- **Strict Standalone Boundary**: Completely decoupled from manual entries (`Activity`), accounts (`Accounts`), and `Credit & Float Tools`. Statement data is never auto-imported or cross-referenced against your regular ledger to prevent double-counting or overwriting manually maintained figures.
+- **100% In-Browser Privacy**: Raw PDF bytes and extracted text are parsed purely in the client browser using `pdfjs-dist`. Zero network requests are made with statement data.
+- **Header Summary Card**: Displays Total Outstanding, Minimum Payment Due, Payment Due Date, Credit Limit, and countdown to due date.
+- **Reconciliation Strip**: Evaluates printed statement math ($Opening + Purchases - Payments = Closing$) and flags any discrepancy.
+- **0% Installment Plan Detection**: Scans transaction descriptions for installment patterns (e.g. `FLEXIPLAN ... N of M`) and shows monthly payment amounts, completion percentage, and estimated remaining liability.
+- **Grouped Categorized Breakdown**: Categorizes statement spending into grouped sums (Supermarkets, Dining, Transport, Utilities, etc.) with expandable itemized transactions.
+- **Payments Received List**: Dedicated section listing all `CR`-flagged credits and payments logged this cycle.
+- **Local History**: Parsed statements are saved in local Dexie storage so past statements remain browsable without re-uploading.
 *A client-side credit card PDF statement interpreter engineered specifically for Commercial Bank of Ceylon (Combank) monthly statements.*
 - **Strict Standalone Boundary**: Completely decoupled from manual entries (`Activity`), accounts (`Accounts`), and `Credit & Float Tools`. Statement data is isolated in dedicated Dexie tables (`statementCards`, `parsedStatements`) and is never auto-imported or cross-referenced against your regular ledger, preventing double-counting or balance distortion.
 - **100% In-Browser Privacy**: Raw PDF bytes and extracted text layers are parsed purely client-side using `pdfjs-dist` and bundled Web Workers (`pdf.worker.min.mjs`). Zero network requests are made with statement data.
@@ -190,7 +200,7 @@ The everyday surface is disciplined, distraction-free, and lightning-fast. Deep 
 
 ---
 
-## 🗄️ Database Schema & Entities
+##  Database Schema & Entities
 
 Finora uses a 20-table local schema managed by Dexie.js (`FinoraDB`):
 
@@ -219,7 +229,7 @@ Finora uses a 20-table local schema managed by Dexie.js (`FinoraDB`):
 
 ---
 
-## 🛠️ Tech Stack
+##  Tech Stack
 
 ```text
 Frontend Framework:       React 19 (SPA)
@@ -292,7 +302,7 @@ Finora/
 
 ---
 
-## 🚀 Getting Started
+##  Getting Started
 
 ### Prerequisites
 - [Node.js](https://nodejs.org/) (version 18 or newer recommended)
@@ -331,7 +341,7 @@ Finora/
 
 ---
 
-## ⌨️ Keyboard Shortcuts
+##  Keyboard Shortcuts
 
 | Shortcut | Action | Scope |
 |:---:|---|---|
@@ -342,8 +352,7 @@ Finora/
 
 ---
 
-## 📄 License & Authors
+##  License & Authors
 
 Created and maintained by [chin00kz](https://github.com/chin00kz).
 
-Distributed under the MIT License. See [LICENSE](LICENSE) for more details.
