@@ -19,6 +19,7 @@ import {
   SlidersHorizontal,
   Eye,
   EyeOff,
+  FileText,
 } from 'lucide-react';
 import { usePrivacyStore } from './store/privacyStore';
 import { purgeMockData, deduplicateCategories } from './utils/initDb';
@@ -40,6 +41,7 @@ import Analytics from './pages/Analytics';
 import Recurring from './pages/Recurring';
 import Goals from './pages/Goals';
 import FloatTools from './pages/FloatTools';
+import StatementReader from './pages/StatementReader';
 import Auth from './pages/Auth';
 import ResetPassword from './pages/ResetPassword';
 import TransactionModal from './components/TransactionModal';
@@ -100,6 +102,7 @@ function DesktopSidebar({ syncStatus }: { syncStatus: 'idle' | 'syncing' | 'erro
     { to: '/goals', label: 'Savings Goals', icon: Target },
     { to: '/recurring', label: 'Recurring', icon: Repeat },
     { to: '/debts', label: 'IOUs & Debts', icon: Users },
+    { to: '/statements', label: 'Statement Reader', icon: FileText },
     { to: '/settings', label: 'Settings', icon: SettingsIcon },
   ];
 
@@ -322,6 +325,34 @@ function MobileBottomNav({ syncStatus }: { syncStatus: 'idle' | 'syncing' | 'err
                 );
               })}
             </div>
+
+            {/* Advanced Tools Shortcuts */}
+            <div className="pt-2 border-t border-border grid grid-cols-2 gap-2">
+              <Link
+                to="/statements"
+                onClick={() => setIsMoreOpen(false)}
+                className={`flex items-center gap-2 p-2.5 rounded-xl border border-border transition-colors text-xs font-medium ${
+                  isActive('/statements')
+                    ? 'bg-accent text-accent-foreground font-semibold'
+                    : 'bg-muted/30 hover:bg-muted text-foreground'
+                }`}
+              >
+                <FileText size={16} className="text-accent shrink-0" />
+                <span className="truncate">Statement Reader</span>
+              </Link>
+              <Link
+                to="/float-tools"
+                onClick={() => setIsMoreOpen(false)}
+                className={`flex items-center gap-2 p-2.5 rounded-xl border border-border transition-colors text-xs font-medium ${
+                  isActive('/float-tools')
+                    ? 'bg-accent text-accent-foreground font-semibold'
+                    : 'bg-muted/30 hover:bg-muted text-foreground'
+                }`}
+              >
+                <SlidersHorizontal size={16} className="text-accent shrink-0" />
+                <span className="truncate">Float Tools</span>
+              </Link>
+            </div>
           </div>
         </div>
       )}
@@ -454,6 +485,7 @@ function AppShell() {
             <Route path="/settings" element={<Settings />} />
             <Route path="/budget" element={<BudgetDetail />} />
             <Route path="/float-tools" element={<FloatTools />} />
+            <Route path="/statements" element={<StatementReader />} />
             <Route path="/auth" element={<Auth />} />
             <Route path="/reset-password" element={<ResetPassword />} />
           </Routes>

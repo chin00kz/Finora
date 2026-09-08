@@ -33,6 +33,7 @@
   - [9. Savings Goals & Allocations](#9-savings-goals--allocations)
   - [10. Data Portability, Full JSON Backup & CSV Engine](#10-data-portability-full-json-backup--csv-engine)
   - [11. Local-First Engine & Cloud Sync Engine](#11-local-first-engine--cloud-sync-engine)
+  - [12. Standalone PDF Statement Reader (`/statements`)](#12-standalone-pdf-statement-reader-statements)
 - [🗄️ Database Schema & Entities](#️-database-schema--entities)
 - [🛠️ Tech Stack](#️-tech-stack)
 - [📁 Project Structure](#-project-structure)
@@ -173,11 +174,22 @@ The everyday surface is disciplined, distraction-free, and lightning-fast. Deep 
 - **Offline Sync Queue**: Queues offline mutations in `localStorage` (`finora-pending-sync`) and drains them in order once online.
 - **Cloud Duplicate Resolver**: Dedicated tool in Settings to clean up remote duplicate IDs and align cloud state with local storage.
 
+### 12. Standalone PDF Statement Reader (`/statements`)
+*A client-side credit card PDF statement interpreter designed for Commercial Bank of Ceylon statements.*
+- **Strict Standalone Boundary**: Completely decoupled from manual entries (`Activity`), accounts (`Accounts`), and `Credit & Float Tools`. Statement data is never auto-imported or cross-referenced against your regular ledger to prevent double-counting or overwriting manually maintained figures.
+- **100% In-Browser Privacy**: Raw PDF bytes and extracted text are parsed purely in the client browser using `pdfjs-dist`. Zero network requests are made with statement data.
+- **Header Summary Card**: Displays Total Outstanding, Minimum Payment Due, Payment Due Date, Credit Limit, and countdown to due date.
+- **Reconciliation Strip**: Evaluates printed statement math ($Opening + Purchases - Payments = Closing$) and flags any discrepancy.
+- **0% Installment Plan Detection**: Scans transaction descriptions for installment patterns (e.g. `FLEXIPLAN ... N of M`) and shows monthly payment amounts, completion percentage, and estimated remaining liability.
+- **Grouped Categorized Breakdown**: Categorizes statement spending into grouped sums (Supermarkets, Dining, Transport, Utilities, etc.) with expandable itemized transactions.
+- **Payments Received List**: Dedicated section listing all `CR`-flagged credits and payments logged this cycle.
+- **Local History**: Parsed statements are saved in local Dexie storage so past statements remain browsable without re-uploading.
+
 ---
 
 ## 🗄️ Database Schema & Entities
 
-Finora uses an 18-table local schema managed by Dexie.js (`FinoraDB`):
+Finora uses a 20-table local schema managed by Dexie.js (`FinoraDB`):
 
 | Table | Primary Role | Synced to Cloud |
 |---|---|:---:|
@@ -199,6 +211,8 @@ Finora uses an 18-table local schema managed by Dexie.js (`FinoraDB`):
 | `floatGapHistory` | Historical card bills vs cash offset deltas and cumulative gaps | Local |
 | `reimbursementLedgers` | Counterparty card expense ledgers with card association | Local |
 | `reimbursementEntries` | Individual entries tracking owed vs paid balances | Local |
+| `statementCards` | Saved card labels for PDF statement uploads | Local |
+| `parsedStatements` | Client-side parsed PDF statements with transactions & plans | Local |
 
 ---
 
@@ -215,6 +229,7 @@ Global State Store:       Zustand with localStorage persistence
 Client-Side Router:       React Router v7
 Iconography:              Lucide React
 Date Manipulation:        date-fns
+PDF Processing:           pdfjs-dist (client-side worker & layout extractor)
 ```
 
 ---
@@ -247,6 +262,7 @@ Finora/
 │   │   ├── Recurring.tsx           # Recurring schedule manager
 │   │   ├── Goals.tsx               # Savings goals & progress rings
 │   │   ├── FloatTools.tsx          # Credit & Float power tools module
+│   │   ├── StatementReader.tsx     # Client-side PDF credit card statement reader
 │   │   └── Settings.tsx            # Preferences, sync, tags & backups
 │   ├── store/                      # Zustand state management
 │   │   ├── authStore.ts            # User auth & sync timestamp state
@@ -261,6 +277,7 @@ Finora/
 │   │   ├── quickLogEngine.ts       # Habitual frequency & time-of-day scoring
 │   │   ├── safeToSpendEngine.ts    # Liquidity forecast formula & MMA checks
 │   │   ├── monthlyDigestEngine.ts  # Retrospectives, spike checks & insights
+│   │   ├── statementParser.ts      # PDF text extraction & Combank layout parser
 │   │   ├── jsonBackup.ts           # Full database JSON snapshot import/export
 │   │   └── formatters.ts           # Currency and date utilities
 │   ├── App.tsx                     # AppShell, routing, global modals & toast

@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { db } from '../db/db';
-import { Trash2, Edit2, Check, X, Merge, Moon, Sun, Monitor, LogOut, UserX, CloudUpload, RefreshCw, Download, CheckCircle, Plus, FileSpreadsheet, UploadCloud, CreditCard, SlidersHorizontal, FileJson, Sparkles, Eye, EyeOff } from 'lucide-react';
+import { Trash2, Edit2, Check, X, Merge, Moon, Sun, Monitor, LogOut, UserX, CloudUpload, RefreshCw, Download, CheckCircle, Plus, FileSpreadsheet, UploadCloud, CreditCard, SlidersHorizontal, FileJson, Sparkles, Eye, EyeOff, FileText } from 'lucide-react';
 import { useThemeStore } from '../store/themeStore';
 import { useAuthStore } from '../store/authStore';
 import { useNavStore } from '../store/navStore';
@@ -464,7 +464,7 @@ export default function Settings() {
           <h3 className="font-medium text-foreground">Advanced Tools</h3>
           <p className="text-xs text-muted-foreground mt-1">Specialized power-user tools for credit float management and ledgers.</p>
         </div>
-        <div className="p-5">
+        <div className="p-5 space-y-3">
           <button
             onClick={() => navigate('/float-tools')}
             className="flex items-center justify-between w-full p-3.5 bg-muted/40 hover:bg-muted/70 border border-border rounded-xl text-xs font-medium text-foreground transition-colors"
@@ -474,6 +474,22 @@ export default function Settings() {
               <div className="text-left">
                 <p className="font-medium text-sm text-foreground">Credit &amp; Float Tools</p>
                 <p className="text-[11px] text-muted-foreground">Multi-card float tracking, exposure stress-tests, installments &amp; ledgers</p>
+              </div>
+            </div>
+            <span className="px-3 py-1.5 bg-foreground text-background rounded-lg text-xs font-semibold">
+              Open
+            </span>
+          </button>
+
+          <button
+            onClick={() => navigate('/statements')}
+            className="flex items-center justify-between w-full p-3.5 bg-muted/40 hover:bg-muted/70 border border-border rounded-xl text-xs font-medium text-foreground transition-colors"
+          >
+            <div className="flex items-center gap-3">
+              <FileText size={20} className="text-accent" />
+              <div className="text-left">
+                <p className="font-medium text-sm text-foreground">Statement Reader</p>
+                <p className="text-[11px] text-muted-foreground">Client-side PDF credit card statement interpreter, installment tracking &amp; breakdown</p>
               </div>
             </div>
             <span className="px-3 py-1.5 bg-foreground text-background rounded-lg text-xs font-semibold">

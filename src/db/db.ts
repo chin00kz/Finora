@@ -247,6 +247,69 @@ export interface ReimbursementEntry {
   updatedAt?: number;
 }
 
+// ── PDF Statement Reader (Standalone, local-only) ───────────────────────────
+export interface StatementCard {
+  id: string;
+  label: string; // e.g. "Combank Visa Platinum"
+  last4?: string; // e.g. "4582"
+  bankName: string; // e.g. "Commercial Bank of Ceylon"
+  updatedAt: number;
+}
+
+export interface StatementTransaction {
+  id: string;
+  processedDate: string; // e.g. "14/08/2026"
+  transactionDate: string; // e.g. "12/08/2026"
+  description: string;
+  amount: number;
+  isCredit: boolean; // true if marked "CR" (payment/refund/cashback)
+  category?: string;
+}
+
+export interface StatementInstallmentPlan {
+  id: string;
+  label: string; // e.g. "SINGER SRI LANKA"
+  currentInstallment: number; // e.g. 10
+  totalInstallments: number; // e.g. 24
+  cycleAmount: number; // this cycle's amount
+  estimatedRemainingBalance: number; // monthlyAmount * (totalInstallments - currentInstallment)
+  rawDescriptions: string[];
+}
+
+export interface ParsedStatement {
+  id: string;
+  cardId: string; // links to StatementCard.id
+  cardLabel: string;
+  statementPeriod: string; // e.g. "2026-08" or "15/07/2026 - 14/08/2026"
+  billingDate: string; // e.g. "14/08/2026"
+  dueDate: string; // e.g. "04/09/2026"
+  daysUntilDue?: number;
+
+  // Balances & Limits
+  totalOutstanding: number;
+  minimumPaymentDue: number;
+  creditLimit: number;
+  availableCredit?: number;
+
+  // Reconciliation Block
+  openingBalance: number;
+  totalPurchases: number;
+  totalPayments: number;
+  closingBalance: number;
+  isReconciled: boolean;
+
+  // Rates
+  annualInterestRate?: number;
+  monthlyInterestRate?: number;
+
+  // Extracted Transactions & Plans
+  transactions: StatementTransaction[];
+  installmentPlans: StatementInstallmentPlan[];
+
+  createdAt: number;
+  updatedAt: number;
+}
+
 const db = new Dexie('FinoraDB') as Dexie & {
   accounts: EntityTable<Account, 'id'>;
   categories: EntityTable<Category, 'id'>;
@@ -267,6 +330,9 @@ const db = new Dexie('FinoraDB') as Dexie & {
   floatGapHistory: EntityTable<FloatGapHistory, 'id'>;
   reimbursementLedgers: EntityTable<ReimbursementLedger, 'id'>;
   reimbursementEntries: EntityTable<ReimbursementEntry, 'id'>;
+  // PDF Statement Reader (local-only, standalone)
+  statementCards: EntityTable<StatementCard, 'id'>;
+  parsedStatements: EntityTable<ParsedStatement, 'id'>;
 };
 
 
@@ -336,6 +402,12 @@ db.version(7).stores({
     if (!debt.personName) debt.personName = 'Friend';
     if (!debt.settlements) debt.settlements = [];
   });
+});
+
+// v8 — PDF Statement Reader (standalone, local-only tables)
+db.version(8).stores({
+  statementCards: 'id, label, bankName, updatedAt',
+  parsedStatements: 'id, cardId, statementPeriod, billingDate, dueDate, updatedAt',
 });
 
 export { db };
