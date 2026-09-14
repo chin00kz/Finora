@@ -117,6 +117,12 @@ function isTableMissingError(errMsg?: string): boolean {
   );
 }
 
+function missingColumnFromError(errMsg?: string): string | null {
+  if (!errMsg) return null;
+  const match = errMsg.match(/Could not find the '([^']+)' column/i);
+  return match?.[1] ?? null;
+}
+
 // ── camelCase ↔ snake_case mappers ──────────────────────────────────────────
 
 // Accounts
@@ -129,7 +135,7 @@ function toSupabaseAccount(userId: string, a: Account) {
     balance: a.balance,
     currency: a.currency,
     include_in_total: a.includeInTotal,
-    updated_at: a.updatedAt || Date.now(),
+    updated_at: a.updatedAt ?? 0,
   };
 }
 
@@ -141,7 +147,7 @@ function fromSupabaseAccount(row: Record<string, unknown>): Account {
     balance: Number(row.balance) || 0,
     currency: String(row.currency || 'LKR'),
     includeInTotal: row.include_in_total !== false,
-    updatedAt: Number(row.updated_at) || Date.now(),
+    updatedAt: Number(row.updated_at) || 0,
   };
 }
 
@@ -162,10 +168,10 @@ function toSupabaseTransaction(userId: string, t: Transaction) {
     personal_amount: t.personalAmount != null ? t.personalAmount : null,
     is_settled: t.isSettled || null,
     exclude_from_budget: t.excludeFromBudget || null,
-    debt_id: t.debtId || null,
-    debt_direction: t.debtDirection || null,
-    debt_settlement_id: t.debtSettlementId || null,
-    updated_at: t.updatedAt || Date.now(),
+    debt_id: t.debtId || undefined,
+    debt_direction: t.debtDirection || undefined,
+    debt_settlement_id: t.debtSettlementId || undefined,
+    updated_at: t.updatedAt ?? 0,
   };
 }
 
@@ -187,7 +193,7 @@ function fromSupabaseTransaction(row: Record<string, unknown>): Transaction {
     debtId: row.debt_id ? String(row.debt_id) : undefined,
     debtDirection: (row.debt_direction as Transaction['debtDirection']) || undefined,
     debtSettlementId: row.debt_settlement_id ? String(row.debt_settlement_id) : undefined,
-    updatedAt: Number(row.updated_at) || Date.now(),
+    updatedAt: Number(row.updated_at) || 0,
   };
 }
 
@@ -640,6 +646,38 @@ function fromSupabaseReimbursementEntry(row: Record<string, unknown>): Reimburse
   };
 }
 
+function stripUndefinedFields(row: Record<string, unknown>): Record<string, unknown> {
+  const out: Record<string, unknown> = {};
+  for (const [key, value] of Object.entries(row)) {
+    if (value !== undefined) out[key] = value;
+  }
+  return out;
+}
+
+async function upsertRows(
+  table: TableName,
+  rows: Record<string, unknown>[]
+): Promise<{ error: { message: string } | null }> {
+  let payload = rows.map(stripUndefinedFields);
+
+  for (let attempt = 0; attempt < 10; attempt++) {
+    const { error } = await supabase.from(table).upsert(payload, { onConflict: 'id' });
+    if (!error) return { error: null };
+
+    const missingCol = missingColumnFromError(error.message);
+    if (!missingCol) return { error };
+
+    console.warn(`[sync] ${table} has no "${missingCol}" column; retrying without it`);
+    payload = payload.map(row => {
+      const next = { ...row };
+      delete next[missingCol];
+      return next;
+    });
+  }
+
+  return { error: { message: `Could not upsert ${table}` } };
+}
+
 // ── Push (Local → Supabase) ──────────────────────────────────────────────────
 
 export async function pushTable(table: TableName, userId: string): Promise<{ success: boolean; error?: string; skipped?: boolean }> {
@@ -708,7 +746,37 @@ export async function pushTable(table: TableName, userId: string): Promise<{ suc
       return { success: true };
     }
 
-    const { error } = await supabase.from(table).upsert(rows, { onConflict: 'id' });
+    // Never let an older local account/transaction overwrite a newer cloud row.
+    if (table === 'accounts' || table === 'transactions') {
+      const { data: cloudRows, error: lookupError } = await supabase
+        .from(table)
+        .select('id, updated_at')
+        .eq('user_id', userId);
+
+      if (lookupError && !isTableMissingError(lookupError.message)) {
+        console.warn(`[sync] ${table} lookup failed:`, lookupError.message);
+        markPending(table);
+        return { success: false, error: `${table}: ${lookupError.message}` };
+      }
+
+      if (!lookupError && cloudRows) {
+        const cloudTs = new Map<string, number>();
+        for (const row of cloudRows) {
+          cloudTs.set(String(row.id), Number(row.updated_at) || 0);
+        }
+        rows = rows.filter(row => {
+          const remoteTs = cloudTs.get(String(row.id));
+          if (remoteTs === undefined) return true;
+          return (Number(row.updated_at) || 0) > remoteTs;
+        });
+        if (rows.length === 0) {
+          clearPending(table);
+          return { success: true };
+        }
+      }
+    }
+
+    const { error } = await upsertRows(table, rows);
 
     if (error) {
       if (isTableMissingError(error.message)) {
@@ -749,12 +817,30 @@ export async function pullTable(table: TableName, userId: string): Promise<{ suc
     if (!data || data.length === 0) return { success: true };
 
     switch (table) {
-      case 'accounts':
-        await db.accounts.bulkPut(data.map(r => fromSupabaseAccount(r)));
+      case 'accounts': {
+        const incoming = data.map(r => fromSupabaseAccount(r));
+        const local = await db.accounts.toArray();
+        const localMap = new Map(local.map(a => [a.id, a]));
+        const newer = incoming.filter(remote => {
+          const current = localMap.get(remote.id);
+          if (!current) return true;
+          return (remote.updatedAt ?? 0) > (current.updatedAt ?? 0);
+        });
+        if (newer.length) await db.accounts.bulkPut(newer);
         break;
-      case 'transactions':
-        await db.transactions.bulkPut(data.map(r => fromSupabaseTransaction(r)));
+      }
+      case 'transactions': {
+        const incoming = data.map(r => fromSupabaseTransaction(r));
+        const local = await db.transactions.toArray();
+        const localMap = new Map(local.map(t => [t.id, t]));
+        const newer = incoming.filter(remote => {
+          const current = localMap.get(remote.id);
+          if (!current) return true;
+          return (remote.updatedAt ?? 0) > (current.updatedAt ?? 0);
+        });
+        if (newer.length) await db.transactions.bulkPut(newer);
         break;
+      }
       case 'budgets':
         await db.budgets.bulkPut(data.map(r => fromSupabaseBudget(r)));
         break;
@@ -814,6 +900,11 @@ export async function pullTable(table: TableName, userId: string): Promise<{ suc
     console.warn(`[sync] Pull exception for ${table}:`, msg);
     return { success: false, error: `${table}: ${msg}` };
   }
+}
+
+/** Pull only accounts + activity. Used so the other device sees new rows without a full 18-table push. */
+export async function pullLiveActivity(userId: string): Promise<void> {
+  await Promise.all([pullTable('accounts', userId), pullTable('transactions', userId)]);
 }
 
 // ── Delete from Supabase ────────────────────────────────────────────────────
@@ -890,6 +981,14 @@ async function migrateLegacyIds(): Promise<void> {
 
 export async function syncAll(userId: string): Promise<{ success: boolean; error?: string }> {
   await migrateLegacyIds();
+
+  // Pull accounts + activity first so this device does not upload stale rows.
+  for (const table of ['accounts', 'transactions'] as const) {
+    const prePull = await pullTable(table, userId);
+    if (!prePull.success && !prePull.skipped) {
+      return { success: false, error: `Download error (${prePull.error})` };
+    }
+  }
 
   // 1. Push all local tables
   const pushResults = await Promise.all(ALL_TABLES.map(t => pushTable(t, userId)));
