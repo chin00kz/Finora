@@ -217,7 +217,33 @@ export async function restoreFullBackupJSON(jsonString: string): Promise<{ succe
       }
     });
 
-    triggerSync();
+    const markAll = (arr: unknown[] | undefined, table: any) => {
+      if (Array.isArray(arr)) {
+        arr.forEach((item: any) => {
+          if (item?.id) triggerSync(table, item.id);
+        });
+      }
+    };
+
+    markAll(data.accounts, 'accounts');
+    markAll(data.categories, 'categories');
+    markAll(data.transactions, 'transactions');
+    markAll(data.budgets, 'budgets');
+    markAll(data.tags, 'tags');
+    markAll(data.people, 'people');
+    markAll(data.debts, 'debts');
+    markAll(data.recurringTransactions, 'recurring_transactions');
+    markAll(data.savingsGoals, 'savings_goals');
+    markAll(data.creditCards, 'credit_cards');
+    markAll(data.cashOffsetSources, 'cash_offset_sources');
+    markAll(data.fixedDeposits, 'fixed_deposits');
+    markAll(data.moneyMarketAccounts, 'money_market_accounts');
+    markAll(data.installmentPlans, 'installment_plans');
+    markAll(data.cardPromos, 'card_promos');
+    markAll(data.floatGapHistory, 'float_gap_history');
+    markAll(data.reimbursementLedgers, 'reimbursement_ledgers');
+    markAll(data.reimbursementEntries, 'reimbursement_entries');
+
     return { success: true, restoredCount: totalItems };
   } catch (err) {
     return { success: false, error: err instanceof Error ? err.message : 'Unknown restore error', restoredCount: 0 };

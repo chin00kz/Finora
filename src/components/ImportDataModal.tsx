@@ -14,6 +14,7 @@ import {
 import { analyzeCSV, executeImport } from '../utils/csvImporter';
 import type { CSVAnalysis } from '../utils/csvImporter';
 import { format } from 'date-fns';
+import { formatMoney } from '../utils/formatters';
 
 interface ImportDataModalProps {
   isOpen: boolean;
@@ -260,13 +261,13 @@ export default function ImportDataModal({ isOpen, onClose, onSuccess }: ImportDa
                   <div className="p-3 bg-card border border-border rounded-xl">
                     <p className="text-[10px] uppercase font-semibold text-muted-foreground">Total Expenses</p>
                     <p className="text-base font-semibold text-red-500">
-                      LKR {analysis.totalExpenseAmount.toLocaleString()}
+                      {formatMoney(analysis.totalExpenseAmount)}
                     </p>
                   </div>
                   <div className="p-3 bg-card border border-border rounded-xl">
                     <p className="text-[10px] uppercase font-semibold text-muted-foreground">Total Income</p>
                     <p className="text-base font-semibold text-emerald-500">
-                      LKR {analysis.totalIncomeAmount.toLocaleString()}
+                      {formatMoney(analysis.totalIncomeAmount)}
                     </p>
                   </div>
                   <div className="p-3 bg-card border border-border rounded-xl">
@@ -349,7 +350,7 @@ export default function ImportDataModal({ isOpen, onClose, onSuccess }: ImportDa
                                 {row.notes || '—'}
                               </td>
                               <td className="p-2 pr-3 text-right font-medium text-foreground whitespace-nowrap">
-                                LKR {row.amount.toLocaleString()}
+                                {formatMoney(row.amount)}
                               </td>
                             </tr>
                           ))}

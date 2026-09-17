@@ -139,10 +139,7 @@ export interface SavingsGoal {
 }
 
 // ── Credit & Float Tools ─────────────────────────────────────────────────────
-// All tables below are local-only (not synced to Supabase).
-// Known gap: these tables have no cloud backup path yet. Treat extending backup
-// coverage to include these tables as a near-term follow-up before relying on
-// this module for day-to-day tracking.
+// These tables are synced to Supabase via syncEngine (Section 2 in supabase-schema.sql).
 
 export interface CreditCard {
   id: string;
@@ -304,10 +301,10 @@ export interface ParsedStatement {
   monthlyInterestRate?: number;
 
   // Metadata detected from statement
-  cardNumberMasked?: string; // e.g. "4378 4002 **** 6135"
+  cardNumberMasked?: string; // e.g. "4111 1111 **** 1111"
   cardType?: string; // e.g. "Visa Platinum"
-  cardholderName?: string; // e.g. "CHANUKA DILSHAN"
-  rewardsPoints?: number; // e.g. 687
+  cardholderName?: string; // e.g. "CARDHOLDER NAME"
+  rewardsPoints?: number; // e.g. 100
 
   // Extracted Transactions & Plans
   transactions: StatementTransaction[];
@@ -327,7 +324,7 @@ const db = new Dexie('FinoraDB') as Dexie & {
   tags: EntityTable<Tag, 'id'>;
   recurringTransactions: EntityTable<RecurringTransaction, 'id'>;
   savingsGoals: EntityTable<SavingsGoal, 'id'>;
-  // Credit & Float Tools (local-only)
+  // Credit & Float Tools (synced to cloud)
   creditCards: EntityTable<CreditCard, 'id'>;
   cashOffsetSources: EntityTable<CashOffsetSource, 'id'>;
   fixedDeposits: EntityTable<FixedDeposit, 'id'>;
@@ -383,7 +380,7 @@ db.version(5).stores({
   savingsGoals: 'id, linkedAccountId, updatedAt',
 });
 
-// v6 — Credit & Float Tools module (local-only, not synced to cloud)
+// v6 — Credit & Float Tools module (synced to cloud)
 // linkedCardId is indexed on applicable tables to support efficient cascade deletes.
 db.version(6).stores({
   creditCards: 'id, updatedAt',

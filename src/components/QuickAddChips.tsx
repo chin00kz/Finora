@@ -5,6 +5,8 @@ import { usePrivacyStore } from '../store/privacyStore';
 import { useUIStore } from '../store/uiStore';
 import { computeQuickCandidates, type QuickCandidate } from '../utils/quickLogEngine';
 import { triggerSync } from '../sync/syncEngine';
+import { createId } from '../utils/createId';
+import { formatMoney } from '../utils/formatters';
 import MaskedAmount from './MaskedAmount';
 import { AlertCircle, Pin, Sparkles } from 'lucide-react';
 
@@ -72,7 +74,7 @@ export default function QuickAddChips({
 
     // 1-Tap Instant Log Mode
     try {
-      const id = `txn-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`;
+      const id = createId('txn');
       const now = Date.now();
 
       await db.transactions.add({
@@ -95,14 +97,15 @@ export default function QuickAddChips({
           balance: acc.balance + delta,
           updatedAt: now,
         });
+        triggerSync('accounts', acc.id);
       }
 
-      triggerSync();
+      triggerSync('transactions', id);
 
       // Launch Global Undo Toast
       showUndoToast({
         id: `undo-${id}`,
-        message: `Logged "${candidate.canonicalNote}" · LKR ${candidate.amount.toLocaleString()} (${candidate.accountName || 'Account'})`,
+        message: `Logged "${candidate.canonicalNote}" · ${formatMoney(candidate.amount)} (${candidate.accountName || 'Account'})`,
         transactionId: id,
         accountId: candidate.accountId!,
         amount: candidate.amount,
@@ -141,7 +144,7 @@ export default function QuickAddChips({
             title={
               c.accountMissing
                 ? `Account previously used was deleted. Tap to pick an account for "${c.canonicalNote}"`
-                : `${oneTapLogMode ? 'Instant log' : 'Fill'} "${c.canonicalNote}" with LKR ${c.amount.toLocaleString()} from ${c.accountName || 'Account'}`
+                : `${oneTapLogMode ? 'Instant log' : 'Fill'} "${c.canonicalNote}" with ${formatMoney(c.amount)} from ${c.accountName || 'Account'}`
             }
           >
             {c.isPinned && <Pin size={10} className="text-accent -ml-0.5" />}

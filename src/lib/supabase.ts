@@ -1,7 +1,21 @@
 import { createClient } from '@supabase/supabase-js';
 
-const supabaseUrl = import.meta.env.VITE_SUPABASE_URL || 'https://sjmwvbajuutsvwgqlayc.supabase.co';
-const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY || 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InNqbXd2YmFqdXV0c3Z3Z3FsYXljIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODc4Mjc5NzYsImV4cCI6MjEwMzQwMzk3Nn0.Mzz3rKppGkVhx050ctJri8WKYSmc2eagnk-mBMAX4_Q';
+const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
+const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
 
-export const supabase = createClient(supabaseUrl, supabaseAnonKey);
+export const isSupabaseConfigured = Boolean(supabaseUrl && supabaseAnonKey);
+
+if (!isSupabaseConfigured) {
+  console.warn(
+    '[Finora] Missing VITE_SUPABASE_URL or VITE_SUPABASE_ANON_KEY.\n' +
+    'Cloud sync will be disabled. Running in local-only / maintenance mode.\n' +
+    'To enable cloud sync, copy .env.example to .env.local and fill in your credentials.',
+  );
+}
+
+// Fallback to placeholder URL so createClient does not crash module evaluation
+export const supabase = createClient(
+  supabaseUrl || 'https://placeholder.supabase.co',
+  supabaseAnonKey || 'placeholder-anon-key',
+);
 

@@ -77,12 +77,12 @@ export async function processDueRecurringTransactions(): Promise<number> {
         });
       });
 
+      triggerSync('transactions', txnId);
+      triggerSync('accounts', rule.accountId);
+      triggerSync('recurring_transactions', rule.id);
+
       createdCount++;
     }
-  }
-
-  if (createdCount > 0) {
-    triggerSync();
   }
 
   return createdCount;

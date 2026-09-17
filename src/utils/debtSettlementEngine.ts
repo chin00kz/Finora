@@ -114,7 +114,11 @@ export async function recordDebtSettlement({
       }
     });
 
-    triggerSync();
+    triggerSync('debts', debt.id);
+    if (accountId) triggerSync('accounts', accountId);
+    if (createdTxnId) triggerSync('transactions', createdTxnId);
+    if (debt.relatedTransactionId) triggerSync('transactions', debt.relatedTransactionId);
+
     return { success: true, settlementId };
   } catch (err: any) {
     console.error('Failed to record debt settlement', err);
@@ -178,7 +182,10 @@ export async function undoDebtSettlement(
       }
     });
 
-    triggerSync();
+    triggerSync('debts', debt.id);
+    if (settlement.accountId) triggerSync('accounts', settlement.accountId);
+    if (debt.relatedTransactionId) triggerSync('transactions', debt.relatedTransactionId);
+
     return { success: true };
   } catch (err: any) {
     console.error('Failed to undo debt settlement', err);
@@ -218,7 +225,8 @@ export async function syncSettlementFromTransactionDelete(txn: Transaction): Pro
       });
     }
 
-    triggerSync();
+    triggerSync('debts', debt.id);
+    if (debt.relatedTransactionId) triggerSync('transactions', debt.relatedTransactionId);
   } catch (err) {
     console.error('Failed to sync debt settlement after transaction delete', err);
   }
@@ -268,7 +276,8 @@ export async function syncSettlementFromTransactionEdit(
       });
     }
 
-    triggerSync();
+    triggerSync('debts', debt.id);
+    if (debt.relatedTransactionId) triggerSync('transactions', debt.relatedTransactionId);
   } catch (err) {
     console.error('Failed to sync debt settlement after transaction edit', err);
   }
@@ -328,7 +337,7 @@ export async function reconcileSharedExpenses(): Promise<void> {
 
     if (debtsToAdd.length > 0) {
       await db.debts.bulkAdd(debtsToAdd);
-      triggerSync();
+      debtsToAdd.forEach(d => triggerSync('debts', d.id));
     }
   } catch (err) {
     console.error('Failed to reconcile shared expenses', err);

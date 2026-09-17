@@ -47,8 +47,9 @@ export default function BudgetModal() {
 
     try {
       const now = Date.now();
+      const budgetId = `bud-${now}`;
       await db.budgets.add({
-        id: `bud-${now}`,
+        id: budgetId,
         name,
         amount: numAmount,
         period: 'days', // fallback
@@ -59,7 +60,7 @@ export default function BudgetModal() {
         updatedAt: now,
       });
 
-      triggerSync();
+      triggerSync('budgets', budgetId);
 
       setName('');
       setAmount('');

@@ -363,7 +363,7 @@ export default function Analytics() {
                       </div>
                       <div className="flex items-center gap-2">
                         <span className="font-medium text-foreground">
-                          LKR {cat.amount.toLocaleString()}
+                          LKR <MaskedAmount amount={cat.amount} />
                         </span>
                         <span className="text-muted-foreground w-9 text-right">
                           {Math.round(cat.percent)}%
@@ -412,7 +412,7 @@ export default function Analytics() {
                         {/* Tooltip on hover */}
                         <div className="absolute bottom-full mb-2 hidden group-hover:flex flex-col items-center z-20 pointer-events-none">
                           <div className="bg-foreground text-background text-[10px] px-2 py-1 rounded-md font-medium whitespace-nowrap shadow-md">
-                            {d.label}: LKR {d.amount.toLocaleString()}
+                            {d.label}: LKR <MaskedAmount amount={d.amount} />
                           </div>
                           <div className="w-1.5 h-1.5 bg-foreground rotate-45 -mt-0.5" />
                         </div>
@@ -438,7 +438,7 @@ export default function Analytics() {
             )}
           </div>
           <div className="flex justify-between items-center pt-3 border-t border-border text-[11px] text-muted-foreground">
-            <span>Peak daily spend: LKR {maxDailySpend.toLocaleString()}</span>
+            <span>Peak daily spend: LKR <MaskedAmount amount={maxDailySpend} /></span>
             <span>Hover bars for daily details</span>
           </div>
         </section>
@@ -460,13 +460,13 @@ export default function Analytics() {
               <div>
                 <p className="text-xs text-muted-foreground">{monthlyComparison.thisMonthLabel} (Current)</p>
                 <p className="text-lg font-medium text-foreground mt-0.5">
-                  LKR {monthlyComparison.thisMonthSpend.toLocaleString()}
+                  LKR <MaskedAmount amount={monthlyComparison.thisMonthSpend} />
                 </p>
               </div>
               <div className="text-right">
                 <p className="text-xs text-muted-foreground">{monthlyComparison.lastMonthLabel} (Previous)</p>
                 <p className="text-lg font-medium text-muted-foreground mt-0.5">
-                  LKR {monthlyComparison.lastMonthSpend.toLocaleString()}
+                  LKR <MaskedAmount amount={monthlyComparison.lastMonthSpend} />
                 </p>
               </div>
             </div>
@@ -488,7 +488,7 @@ export default function Analytics() {
                 </div>
               )}
               <span className="text-muted-foreground">
-                ({Math.abs(monthlyComparison.diff).toLocaleString()} LKR difference)
+                (<MaskedAmount amount={Math.abs(monthlyComparison.diff)} /> LKR difference)
               </span>
             </div>
           </div>
@@ -526,7 +526,7 @@ export default function Analytics() {
                   <span className="text-xs font-medium text-muted-foreground">Cash & Wallet</span>
                 </div>
                 <p className="text-base font-semibold text-foreground">
-                  LKR {accountTypeSplit.cashTotal.toLocaleString()}
+                  LKR <MaskedAmount amount={accountTypeSplit.cashTotal} />
                 </p>
                 <p className="text-[11px] text-muted-foreground">{accountTypeSplit.cashPct}% of total</p>
               </div>
@@ -537,7 +537,7 @@ export default function Analytics() {
                   <span className="text-xs font-medium text-muted-foreground">Bank & Cards</span>
                 </div>
                 <p className="text-base font-semibold text-foreground">
-                  LKR {accountTypeSplit.digitalTotal.toLocaleString()}
+                  LKR <MaskedAmount amount={accountTypeSplit.digitalTotal} />
                 </p>
                 <p className="text-[11px] text-muted-foreground">{accountTypeSplit.digitalPct}% of total</p>
               </div>

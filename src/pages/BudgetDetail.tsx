@@ -8,10 +8,13 @@ import { useUIStore } from '../store/uiStore';
 import { triggerSync } from '../sync/syncEngine';
 import { getBudgetStatus } from '../utils/budgetUtils';
 import ExportReportModal from '../components/ExportReportModal';
+import { useConfirm } from '../components/ConfirmDialog';
+import MaskedAmount from '../components/MaskedAmount';
 
 export default function BudgetDetail() {
   const navigate = useNavigate();
   const { setBudgetModalOpen } = useUIStore();
+  const { confirmDialog, requestConfirm } = useConfirm();
 
   const budgets = useLiveQuery(() => db.budgets.toArray()) || [];
   const transactions = useLiveQuery(() => db.transactions.toArray()) || [];
@@ -53,21 +56,27 @@ export default function BudgetDetail() {
   const saveRename = async () => {
     if (renameValue.trim() && activeBudget) {
       await db.budgets.update(activeBudget.id, { name: renameValue.trim(), updatedAt: Date.now() });
-      triggerSync();
+      triggerSync('budgets', activeBudget.id);
     }
     setIsRenaming(false);
   };
 
   const endBudget = async () => {
     if (!activeBudget) return;
-    if (confirm(`End "${activeBudget.name}" now? This freezes its final numbers.`)) {
+    const ok = await requestConfirm({
+       title: `End "${activeBudget.name}" now?`,
+       body: 'This freezes its final numbers.',
+       danger: true,
+    });
+    if (ok) {
       await db.budgets.update(activeBudget.id, { status: 'ended', endDate: Date.now(), updatedAt: Date.now() });
-      triggerSync();
+      triggerSync('budgets', activeBudget.id);
     }
   };
 
   return (
     <div className="pb-28 max-w-5xl mx-auto">
+      {confirmDialog}
       {/* Header */}
       <div className="flex items-center justify-between p-4 pt-6 border-b border-border">
         <div className="flex items-center">
@@ -117,15 +126,21 @@ export default function BudgetDetail() {
               <div className="flex justify-between items-center mb-3">
                 <div>
                   <p className="text-3xl font-light text-foreground">
-                    LKR {budgetStatus.remaining.toLocaleString()}
+                    LKR <MaskedAmount amount={budgetStatus.remaining} />
                     <span className={`text-sm font-normal ml-2 ${budgetStatus.isOverspent ? 'text-red-500 font-medium' : 'text-muted-foreground'}`}>
                       {budgetStatus.label}
                     </span>
                   </p>
                   <p className="text-sm text-muted-foreground mt-0.5">
-                    {budgetStatus.isOverspent
-                      ? `LKR ${budgetStatus.remaining.toLocaleString()} over budget of LKR ${activeBudget.amount.toLocaleString()}`
-                      : `of LKR ${activeBudget.amount.toLocaleString()} remaining`}
+                    {budgetStatus.isOverspent ? (
+                      <>
+                        LKR <MaskedAmount amount={budgetStatus.remaining} /> over budget of LKR <MaskedAmount amount={activeBudget.amount} />
+                      </>
+                    ) : (
+                      <>
+                        of LKR <MaskedAmount amount={activeBudget.amount} /> remaining
+                      </>
+                    )}
                   </p>
                 </div>
                 <div className="text-right flex flex-col items-end">
@@ -142,7 +157,7 @@ export default function BudgetDetail() {
                 />
               </div>
               <div className="flex justify-between text-xs text-muted-foreground font-medium">
-                <span>Spent LKR {spentThisPeriod.toLocaleString()}</span>
+                <span>Spent LKR <MaskedAmount amount={spentThisPeriod} /></span>
                 <span>
                   {new Date(activeBudget.startDate).toLocaleDateString()} –{' '}
                   {new Date(activeBudget.endDate).toLocaleDateString()}
@@ -155,7 +170,7 @@ export default function BudgetDetail() {
                     <span>⚡</span> Out-of-budget expenses:
                   </span>
                   <span className="font-medium text-amber-600 dark:text-amber-400">
-                    LKR {outOfBudgetSpent.toLocaleString()}
+                    LKR <MaskedAmount amount={outOfBudgetSpent} />
                   </span>
                 </div>
               )}
@@ -229,8 +244,8 @@ export default function BudgetDetail() {
                       />
                     </div>
                     <div className="flex justify-between text-xs text-muted-foreground mt-1.5">
-                      <span>LKR {spent.toLocaleString()} spent</span>
-                      <span>of LKR {budget.amount.toLocaleString()}</span>
+                      <span>LKR <MaskedAmount amount={spent} /> spent</span>
+                      <span>of LKR <MaskedAmount amount={budget.amount} /></span>
                     </div>
                   </div>
                 );

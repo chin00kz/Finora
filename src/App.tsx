@@ -29,7 +29,7 @@ import { useThemeStore } from './store/themeStore';
 import { useAuthStore } from './store/authStore';
 import { useNavStore, ALL_NAV_ITEMS } from './store/navStore';
 import type { NavItemId } from './store/navStore';
-import { supabase } from './lib/supabase';
+import { supabase, isSupabaseConfigured } from './lib/supabase';
 import { useSync } from './hooks/useSync';
 import Dashboard from './pages/Dashboard';
 import Accounts from './pages/Accounts';
@@ -50,6 +50,9 @@ import BudgetModal from './components/BudgetModal';
 import MigrateLocalDataBanner from './components/MigrateLocalDataBanner';
 import CustomizeNavModal from './components/CustomizeNavModal';
 import Logo from './components/Logo';
+import Maintenance from './pages/Maintenance';
+import Skip from './pages/Skip';
+import { MAINTENANCE_CONFIG, isMaintenanceBypassed, setMaintenanceBypass } from './config/maintenance';
 
 // ── Theme initializer ────────────────────────────────────────────────────────
 function ThemeInitializer() {
@@ -231,6 +234,14 @@ function getNavIcon(id: NavItemId) {
       return Target;
     case 'recurring':
       return Repeat;
+    case 'float-tools':
+      return BarChart3;
+    case 'budgets':
+      return PieChart;
+    case 'statement-reader':
+      return FileText;
+    default:
+      return Home;
   }
 }
 
@@ -423,8 +434,8 @@ function MobileBottomNav({ syncStatus }: { syncStatus: 'idle' | 'syncing' | 'err
   );
 }
 
-// ── App Shell ────────────────────────────────────────────────────────────────
-function AppShell() {
+// ── Main App Shell (Full Application) ───────────────────────────────────────
+function MainAppShell() {
   const { syncStatus } = useSync();
   const location = useLocation();
   const { setAddTransactionModalOpen } = useUIStore();
@@ -459,12 +470,6 @@ function AppShell() {
 
       {/* Main Content Area */}
       <main className="flex-1 min-w-0 min-h-screen overflow-y-auto">
-        {/*
-          Guiding rule:
-          "The dashboard minimalism rule is NOT mobile-only — it applies on desktop too.
-          On a wide screen, the dashboard should look like the mobile one, just centered
-          and appropriately scaled (not stretched edge-to-edge, not padded out with extra panels)."
-        */}
         <div className={isHomeDashboard ? 'max-w-md mx-auto min-h-screen' : 'w-full min-h-screen'}>
           <Routes>
             <Route
@@ -488,6 +493,7 @@ function AppShell() {
             <Route path="/statements" element={<StatementReader />} />
             <Route path="/auth" element={<Auth />} />
             <Route path="/reset-password" element={<ResetPassword />} />
+            <Route path="/skip" element={<Skip />} />
           </Routes>
         </div>
       </main>
@@ -504,11 +510,41 @@ function AppShell() {
   );
 }
 
+// ── App Shell Router Gate (Maintenance Mode & Skip Handling) ─────────────────
+function AppShell() {
+  const location = useLocation();
+  const [bypassed, setBypassed] = useState(() => isMaintenanceBypassed());
+
+  // Check URL query parameters (e.g. ?skip=true or ?bypass=true)
+  useEffect(() => {
+    const searchParams = new URLSearchParams(location.search);
+    if (searchParams.get('skip') === 'true' || searchParams.get('bypass') === 'true') {
+      setMaintenanceBypass(true);
+      setBypassed(true);
+    }
+  }, [location.search]);
+
+  // When maintenance is active and visitor hasn't unlocked bypass:
+  if (MAINTENANCE_CONFIG.enabled && !bypassed) {
+    if (location.pathname === '/skip') {
+      return <Skip onBypass={() => setBypassed(true)} />;
+    }
+    return <Maintenance onBypass={() => setBypassed(true)} />;
+  }
+
+  return <MainAppShell />;
+}
+
 // ── Root App ─────────────────────────────────────────────────────────────────
 function App() {
   const { setUser, setAuthLoading } = useAuthStore();
 
   useEffect(() => {
+    if (!isSupabaseConfigured) {
+      setAuthLoading(false);
+      return;
+    }
+
     supabase.auth.getSession().then(({ data: { session } }) => {
       setUser(session?.user ?? null, session);
       setAuthLoading(false);
@@ -524,9 +560,11 @@ function App() {
   }, [setUser, setAuthLoading]);
 
   useEffect(() => {
-    purgeMockData();
-    deduplicateCategories();
-    processDueRecurringTransactions();
+    if (!MAINTENANCE_CONFIG.enabled || isMaintenanceBypassed()) {
+      purgeMockData();
+      deduplicateCategories();
+      processDueRecurringTransactions();
+    }
   }, []);
 
   return (

@@ -8,7 +8,10 @@ export type NavItemId =
   | 'analytics'
   | 'goals'
   | 'recurring'
-  | 'debts';
+  | 'debts'
+  | 'float-tools'
+  | 'budgets'
+  | 'statement-reader';
 
 export interface NavItemConfig {
   id: NavItemId;
@@ -17,13 +20,16 @@ export interface NavItemConfig {
 }
 
 export const ALL_NAV_ITEMS: NavItemConfig[] = [
-  { id: 'home', label: 'Home', to: '/' },
-  { id: 'accounts', label: 'Accounts', to: '/accounts' },
-  { id: 'activity', label: 'Activity', to: '/activity' },
-  { id: 'debts', label: 'IOUs', to: '/debts' },
-  { id: 'analytics', label: 'Analytics', to: '/analytics' },
-  { id: 'goals', label: 'Goals', to: '/goals' },
-  { id: 'recurring', label: 'Recurring', to: '/recurring' },
+  { id: 'home',             label: 'Home',            to: '/' },
+  { id: 'accounts',         label: 'Accounts',        to: '/accounts' },
+  { id: 'activity',         label: 'Activity',        to: '/activity' },
+  { id: 'debts',            label: 'IOUs',            to: '/debts' },
+  { id: 'analytics',        label: 'Analytics',       to: '/analytics' },
+  { id: 'goals',            label: 'Goals',           to: '/goals' },
+  { id: 'recurring',        label: 'Recurring',       to: '/recurring' },
+  { id: 'float-tools',      label: 'Float Tools',     to: '/float-tools' },
+  { id: 'budgets',          label: 'Budgets',         to: '/budget-detail' },
+  { id: 'statement-reader', label: 'Statements',      to: '/statement-reader' },
 ];
 
 export const DEFAULT_FRONT_ITEMS: NavItemId[] = ['home', 'accounts', 'activity', 'debts'];

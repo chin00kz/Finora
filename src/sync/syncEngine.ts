@@ -1,27 +1,31 @@
 /**
  * syncEngine.ts
  *
- * Robust Two-Way Sync between Dexie (local IndexedDB) and Supabase (Postgres).
+ * Local-first sync between Dexie (IndexedDB) and Supabase (Postgres).
  *
- * Covers all 18 tables in Finora:
- *  - Core: accounts, categories, transactions, budgets, tags
+ * Covers all 18 tables:
+ *  - Core:     accounts, categories, transactions, budgets, tags
  *  - Planning: recurring_transactions, savings_goals
- *  - IOUs: people, debts
- *  - Float & Credit: credit_cards, cash_offset_sources, fixed_deposits,
- *    money_market_accounts, installment_plans, card_promos,
- *    float_gap_history, reimbursement_ledgers, reimbursement_entries
+ *  - IOUs:     people, debts
+ *  - Float:    credit_cards, cash_offset_sources, fixed_deposits,
+ *              money_market_accounts, installment_plans, card_promos,
+ *              float_gap_history, reimbursement_ledgers, reimbursement_entries
  *
- * Write path: local first, always. Changes trigger debounced background sync.
- * Read path: local Dexie with useLiveQuery.
- * Sync path:
- *   1. Push local changes to Supabase (upsert with onConflict id).
- *   2. Pull remote records from Supabase into Dexie (merges based on updatedAt).
- *   3. Gracefully skips any table that has not yet been initialized in Supabase SQL.
+ * Sync model (local-first):
+ *  WRITE  → save to Dexie → triggerSync(table, id) marks just that record dirty
+ *           → debounce fires → pushDirtyRecords() sends only dirty rows to cloud
+ *  READ   → always from Dexie (useLiveQuery)
+ *  LOGIN / FOCUS / VISIBILITY → pullAll() only — pull cloud into local, no push
+ *  RECONNECT / MANUAL SYNC   → pushDirtyRecords() then pullAll()
+ *
+ * Merge rule: remote wins only if remote.updatedAt >= local.updatedAt.
+ * updatedAt || Date.now() is gone — missing timestamps use 0 (oldest possible).
  */
 
-import { supabase } from '../lib/supabase';
+import { supabase, isSupabaseConfigured } from '../lib/supabase';
 import { db } from '../db/db';
 import { useAuthStore } from '../store/authStore';
+import { createId } from '../utils/createId';
 import type {
   Account,
   Transaction,
@@ -84,27 +88,38 @@ export const ALL_TABLES: TableName[] = [
   'reimbursement_entries',
 ];
 
-const PENDING_KEY = 'finora-pending-sync';
+// ── Dirty-record tracking (record-level, replaces table-level PENDING_KEY) ───
 
-function getPending(): Set<TableName> {
+const DIRTY_KEY = 'finora-dirty';
+
+type DirtyMap = Partial<Record<TableName, string[]>>;
+
+function getDirty(): DirtyMap {
   try {
-    const raw = localStorage.getItem(PENDING_KEY);
-    return new Set(raw ? (JSON.parse(raw) as TableName[]) : []);
+    const raw = localStorage.getItem(DIRTY_KEY);
+    return raw ? (JSON.parse(raw) as DirtyMap) : {};
   } catch {
-    return new Set();
+    return {};
   }
 }
 
-function markPending(table: TableName) {
-  const s = getPending();
-  s.add(table);
-  localStorage.setItem(PENDING_KEY, JSON.stringify([...s]));
+function markDirty(table: TableName, id: string): void {
+  const map = getDirty();
+  const ids = map[table] ?? [];
+  if (!ids.includes(id)) ids.push(id);
+  map[table] = ids;
+  localStorage.setItem(DIRTY_KEY, JSON.stringify(map));
 }
 
-function clearPending(table: TableName) {
-  const s = getPending();
-  s.delete(table);
-  localStorage.setItem(PENDING_KEY, JSON.stringify([...s]));
+function clearDirtyIds(table: TableName, ids: string[]): void {
+  const map = getDirty();
+  const remaining = (map[table] ?? []).filter(id => !ids.includes(id));
+  if (remaining.length === 0) {
+    delete map[table];
+  } else {
+    map[table] = remaining;
+  }
+  localStorage.setItem(DIRTY_KEY, JSON.stringify(map));
 }
 
 function isTableMissingError(errMsg?: string): boolean {
@@ -118,6 +133,9 @@ function isTableMissingError(errMsg?: string): boolean {
 }
 
 // ── camelCase ↔ snake_case mappers ──────────────────────────────────────────
+// NOTE: updated_at uses ?? 0, NOT || Date.now().
+// A missing/zero timestamp sorts as oldest — it will be overwritten by cloud
+// data, never falsely promoted above a real timestamp.
 
 // Accounts
 function toSupabaseAccount(userId: string, a: Account) {
@@ -129,7 +147,7 @@ function toSupabaseAccount(userId: string, a: Account) {
     balance: a.balance,
     currency: a.currency,
     include_in_total: a.includeInTotal,
-    updated_at: a.updatedAt || Date.now(),
+    updated_at: a.updatedAt ?? 0,
   };
 }
 
@@ -141,7 +159,7 @@ function fromSupabaseAccount(row: Record<string, unknown>): Account {
     balance: Number(row.balance) || 0,
     currency: String(row.currency || 'LKR'),
     includeInTotal: row.include_in_total !== false,
-    updatedAt: Number(row.updated_at) || Date.now(),
+    updatedAt: Number(row.updated_at) || 0,
   };
 }
 
@@ -165,7 +183,7 @@ function toSupabaseTransaction(userId: string, t: Transaction) {
     debt_id: t.debtId || null,
     debt_direction: t.debtDirection || null,
     debt_settlement_id: t.debtSettlementId || null,
-    updated_at: t.updatedAt || Date.now(),
+    updated_at: t.updatedAt ?? 0,
   };
 }
 
@@ -187,7 +205,7 @@ function fromSupabaseTransaction(row: Record<string, unknown>): Transaction {
     debtId: row.debt_id ? String(row.debt_id) : undefined,
     debtDirection: (row.debt_direction as Transaction['debtDirection']) || undefined,
     debtSettlementId: row.debt_settlement_id ? String(row.debt_settlement_id) : undefined,
-    updatedAt: Number(row.updated_at) || Date.now(),
+    updatedAt: Number(row.updated_at) || 0,
   };
 }
 
@@ -203,7 +221,7 @@ function toSupabaseBudget(userId: string, b: Budget) {
     start_date: b.startDate,
     end_date: b.endDate,
     status: b.status,
-    updated_at: b.updatedAt || Date.now(),
+    updated_at: b.updatedAt ?? 0,
   };
 }
 
@@ -217,7 +235,7 @@ function fromSupabaseBudget(row: Record<string, unknown>): Budget {
     startDate: Number(row.start_date) || Date.now(),
     endDate: Number(row.end_date) || Date.now(),
     status: (row.status as Budget['status']) || 'active',
-    updatedAt: Number(row.updated_at) || Date.now(),
+    updatedAt: Number(row.updated_at) || 0,
   };
 }
 
@@ -228,7 +246,7 @@ function toSupabaseTag(userId: string, t: Tag) {
     user_id: userId,
     name: t.name,
     color: t.color || null,
-    updated_at: t.updatedAt || Date.now(),
+    updated_at: t.updatedAt ?? 0,
   };
 }
 
@@ -237,7 +255,7 @@ function fromSupabaseTag(row: Record<string, unknown>): Tag {
     id: String(row.id),
     name: String(row.name),
     color: row.color ? String(row.color) : undefined,
-    updatedAt: Number(row.updated_at) || Date.now(),
+    updatedAt: Number(row.updated_at) || 0,
   };
 }
 
@@ -250,7 +268,7 @@ function toSupabaseCategory(userId: string, c: Category) {
     type: c.type,
     icon: c.icon,
     color: c.color,
-    updated_at: c.updatedAt || Date.now(),
+    updated_at: c.updatedAt ?? 0,
   };
 }
 
@@ -261,7 +279,7 @@ function fromSupabaseCategory(row: Record<string, unknown>): Category {
     type: (row.type as Category['type']) || 'expense',
     icon: String(row.icon || 'tag'),
     color: String(row.color || '#3b82f6'),
-    updatedAt: Number(row.updated_at) || Date.now(),
+    updatedAt: Number(row.updated_at) || 0,
   };
 }
 
@@ -278,7 +296,7 @@ function toSupabaseRecurring(userId: string, r: RecurringTransaction) {
     next_due_date: r.nextDueDate,
     type: r.type,
     active: r.active,
-    updated_at: r.updatedAt || Date.now(),
+    updated_at: r.updatedAt ?? 0,
   };
 }
 
@@ -293,7 +311,7 @@ function fromSupabaseRecurring(row: Record<string, unknown>): RecurringTransacti
     nextDueDate: Number(row.next_due_date) || Date.now(),
     type: (row.type as RecurringTransaction['type']) || 'expense',
     active: row.active !== false,
-    updatedAt: Number(row.updated_at) || Date.now(),
+    updatedAt: Number(row.updated_at) || 0,
   };
 }
 
@@ -308,7 +326,7 @@ function toSupabaseGoal(userId: string, g: SavingsGoal) {
     target_date: g.targetDate || null,
     linked_account_id: g.linkedAccountId || null,
     color: g.color || null,
-    updated_at: g.updatedAt || Date.now(),
+    updated_at: g.updatedAt ?? 0,
   };
 }
 
@@ -321,7 +339,7 @@ function fromSupabaseGoal(row: Record<string, unknown>): SavingsGoal {
     targetDate: row.target_date ? Number(row.target_date) : undefined,
     linkedAccountId: row.linked_account_id ? String(row.linked_account_id) : undefined,
     color: row.color ? String(row.color) : undefined,
-    updatedAt: Number(row.updated_at) || Date.now(),
+    updatedAt: Number(row.updated_at) || 0,
   };
 }
 
@@ -331,7 +349,7 @@ function toSupabasePerson(userId: string, p: Person) {
     id: p.id,
     user_id: userId,
     name: p.name,
-    updated_at: p.updatedAt || Date.now(),
+    updated_at: p.updatedAt ?? 0,
   };
 }
 
@@ -339,7 +357,7 @@ function fromSupabasePerson(row: Record<string, unknown>): Person {
   return {
     id: String(row.id),
     name: String(row.name),
-    updatedAt: Number(row.updated_at) || Date.now(),
+    updatedAt: Number(row.updated_at) || 0,
   };
 }
 
@@ -357,7 +375,7 @@ function toSupabaseDebt(userId: string, d: Debt) {
     settlements: d.settlements || [],
     related_transaction_id: d.relatedTransactionId || null,
     date: d.date,
-    updated_at: d.updatedAt || Date.now(),
+    updated_at: d.updatedAt ?? 0,
   };
 }
 
@@ -384,7 +402,7 @@ function fromSupabaseDebt(row: Record<string, unknown>): Debt {
     settlements,
     relatedTransactionId: row.related_transaction_id ? String(row.related_transaction_id) : undefined,
     date: Number(row.date) || Date.now(),
-    updatedAt: Number(row.updated_at) || Date.now(),
+    updatedAt: Number(row.updated_at) || 0,
   };
 }
 
@@ -403,7 +421,7 @@ function toSupabaseCreditCard(userId: string, c: CreditCard) {
     cycle_start_day: c.cycleStartDay,
     is_secured_against: c.isSecuredAgainst || null,
     pay_in_full_intent: c.payInFullIntent,
-    updated_at: c.updatedAt || Date.now(),
+    updated_at: c.updatedAt ?? 0,
   };
 }
 
@@ -420,7 +438,7 @@ function fromSupabaseCreditCard(row: Record<string, unknown>): CreditCard {
     cycleStartDay: Number(row.cycle_start_day) || 1,
     isSecuredAgainst: row.is_secured_against ? String(row.is_secured_against) : undefined,
     payInFullIntent: row.pay_in_full_intent !== false,
-    updatedAt: Number(row.updated_at) || Date.now(),
+    updatedAt: Number(row.updated_at) || 0,
   };
 }
 
@@ -433,7 +451,7 @@ function toSupabaseCashOffsetSource(userId: string, s: CashOffsetSource) {
     linked_card_id: s.linkedCardId,
     expected_monthly_amount: s.expectedMonthlyAmount,
     category: s.category || null,
-    updated_at: s.updatedAt || Date.now(),
+    updated_at: s.updatedAt ?? 0,
   };
 }
 
@@ -444,7 +462,7 @@ function fromSupabaseCashOffsetSource(row: Record<string, unknown>): CashOffsetS
     linkedCardId: String(row.linked_card_id),
     expectedMonthlyAmount: Number(row.expected_monthly_amount) || 0,
     category: row.category ? String(row.category) : undefined,
-    updatedAt: Number(row.updated_at) || Date.now(),
+    updatedAt: Number(row.updated_at) || 0,
   };
 }
 
@@ -458,7 +476,7 @@ function toSupabaseFixedDeposit(userId: string, f: FixedDeposit) {
     rate_percent: f.ratePercent,
     maturity_interval_months: f.maturityIntervalMonths,
     linked_card_id: f.linkedCardId || null,
-    updated_at: f.updatedAt || Date.now(),
+    updated_at: f.updatedAt ?? 0,
   };
 }
 
@@ -470,7 +488,7 @@ function fromSupabaseFixedDeposit(row: Record<string, unknown>): FixedDeposit {
     ratePercent: Number(row.rate_percent) || 0,
     maturityIntervalMonths: Number(row.maturity_interval_months) || 12,
     linkedCardId: row.linked_card_id ? String(row.linked_card_id) : undefined,
-    updatedAt: Number(row.updated_at) || Date.now(),
+    updatedAt: Number(row.updated_at) || 0,
   };
 }
 
@@ -484,7 +502,7 @@ function toSupabaseMMA(userId: string, m: MoneyMarketAccount) {
     current_rate_percent: m.currentRatePercent,
     minimum_balance_for_rate: m.minimumBalanceForRate || 0,
     base_rate_percent: m.baseRatePercent || 0,
-    updated_at: m.updatedAt || Date.now(),
+    updated_at: m.updatedAt ?? 0,
   };
 }
 
@@ -496,7 +514,7 @@ function fromSupabaseMMA(row: Record<string, unknown>): MoneyMarketAccount {
     currentRatePercent: Number(row.current_rate_percent) || 0,
     minimumBalanceForRate: Number(row.minimum_balance_for_rate) || 0,
     baseRatePercent: Number(row.base_rate_percent) || 0,
-    updatedAt: Number(row.updated_at) || Date.now(),
+    updatedAt: Number(row.updated_at) || 0,
   };
 }
 
@@ -512,7 +530,7 @@ function toSupabaseInstallmentPlan(userId: string, p: InstallmentPlan) {
     total_months: p.totalMonths,
     months_paid: p.monthsPaid,
     active: p.active,
-    updated_at: p.updatedAt || Date.now(),
+    updated_at: p.updatedAt ?? 0,
   };
 }
 
@@ -526,7 +544,7 @@ function fromSupabaseInstallmentPlan(row: Record<string, unknown>): InstallmentP
     totalMonths: Number(row.total_months) || 1,
     monthsPaid: Number(row.months_paid) || 0,
     active: row.active !== false,
-    updatedAt: Number(row.updated_at) || Date.now(),
+    updatedAt: Number(row.updated_at) || 0,
   };
 }
 
@@ -545,7 +563,7 @@ function toSupabaseCardPromo(userId: string, cp: CardPromo) {
     cashback_cap: cp.cashbackCap,
     current_spend: cp.currentSpend,
     current_transaction_count: cp.currentTransactionCount,
-    updated_at: cp.updatedAt || Date.now(),
+    updated_at: cp.updatedAt ?? 0,
   };
 }
 
@@ -562,7 +580,7 @@ function fromSupabaseCardPromo(row: Record<string, unknown>): CardPromo {
     cashbackCap: Number(row.cashback_cap) || 0,
     currentSpend: Number(row.current_spend) || 0,
     currentTransactionCount: Number(row.current_transaction_count) || 0,
-    updatedAt: Number(row.updated_at) || Date.now(),
+    updatedAt: Number(row.updated_at) || 0,
   };
 }
 
@@ -577,7 +595,7 @@ function toSupabaseFloatGapHistory(userId: string, g: FloatGapHistory) {
     cash_received: g.cashReceived,
     delta: g.delta,
     cumulative_gap: g.cumulativeGap,
-    updated_at: g.updatedAt || Date.now(),
+    updated_at: g.updatedAt ?? 0,
   };
 }
 
@@ -590,7 +608,7 @@ function fromSupabaseFloatGapHistory(row: Record<string, unknown>): FloatGapHist
     cashReceived: Number(row.cash_received) || 0,
     delta: Number(row.delta) || 0,
     cumulativeGap: Number(row.cumulative_gap) || 0,
-    updatedAt: Number(row.updated_at) || Date.now(),
+    updatedAt: Number(row.updated_at) || 0,
   };
 }
 
@@ -600,7 +618,7 @@ function toSupabaseReimbursementLedger(userId: string, l: ReimbursementLedger) {
     id: l.id,
     user_id: userId,
     counterparty_name: l.counterpartyName,
-    updated_at: l.updatedAt || Date.now(),
+    updated_at: l.updatedAt ?? 0,
   };
 }
 
@@ -608,7 +626,7 @@ function fromSupabaseReimbursementLedger(row: Record<string, unknown>): Reimburs
   return {
     id: String(row.id),
     counterpartyName: String(row.counterparty_name),
-    updatedAt: Number(row.updated_at) || Date.now(),
+    updatedAt: Number(row.updated_at) || 0,
   };
 }
 
@@ -623,7 +641,7 @@ function toSupabaseReimbursementEntry(userId: string, e: ReimbursementEntry) {
     amount_owed: e.amountOwed,
     amount_paid: e.amountPaid,
     delta: e.delta,
-    updated_at: e.updatedAt || Date.now(),
+    updated_at: e.updatedAt ?? 0,
   };
 }
 
@@ -636,13 +654,147 @@ function fromSupabaseReimbursementEntry(row: Record<string, unknown>): Reimburse
     amountOwed: Number(row.amount_owed) || 0,
     amountPaid: Number(row.amount_paid) || 0,
     delta: Number(row.delta) || 0,
-    updatedAt: Number(row.updated_at) || Date.now(),
+    updatedAt: Number(row.updated_at) || 0,
   };
+}
+
+// ── Fetch specific IDs from local Dexie ──────────────────────────────────────
+
+async function fetchLocalRows(
+  table: TableName,
+  userId: string,
+  ids: string[],
+): Promise<Record<string, unknown>[]> {
+  switch (table) {
+    case 'accounts':
+      return (await db.accounts.bulkGet(ids)).filter(Boolean).map(a => toSupabaseAccount(userId, a!));
+    case 'transactions':
+      return (await db.transactions.bulkGet(ids)).filter(Boolean).map(t => toSupabaseTransaction(userId, t!));
+    case 'budgets':
+      return (await db.budgets.bulkGet(ids)).filter(Boolean).map(b => toSupabaseBudget(userId, b!));
+    case 'tags':
+      return (await db.tags.bulkGet(ids)).filter(Boolean).map(t => toSupabaseTag(userId, t!));
+    case 'categories':
+      return (await db.categories.bulkGet(ids)).filter(Boolean).map(c => toSupabaseCategory(userId, c!));
+    case 'recurring_transactions':
+      return (await db.recurringTransactions.bulkGet(ids)).filter(Boolean).map(r => toSupabaseRecurring(userId, r!));
+    case 'savings_goals':
+      return (await db.savingsGoals.bulkGet(ids)).filter(Boolean).map(g => toSupabaseGoal(userId, g!));
+    case 'people':
+      return (await db.people.bulkGet(ids)).filter(Boolean).map(p => toSupabasePerson(userId, p!));
+    case 'debts':
+      return (await db.debts.bulkGet(ids)).filter(Boolean).map(d => toSupabaseDebt(userId, d!));
+    case 'credit_cards':
+      return (await db.creditCards.bulkGet(ids)).filter(Boolean).map(c => toSupabaseCreditCard(userId, c!));
+    case 'cash_offset_sources':
+      return (await db.cashOffsetSources.bulkGet(ids)).filter(Boolean).map(s => toSupabaseCashOffsetSource(userId, s!));
+    case 'fixed_deposits':
+      return (await db.fixedDeposits.bulkGet(ids)).filter(Boolean).map(f => toSupabaseFixedDeposit(userId, f!));
+    case 'money_market_accounts':
+      return (await db.moneyMarketAccounts.bulkGet(ids)).filter(Boolean).map(m => toSupabaseMMA(userId, m!));
+    case 'installment_plans':
+      return (await db.installmentPlans.bulkGet(ids)).filter(Boolean).map(p => toSupabaseInstallmentPlan(userId, p!));
+    case 'card_promos':
+      return (await db.cardPromos.bulkGet(ids)).filter(Boolean).map(cp => toSupabaseCardPromo(userId, cp!));
+    case 'float_gap_history':
+      return (await db.floatGapHistory.bulkGet(ids)).filter(Boolean).map(g => toSupabaseFloatGapHistory(userId, g!));
+    case 'reimbursement_ledgers':
+      return (await db.reimbursementLedgers.bulkGet(ids)).filter(Boolean).map(l => toSupabaseReimbursementLedger(userId, l!));
+    case 'reimbursement_entries':
+      return (await db.reimbursementEntries.bulkGet(ids)).filter(Boolean).map(e => toSupabaseReimbursementEntry(userId, e!));
+  }
+}
+
+// ── Write remote rows into local Dexie, merging on updatedAt ─────────────────
+
+async function mergeRemoteRows(
+  table: TableName,
+  remoteData: Record<string, unknown>[],
+): Promise<void> {
+  // Helper: merge a batch of remote rows into a Dexie table.
+  // Remote wins only if remote.updatedAt >= local.updatedAt.
+  async function merge<T extends { id: string; updatedAt?: number }>(
+    dexieTable: { bulkGet: (ids: string[]) => Promise<(T | undefined)[]>; bulkPut: (items: T[]) => Promise<unknown> },
+    remoteRows: T[],
+  ) {
+    const localRows = await dexieTable.bulkGet(remoteRows.map(r => r.id));
+    const toWrite = remoteRows.filter((remote, i) => {
+      const local = localRows[i];
+      return !local || (remote.updatedAt ?? 0) >= (local.updatedAt ?? 0);
+    });
+    if (toWrite.length) await dexieTable.bulkPut(toWrite);
+  }
+
+  switch (table) {
+    case 'accounts':
+      await merge(db.accounts, remoteData.map(fromSupabaseAccount));
+      break;
+    case 'transactions':
+      await merge(db.transactions, remoteData.map(fromSupabaseTransaction));
+      break;
+    case 'budgets':
+      await merge(db.budgets, remoteData.map(fromSupabaseBudget));
+      break;
+    case 'tags':
+      await merge(db.tags, remoteData.map(fromSupabaseTag));
+      break;
+    case 'categories':
+      await merge(db.categories, remoteData.map(fromSupabaseCategory));
+      break;
+    case 'recurring_transactions':
+      await merge(db.recurringTransactions, remoteData.map(fromSupabaseRecurring));
+      break;
+    case 'savings_goals':
+      await merge(db.savingsGoals, remoteData.map(fromSupabaseGoal));
+      break;
+    case 'people':
+      await merge(db.people, remoteData.map(fromSupabasePerson));
+      break;
+    case 'debts':
+      await merge(db.debts, remoteData.map(fromSupabaseDebt));
+      break;
+    case 'credit_cards':
+      await merge(db.creditCards, remoteData.map(fromSupabaseCreditCard));
+      break;
+    case 'cash_offset_sources':
+      await merge(db.cashOffsetSources, remoteData.map(fromSupabaseCashOffsetSource));
+      break;
+    case 'fixed_deposits':
+      await merge(db.fixedDeposits, remoteData.map(fromSupabaseFixedDeposit));
+      break;
+    case 'money_market_accounts':
+      await merge(db.moneyMarketAccounts, remoteData.map(fromSupabaseMMA));
+      break;
+    case 'installment_plans':
+      await merge(db.installmentPlans, remoteData.map(fromSupabaseInstallmentPlan));
+      break;
+    case 'card_promos':
+      await merge(db.cardPromos, remoteData.map(fromSupabaseCardPromo));
+      break;
+    case 'float_gap_history':
+      await merge(db.floatGapHistory, remoteData.map(fromSupabaseFloatGapHistory));
+      break;
+    case 'reimbursement_ledgers':
+      await merge(db.reimbursementLedgers, remoteData.map(fromSupabaseReimbursementLedger));
+      break;
+    case 'reimbursement_entries':
+      await merge(db.reimbursementEntries, remoteData.map(fromSupabaseReimbursementEntry));
+      break;
+  }
 }
 
 // ── Push (Local → Supabase) ──────────────────────────────────────────────────
 
-export async function pushTable(table: TableName, userId: string): Promise<{ success: boolean; error?: string; skipped?: boolean }> {
+/**
+ * pushTable — push the ENTIRE table to Supabase.
+ * Only used by purgeAndRepushCloud (the "reset cloud" operation in Settings).
+ * Normal writes go through pushDirtyRecords instead.
+ */
+export async function pushTable(
+  table: TableName,
+  userId: string,
+): Promise<{ success: boolean; error?: string; skipped?: boolean }> {
+  if (!isSupabaseConfigured) return { success: true, skipped: true };
   try {
     let rows: Record<string, unknown>[] = [];
 
@@ -703,122 +855,125 @@ export async function pushTable(table: TableName, userId: string): Promise<{ suc
         break;
     }
 
-    if (rows.length === 0) {
-      clearPending(table);
-      return { success: true };
-    }
+    if (rows.length === 0) return { success: true };
 
-    const { error } = await supabase.from(table).upsert(rows, { onConflict: 'id' });
-
+    const { error } = await supabase.from(table).upsert(rows.map(stripUndefinedFields), { onConflict: 'id' });
     if (error) {
-      if (isTableMissingError(error.message)) {
-        clearPending(table);
-        return { success: true, skipped: true };
-      }
-      console.warn(`[sync] Push failed for ${table}:`, error.message);
-      markPending(table);
+      if (isTableMissingError(error.message)) return { success: true, skipped: true };
+      console.warn(`[sync] pushTable failed for ${table}:`, error.message);
       return { success: false, error: `${table}: ${error.message}` };
     }
 
-    clearPending(table);
     return { success: true };
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
-    if (isTableMissingError(msg)) {
-      clearPending(table);
-      return { success: true, skipped: true };
-    }
-    console.warn(`[sync] Push exception for ${table}:`, msg);
-    markPending(table);
+    if (isTableMissingError(msg)) return { success: true, skipped: true };
+    console.warn(`[sync] pushTable exception for ${table}:`, msg);
     return { success: false, error: `${table}: ${msg}` };
   }
 }
 
-// ── Pull (Supabase → Local) ──────────────────────────────────────────────────
+function stripUndefinedFields(row: Record<string, unknown>): Record<string, unknown> {
+  const out: Record<string, unknown> = {};
+  for (const [key, value] of Object.entries(row)) {
+    if (value !== undefined) out[key] = value;
+  }
+  return out;
+}
 
-export async function pullTable(table: TableName, userId: string): Promise<{ success: boolean; error?: string; skipped?: boolean }> {
+/**
+ * pushDirtyRecords — push only records marked dirty by triggerSync.
+ * This is the normal write path for every user action.
+ */
+export async function pushDirtyRecords(userId: string): Promise<void> {
+  if (!isSupabaseConfigured) return;
+  const map = getDirty();
+  const tables = Object.keys(map) as TableName[];
+  if (tables.length === 0) return;
+
+  await Promise.all(
+    tables.map(async table => {
+      const ids = map[table];
+      if (!ids || ids.length === 0) return;
+      try {
+        const rows = await fetchLocalRows(table, userId, ids);
+        if (rows.length === 0) {
+          // Records may have been deleted — clean up dirty list
+          clearDirtyIds(table, ids);
+          return;
+        }
+        const { error } = await supabase.from(table).upsert(rows.map(stripUndefinedFields), { onConflict: 'id' });
+        if (error) {
+          if (isTableMissingError(error.message)) {
+            clearDirtyIds(table, ids);
+            return;
+          }
+          console.warn(`[sync] pushDirtyRecords failed for ${table}:`, error.message);
+          return; // Keep dirty — will retry next time
+        }
+        clearDirtyIds(table, ids);
+      } catch (err) {
+        console.warn(`[sync] pushDirtyRecords exception for ${table}:`, err);
+      }
+    }),
+  );
+}
+
+// ── Pull (Supabase → Local, with updatedAt merge) ────────────────────────────
+
+/**
+ * pullTable — pull all rows for a table from Supabase and merge into Dexie.
+ * Remote wins only if remote.updatedAt >= local.updatedAt.
+ */
+export async function pullTable(
+  table: TableName,
+  userId: string,
+): Promise<{ success: boolean; error?: string; skipped?: boolean }> {
+  if (!isSupabaseConfigured) return { success: true, skipped: true };
   try {
     const { data, error } = await supabase.from(table).select('*').eq('user_id', userId);
     if (error) {
-      if (isTableMissingError(error.message)) {
-        return { success: true, skipped: true };
-      }
-      console.warn(`[sync] Pull failed for ${table}:`, error.message);
+      if (isTableMissingError(error.message)) return { success: true, skipped: true };
+      console.warn(`[sync] pullTable failed for ${table}:`, error.message);
       return { success: false, error: `${table}: ${error.message}` };
     }
     if (!data || data.length === 0) return { success: true };
 
-    switch (table) {
-      case 'accounts':
-        await db.accounts.bulkPut(data.map(r => fromSupabaseAccount(r)));
-        break;
-      case 'transactions':
-        await db.transactions.bulkPut(data.map(r => fromSupabaseTransaction(r)));
-        break;
-      case 'budgets':
-        await db.budgets.bulkPut(data.map(r => fromSupabaseBudget(r)));
-        break;
-      case 'tags':
-        await db.tags.bulkPut(data.map(r => fromSupabaseTag(r)));
-        break;
-      case 'categories':
-        await db.categories.bulkPut(data.map(r => fromSupabaseCategory(r)));
-        break;
-      case 'recurring_transactions':
-        await db.recurringTransactions.bulkPut(data.map(r => fromSupabaseRecurring(r)));
-        break;
-      case 'savings_goals':
-        await db.savingsGoals.bulkPut(data.map(r => fromSupabaseGoal(r)));
-        break;
-      case 'people':
-        await db.people.bulkPut(data.map(r => fromSupabasePerson(r)));
-        break;
-      case 'debts':
-        await db.debts.bulkPut(data.map(r => fromSupabaseDebt(r)));
-        break;
-      case 'credit_cards':
-        await db.creditCards.bulkPut(data.map(r => fromSupabaseCreditCard(r)));
-        break;
-      case 'cash_offset_sources':
-        await db.cashOffsetSources.bulkPut(data.map(r => fromSupabaseCashOffsetSource(r)));
-        break;
-      case 'fixed_deposits':
-        await db.fixedDeposits.bulkPut(data.map(r => fromSupabaseFixedDeposit(r)));
-        break;
-      case 'money_market_accounts':
-        await db.moneyMarketAccounts.bulkPut(data.map(r => fromSupabaseMMA(r)));
-        break;
-      case 'installment_plans':
-        await db.installmentPlans.bulkPut(data.map(r => fromSupabaseInstallmentPlan(r)));
-        break;
-      case 'card_promos':
-        await db.cardPromos.bulkPut(data.map(r => fromSupabaseCardPromo(r)));
-        break;
-      case 'float_gap_history':
-        await db.floatGapHistory.bulkPut(data.map(r => fromSupabaseFloatGapHistory(r)));
-        break;
-      case 'reimbursement_ledgers':
-        await db.reimbursementLedgers.bulkPut(data.map(r => fromSupabaseReimbursementLedger(r)));
-        break;
-      case 'reimbursement_entries':
-        await db.reimbursementEntries.bulkPut(data.map(r => fromSupabaseReimbursementEntry(r)));
-        break;
-    }
-
+    await mergeRemoteRows(table, data);
     return { success: true };
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
-    if (isTableMissingError(msg)) {
-      return { success: true, skipped: true };
-    }
-    console.warn(`[sync] Pull exception for ${table}:`, msg);
+    if (isTableMissingError(msg)) return { success: true, skipped: true };
+    console.warn(`[sync] pullTable exception for ${table}:`, msg);
     return { success: false, error: `${table}: ${msg}` };
   }
+}
+
+/**
+ * pullLiveActivity — pull only accounts and transactions.
+ * Used for fast background polling (e.g. 15s) and focus so the other device
+ * sees new transactions and balance changes quickly without pulling all 18 tables.
+ */
+export async function pullLiveActivity(userId: string): Promise<void> {
+  await Promise.all([pullTable('accounts', userId), pullTable('transactions', userId)]);
+}
+
+/**
+ * pullAll — pull every table from Supabase.
+ * Called on login, focus, and visibility change. Does NOT push first.
+ */
+export async function pullAll(userId: string): Promise<{ success: boolean; error?: string }> {
+  const results = await Promise.all(ALL_TABLES.map(t => pullTable(t, userId)));
+  const failed = results.find(r => !r.success && !r.skipped);
+  if (failed) return { success: false, error: failed.error };
+  useAuthStore.getState().setLastSyncedAt(Date.now());
+  return { success: true };
 }
 
 // ── Delete from Supabase ────────────────────────────────────────────────────
 
 export async function deleteFromCloud(table: TableName, id: string): Promise<void> {
+  if (!isSupabaseConfigured) return;
   const user = useAuthStore.getState().user;
   if (!user) return;
   try {
@@ -828,11 +983,23 @@ export async function deleteFromCloud(table: TableName, id: string): Promise<voi
   }
 }
 
-// ── Purge All Cloud Data + Re-push Local ────────────────────────────────────
+// ── Hydrate from Cloud (used on first login / new device) ───────────────────
+// Previously a 73-line copy of pullTable's switch. Now just calls pullTable.
 
-export async function purgeAndRepushCloud(userId: string): Promise<{ success: boolean; error?: string }> {
+export async function hydrateFromCloud(userId: string): Promise<{ restoredCount: number }> {
+  await migrateLegacyIds();
+  const results = await Promise.all(ALL_TABLES.map(t => pullTable(t, userId)));
+  const count = results.filter(r => r.success && !r.skipped).length;
+  useAuthStore.getState().setLastSyncedAt(Date.now());
+  return { restoredCount: count };
+}
+
+// ── Purge All Cloud Data + Re-push Local ─────────────────────────────────────
+
+export async function purgeAndRepushCloud(
+  userId: string,
+): Promise<{ success: boolean; error?: string }> {
   try {
-    // 1. Delete ALL cloud rows for this user
     for (const table of ALL_TABLES) {
       const { error } = await supabase.from(table).delete().eq('user_id', userId);
       if (error && !isTableMissingError(error.message)) {
@@ -841,7 +1008,6 @@ export async function purgeAndRepushCloud(userId: string): Promise<{ success: bo
       }
     }
 
-    // 2. Re-push local data as single source of truth
     for (const table of ALL_TABLES) {
       const res = await pushTable(table, userId);
       if (!res.success && !res.skipped) {
@@ -858,11 +1024,13 @@ export async function purgeAndRepushCloud(userId: string): Promise<{ success: bo
   }
 }
 
+// ── Legacy ID migration (one-time, runs on first syncAll after upgrade) ──────
+
 async function migrateLegacyIds(): Promise<void> {
   try {
     const cash = await db.accounts.get('acc-cash');
     if (cash) {
-      const newId = `acc-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`;
+      const newId = createId('acc');
       await db.accounts.delete('acc-cash');
       await db.accounts.add({ ...cash, id: newId, updatedAt: Date.now() });
       const txns = await db.transactions.filter(t => t.accountId === 'acc-cash').toArray();
@@ -873,7 +1041,7 @@ async function migrateLegacyIds(): Promise<void> {
 
     const bank = await db.accounts.get('acc-bank');
     if (bank) {
-      const newId = `acc-${Date.now() + 1}-${Math.random().toString(36).substring(2, 7)}`;
+      const newId = createId('acc');
       await db.accounts.delete('acc-bank');
       await db.accounts.add({ ...bank, id: newId, updatedAt: Date.now() });
       const txns = await db.transactions.filter(t => t.accountId === 'acc-bank').toArray();
@@ -886,126 +1054,46 @@ async function migrateLegacyIds(): Promise<void> {
   }
 }
 
-// ── Full Two-Way Sync ────────────────────────────────────────────────────────
+// ── Full Two-Way Sync (used by purgeAndRepush and manual "Sync Now") ──────────
 
 export async function syncAll(userId: string): Promise<{ success: boolean; error?: string }> {
   await migrateLegacyIds();
-
-  // 1. Push all local tables
-  const pushResults = await Promise.all(ALL_TABLES.map(t => pushTable(t, userId)));
-  const failedPush = pushResults.find(r => !r.success && !r.skipped);
-  if (failedPush) {
-    return { success: false, error: `Upload error (${failedPush.error})` };
-  }
-  
-  // 2. Pull all remote tables
-  const pullResults = await Promise.all(ALL_TABLES.map(t => pullTable(t, userId)));
-  const failedPull = pullResults.find(r => !r.success && !r.skipped);
-  if (failedPull) {
-    return { success: false, error: `Download error (${failedPull.error})` };
-  }
-
-  useAuthStore.getState().setLastSyncedAt(Date.now());
-  return { success: true };
+  await pushDirtyRecords(userId);
+  return pullAll(userId);
 }
 
-/** Retry any tables that failed during a previous push */
-export async function drainPendingSync(userId: string): Promise<void> {
-  const pending = getPending();
-  if (pending.size === 0) return;
-  console.log('[sync] Draining pending:', [...pending]);
-  await Promise.all([...pending].map(t => pushTable(t, userId)));
-}
-
-// ── Hydrate from Cloud (Used on Login / New Device) ──────────────────────────
-
-export async function hydrateFromCloud(userId: string): Promise<{ restoredCount: number }> {
-  await migrateLegacyIds();
-  let count = 0;
-
-  for (const table of ALL_TABLES) {
-    try {
-      const { data, error } = await supabase.from(table).select('*').eq('user_id', userId);
-      if (error || !data || data.length === 0) continue;
-
-      switch (table) {
-        case 'accounts':
-          await db.accounts.bulkPut(data.map(r => fromSupabaseAccount(r)));
-          break;
-        case 'transactions':
-          await db.transactions.bulkPut(data.map(r => fromSupabaseTransaction(r)));
-          break;
-        case 'budgets':
-          await db.budgets.bulkPut(data.map(r => fromSupabaseBudget(r)));
-          break;
-        case 'tags':
-          await db.tags.bulkPut(data.map(r => fromSupabaseTag(r)));
-          break;
-        case 'categories':
-          await db.categories.bulkPut(data.map(r => fromSupabaseCategory(r)));
-          break;
-        case 'recurring_transactions':
-          await db.recurringTransactions.bulkPut(data.map(r => fromSupabaseRecurring(r)));
-          break;
-        case 'savings_goals':
-          await db.savingsGoals.bulkPut(data.map(r => fromSupabaseGoal(r)));
-          break;
-        case 'people':
-          await db.people.bulkPut(data.map(r => fromSupabasePerson(r)));
-          break;
-        case 'debts':
-          await db.debts.bulkPut(data.map(r => fromSupabaseDebt(r)));
-          break;
-        case 'credit_cards':
-          await db.creditCards.bulkPut(data.map(r => fromSupabaseCreditCard(r)));
-          break;
-        case 'cash_offset_sources':
-          await db.cashOffsetSources.bulkPut(data.map(r => fromSupabaseCashOffsetSource(r)));
-          break;
-        case 'fixed_deposits':
-          await db.fixedDeposits.bulkPut(data.map(r => fromSupabaseFixedDeposit(r)));
-          break;
-        case 'money_market_accounts':
-          await db.moneyMarketAccounts.bulkPut(data.map(r => fromSupabaseMMA(r)));
-          break;
-        case 'installment_plans':
-          await db.installmentPlans.bulkPut(data.map(r => fromSupabaseInstallmentPlan(r)));
-          break;
-        case 'card_promos':
-          await db.cardPromos.bulkPut(data.map(r => fromSupabaseCardPromo(r)));
-          break;
-        case 'float_gap_history':
-          await db.floatGapHistory.bulkPut(data.map(r => fromSupabaseFloatGapHistory(r)));
-          break;
-        case 'reimbursement_ledgers':
-          await db.reimbursementLedgers.bulkPut(data.map(r => fromSupabaseReimbursementLedger(r)));
-          break;
-        case 'reimbursement_entries':
-          await db.reimbursementEntries.bulkPut(data.map(r => fromSupabaseReimbursementEntry(r)));
-          break;
-      }
-      count += data.length;
-    } catch {
-      // Gracefully continue to next table
-    }
-  }
-
-  useAuthStore.getState().setLastSyncedAt(Date.now());
-  return { restoredCount: count };
-}
-
-// ── Debounced Trigger Helper ────────────────────────────────────────────────
+// ── Debounced Trigger Helper ─────────────────────────────────────────────────
 
 let syncTimer: ReturnType<typeof setTimeout> | null = null;
 
-export function triggerSync(immediate = false): void {
+/**
+ * triggerSync — mark a single record dirty and schedule a push.
+ *
+ * Call this immediately after every local write:
+ *   await db.accounts.put(account);
+ *   triggerSync('accounts', account.id);
+ *
+ * The push is debounced 1.5 s so rapid writes batch into one network request.
+ */
+export function triggerSync(table: TableName, id: string, immediate = false): void {
   const user = useAuthStore.getState().user;
   if (!user) return;
+
+  markDirty(table, id);
 
   if (syncTimer) clearTimeout(syncTimer);
   const delay = immediate ? 100 : 1500;
   syncTimer = setTimeout(() => {
-    void syncAll(user.id);
+    void pushDirtyRecords(user.id);
     syncTimer = null;
   }, delay);
+}
+
+/** Retry any records that failed to push last time (called on reconnect). */
+export async function drainPendingSync(userId: string): Promise<void> {
+  const map = getDirty();
+  const hasAny = Object.values(map).some(ids => ids && ids.length > 0);
+  if (!hasAny) return;
+  console.log('[sync] Draining dirty records:', map);
+  await pushDirtyRecords(userId);
 }

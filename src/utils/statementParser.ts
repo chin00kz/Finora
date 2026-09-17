@@ -204,7 +204,7 @@ export function parseCombankStatement(
   for (let i = 0; i < lines.length; i++) {
     const line = lines[i];
 
-    // Card Number e.g. "4378 4002 **** 6135" or "43784002****6135"
+    // Card Number e.g. "4111 1111 **** 1111" or "41111111****1111"
     if (!cardNumberMasked) {
       const match = line.match(/\b([0-9]{4}\s+[0-9]{4}\s+\*{4}\s+[0-9]{4})\b/)
         || line.match(/\b([0-9]{4}\s*\*{4,8}\s*[0-9]{4})\b/);

@@ -366,6 +366,8 @@ export async function executeImport(
   let createdAccountsCount = 0;
   let createdCategoriesCount = 0;
   let createdTagsCount = 0;
+  const accountDeltas = new Map<string, number>();
+  const txnsToAdd: Transaction[] = [];
 
   await db.transaction(
     'rw',
@@ -450,9 +452,6 @@ export async function executeImport(
       }
 
       // 4. Create Transactions & Calculate Account Delta
-      const accountDeltas = new Map<string, number>();
-      const txnsToAdd: Transaction[] = [];
-
       for (const row of validRows) {
         const acc = accLookup.get(row.accountName.toLowerCase());
         const accountId = acc?.id || currentAccounts[0]?.id || 'acc-default';
@@ -506,8 +505,13 @@ export async function executeImport(
     }
   );
 
-  // Trigger background sync to backup imported data to Supabase
-  triggerSync();
+  // Trigger background sync for imported transactions and modified accounts
+  txnsToAdd.forEach(t => triggerSync('transactions', t.id));
+  if (options.adjustBalances) {
+    for (const accId of accountDeltas.keys()) {
+      triggerSync('accounts', accId);
+    }
+  }
 
   return {
     importedTransactionsCount: validRows.length,

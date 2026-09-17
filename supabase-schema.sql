@@ -1,10 +1,126 @@
 -- ==============================================================================
--- FINORA SUPABASE SCHEMA: ADVANCED TABLES SETUP
--- Run this in your Supabase SQL Editor to enable full two-way cloud sync for:
--- - Recurring Transactions
--- - Savings Goals
--- - People & Debts (IOUs)
--- - Credit Cards & Float Management Module
+-- FINORA SUPABASE SCHEMA
+-- Run this entire file in your Supabase SQL Editor.
+-- All statements use IF NOT EXISTS / DROP POLICY IF EXISTS so re-running is safe.
+-- ==============================================================================
+
+-- ==============================================================================
+-- SECTION 0: Core Tables (accounts, transactions, budgets, tags, categories)
+-- These were missing from earlier schema versions. Add them first.
+-- ==============================================================================
+
+-- 0a. Accounts
+CREATE TABLE IF NOT EXISTS public.accounts (
+  id TEXT PRIMARY KEY,
+  user_id UUID REFERENCES auth.users(id) ON DELETE CASCADE NOT NULL,
+  name TEXT NOT NULL,
+  type TEXT NOT NULL DEFAULT 'bank',
+  balance NUMERIC NOT NULL DEFAULT 0,
+  currency TEXT NOT NULL DEFAULT 'LKR',
+  include_in_total BOOLEAN NOT NULL DEFAULT TRUE,
+  updated_at BIGINT NOT NULL DEFAULT 0
+);
+ALTER TABLE public.accounts ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS "Users can manage their own accounts" ON public.accounts;
+CREATE POLICY "Users can manage their own accounts" ON public.accounts
+  FOR ALL USING (auth.uid() = user_id) WITH CHECK (auth.uid() = user_id);
+
+-- 0b. Transactions
+CREATE TABLE IF NOT EXISTS public.transactions (
+  id TEXT PRIMARY KEY,
+  user_id UUID REFERENCES auth.users(id) ON DELETE CASCADE NOT NULL,
+  type TEXT NOT NULL DEFAULT 'expense',
+  amount NUMERIC NOT NULL,
+  date BIGINT NOT NULL,
+  account_id TEXT NOT NULL,
+  category_id TEXT,
+  notes TEXT,
+  tag_ids JSONB,
+  to_account_id TEXT,
+  is_shared BOOLEAN,
+  personal_amount NUMERIC,
+  is_settled BOOLEAN,
+  exclude_from_budget BOOLEAN,
+  debt_id TEXT,
+  debt_direction TEXT,
+  debt_settlement_id TEXT,
+  updated_at BIGINT NOT NULL DEFAULT 0
+);
+ALTER TABLE public.transactions ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS "Users can manage their own transactions" ON public.transactions;
+CREATE POLICY "Users can manage their own transactions" ON public.transactions
+  FOR ALL USING (auth.uid() = user_id) WITH CHECK (auth.uid() = user_id);
+
+-- 0c. Budgets
+CREATE TABLE IF NOT EXISTS public.budgets (
+  id TEXT PRIMARY KEY,
+  user_id UUID REFERENCES auth.users(id) ON DELETE CASCADE NOT NULL,
+  name TEXT NOT NULL,
+  amount NUMERIC NOT NULL,
+  period TEXT NOT NULL DEFAULT 'days',
+  period_length INTEGER NOT NULL DEFAULT 1,
+  start_date BIGINT NOT NULL,
+  end_date BIGINT NOT NULL,
+  status TEXT NOT NULL DEFAULT 'active',
+  updated_at BIGINT NOT NULL DEFAULT 0
+);
+ALTER TABLE public.budgets ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS "Users can manage their own budgets" ON public.budgets;
+CREATE POLICY "Users can manage their own budgets" ON public.budgets
+  FOR ALL USING (auth.uid() = user_id) WITH CHECK (auth.uid() = user_id);
+
+-- 0d. Tags
+CREATE TABLE IF NOT EXISTS public.tags (
+  id TEXT PRIMARY KEY,
+  user_id UUID REFERENCES auth.users(id) ON DELETE CASCADE NOT NULL,
+  name TEXT NOT NULL,
+  color TEXT,
+  updated_at BIGINT NOT NULL DEFAULT 0
+);
+ALTER TABLE public.tags ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS "Users can manage their own tags" ON public.tags;
+CREATE POLICY "Users can manage their own tags" ON public.tags
+  FOR ALL USING (auth.uid() = user_id) WITH CHECK (auth.uid() = user_id);
+
+-- 0e. Categories
+CREATE TABLE IF NOT EXISTS public.categories (
+  id TEXT PRIMARY KEY,
+  user_id UUID REFERENCES auth.users(id) ON DELETE CASCADE NOT NULL,
+  name TEXT NOT NULL,
+  type TEXT NOT NULL DEFAULT 'expense',
+  icon TEXT NOT NULL DEFAULT 'tag',
+  color TEXT NOT NULL DEFAULT '#3b82f6',
+  updated_at BIGINT NOT NULL DEFAULT 0
+);
+ALTER TABLE public.categories ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS "Users can manage their own categories" ON public.categories;
+CREATE POLICY "Users can manage their own categories" ON public.categories
+  FOR ALL USING (auth.uid() = user_id) WITH CHECK (auth.uid() = user_id);
+
+-- ==============================================================================
+-- SECTION 0f: Auth Hook — Signup Domain Allowlist (server-side enforcement)
+-- Blocks signups from domains not in the allowlist at the database level.
+-- React-side check is UX only; this is the real gate.
+-- ==============================================================================
+
+CREATE OR REPLACE FUNCTION public.enforce_signup_domain()
+RETURNS TRIGGER LANGUAGE plpgsql SECURITY DEFINER AS $$
+BEGIN
+  -- Add allowed email domains below. Adjust or remove as needed.
+  IF NEW.email NOT LIKE '%@chinookz.33mail.com' THEN
+    RAISE EXCEPTION 'SignUp not allowed — please contact Nookz.Inc';
+  END IF;
+  RETURN NEW;
+END;
+$$;
+
+DROP TRIGGER IF EXISTS check_signup_domain ON auth.users;
+CREATE TRIGGER check_signup_domain
+  BEFORE INSERT ON auth.users
+  FOR EACH ROW EXECUTE PROCEDURE public.enforce_signup_domain();
+
+-- ==============================================================================
+-- SECTION 1 onwards: Float / Goals / Debts / Recurring (existing tables)
 -- ==============================================================================
 
 -- 1. Recurring Transactions

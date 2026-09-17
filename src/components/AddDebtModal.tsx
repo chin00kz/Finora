@@ -44,27 +44,26 @@ export default function AddDebtModal({ isOpen, onClose, defaultDirection = 'they
       const now = Date.now();
       const selectedDate = date ? new Date(date).getTime() : now;
 
+      const existingPersonForSync = people.find(
+        p => p.name.toLowerCase() === trimmedPerson.toLowerCase()
+      );
+      const newPersonId = existingPersonForSync?.id ?? `person-${now}-${Math.random().toString(36).substring(2, 6)}`;
+      const newDebtId = `debt-${now}-${Math.random().toString(36).substring(2, 7)}`;
+
       await db.transaction('rw', [db.debts, db.people], async () => {
-        // Resolve or create person
-        const existingPerson = people.find(
-          p => p.name.toLowerCase() === trimmedPerson.toLowerCase()
-        );
-        let personId = existingPerson?.id;
-        if (!existingPerson) {
-          personId = `person-${now}-${Math.random().toString(36).substring(2, 6)}`;
+        if (!existingPersonForSync) {
           await db.people.add({
-            id: personId,
+            id: newPersonId,
             name: trimmedPerson,
             updatedAt: now,
           });
         }
 
-        const newDebtId = `debt-${now}-${Math.random().toString(36).substring(2, 7)}`;
         await db.debts.add({
           id: newDebtId,
           source: 'manual',
           direction,
-          personId,
+          personId: newPersonId,
           personName: trimmedPerson,
           amount: numAmount,
           note: note.trim() || undefined,
@@ -74,7 +73,8 @@ export default function AddDebtModal({ isOpen, onClose, defaultDirection = 'they
         });
       });
 
-      triggerSync();
+      triggerSync('debts', newDebtId);
+      if (!existingPersonForSync) triggerSync('people', newPersonId);
       handleClose();
     } catch (err: any) {
       console.error('Failed to create manual debt', err);

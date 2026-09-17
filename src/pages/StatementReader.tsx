@@ -20,9 +20,12 @@ import {
   Award,
 } from 'lucide-react';
 
+import { useConfirm } from '../components/ConfirmDialog';
+
 export default function StatementReader() {
   const cards = useLiveQuery(() => db.statementCards.toArray()) || [];
   const statements = useLiveQuery(() => db.parsedStatements.orderBy('billingDate').reverse().toArray()) || [];
+  const { confirmDialog, requestConfirm } = useConfirm();
 
   const [selectedCardId, setSelectedCardId] = useState<string>('all');
   const [selectedStatementId, setSelectedStatementId] = useState<string | null>(null);
@@ -181,7 +184,12 @@ export default function StatementReader() {
   };
 
   const handleDeleteStatement = async (statementId: string) => {
-    if (confirm('Are you sure you want to delete this parsed statement?')) {
+    const ok = await requestConfirm({
+      title: 'Delete parsed statement?',
+      body: 'This will remove the statement record from local storage.',
+      danger: true,
+    });
+    if (ok) {
       await db.parsedStatements.delete(statementId);
       if (selectedStatementId === statementId) {
         setSelectedStatementId(null);
@@ -191,6 +199,7 @@ export default function StatementReader() {
 
   return (
     <div className="max-w-5xl mx-auto px-4 sm:px-6 py-6 sm:py-8 space-y-6">
+      {confirmDialog}
       {/* ── Page Header & Controls ──────────────────────────────────────────── */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
