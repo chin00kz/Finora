@@ -13,6 +13,8 @@ import type {
 import { Link } from 'react-router-dom';
 import { format, differenceInDays } from 'date-fns';
 import { triggerSync, deleteFromCloud } from '../sync/syncEngine';
+import { useConfirm } from '../components/ConfirmDialog';
+import { usePrivacyStore } from '../store/privacyStore';
 import {
   ChevronLeft,
   Plus,
@@ -37,6 +39,7 @@ function uid() {
 }
 
 function fmt(n: number): string {
+  if (usePrivacyStore.getState().isMasked) return '••••••';
   return Math.abs(n).toLocaleString();
 }
 
@@ -232,6 +235,8 @@ const TABS: { key: Tab; label: string; icon: ReactNode }[] = [
 ];
 
 export default function FloatTools() {
+  const { confirmDialog, requestConfirm } = useConfirm();
+  usePrivacyStore(s => s.isMasked); // Subscribe to re-render on privacy mask toggle
   const [activeTab, setActiveTab] = useState<Tab>('overview');
 
   const cards      = useLiveQuery(() => db.creditCards.toArray())          ?? [];
@@ -318,10 +323,12 @@ export default function FloatTools() {
     };
     if (editingCard) {
       await db.creditCards.update(editingCard.id, payload);
+      triggerSync('credit_cards', editingCard.id);
     } else {
-      await db.creditCards.add({ id: `cc-${Date.now()}-${uid()}`, ...payload });
+      const newId = `cc-${Date.now()}-${uid()}`;
+      await db.creditCards.add({ id: newId, ...payload });
+      triggerSync('credit_cards', newId);
     }
-    triggerSync();
     resetCardForm();
   }
 
@@ -332,7 +339,12 @@ export default function FloatTools() {
   }
 
   async function handleDeleteCard(id: string) {
-    if (!confirm('Delete this card and all its associated data?')) return;
+    const ok = await requestConfirm({
+      title: 'Delete this card and all its associated data?',
+      body: 'This will remove linked offset sources, installment plans, promos, and float history.',
+      danger: true,
+    });
+    if (!ok) return;
     await db.creditCards.delete(id);
     await deleteFromCloud('credit_cards', id);
 
@@ -351,14 +363,13 @@ export default function FloatTools() {
     const gapIds = (await db.floatGapHistory.where('cardId').equals(id).toArray()).map(g => g.id);
     await db.floatGapHistory.where('cardId').equals(id).delete();
     for (const gid of gapIds) await deleteFromCloud('float_gap_history', gid);
-
-    triggerSync();
   }
 
   async function handleSaveOffset() {
     if (!offsetForm.name.trim() || !offsetForm.linkedCardId) return;
-    await db.cashOffsetSources.add({ id: `cos-${Date.now()}-${uid()}`, name: offsetForm.name.trim(), linkedCardId: offsetForm.linkedCardId, expectedMonthlyAmount: parseFloat(offsetForm.expectedMonthlyAmount) || 0, category: offsetForm.category.trim() || undefined, updatedAt: Date.now() });
-    triggerSync();
+    const cosId = `cos-${Date.now()}-${uid()}`;
+    await db.cashOffsetSources.add({ id: cosId, name: offsetForm.name.trim(), linkedCardId: offsetForm.linkedCardId, expectedMonthlyAmount: parseFloat(offsetForm.expectedMonthlyAmount) || 0, category: offsetForm.category.trim() || undefined, updatedAt: Date.now() });
+    triggerSync('cash_offset_sources', cosId);
     setOffsetForm({ name: '', linkedCardId: '', expectedMonthlyAmount: '', category: '' });
     setIsAddingOffset(false);
   }
@@ -366,13 +377,13 @@ export default function FloatTools() {
   async function handleDeleteOffset(id: string) {
     await db.cashOffsetSources.delete(id);
     await deleteFromCloud('cash_offset_sources', id);
-    triggerSync();
   }
 
   async function handleSaveFD() {
     if (!fdForm.name.trim()) return;
-    await db.fixedDeposits.add({ id: `fd-${Date.now()}-${uid()}`, name: fdForm.name.trim(), principal: parseFloat(fdForm.principal) || 0, ratePercent: parseFloat(fdForm.ratePercent) || 0, maturityIntervalMonths: parseInt(fdForm.maturityIntervalMonths) || 12, linkedCardId: fdForm.linkedCardId || undefined, updatedAt: Date.now() });
-    triggerSync();
+    const fdId = `fd-${Date.now()}-${uid()}`;
+    await db.fixedDeposits.add({ id: fdId, name: fdForm.name.trim(), principal: parseFloat(fdForm.principal) || 0, ratePercent: parseFloat(fdForm.ratePercent) || 0, maturityIntervalMonths: parseInt(fdForm.maturityIntervalMonths) || 12, linkedCardId: fdForm.linkedCardId || undefined, updatedAt: Date.now() });
+    triggerSync('fixed_deposits', fdId);
     setFdForm({ name: '', principal: '', ratePercent: '', maturityIntervalMonths: '12', linkedCardId: '' });
     setIsAddingFD(false);
   }
@@ -380,13 +391,13 @@ export default function FloatTools() {
   async function handleDeleteFD(id: string) {
     await db.fixedDeposits.delete(id);
     await deleteFromCloud('fixed_deposits', id);
-    triggerSync();
   }
 
   async function handleSaveMMA() {
     if (!mmaForm.name.trim()) return;
-    await db.moneyMarketAccounts.add({ id: `mma-${Date.now()}-${uid()}`, name: mmaForm.name.trim(), balance: parseFloat(mmaForm.balance) || 0, currentRatePercent: parseFloat(mmaForm.currentRatePercent) || 0, minimumBalanceForRate: parseFloat(mmaForm.minimumBalanceForRate) || 0, baseRatePercent: parseFloat(mmaForm.baseRatePercent) || 0, updatedAt: Date.now() });
-    triggerSync();
+    const mmaId = `mma-${Date.now()}-${uid()}`;
+    await db.moneyMarketAccounts.add({ id: mmaId, name: mmaForm.name.trim(), balance: parseFloat(mmaForm.balance) || 0, currentRatePercent: parseFloat(mmaForm.currentRatePercent) || 0, minimumBalanceForRate: parseFloat(mmaForm.minimumBalanceForRate) || 0, baseRatePercent: parseFloat(mmaForm.baseRatePercent) || 0, updatedAt: Date.now() });
+    triggerSync('money_market_accounts', mmaId);
     setMmaForm({ name: '', balance: '', currentRatePercent: '', minimumBalanceForRate: '', baseRatePercent: '' });
     setIsAddingMMA(false);
   }
@@ -394,15 +405,15 @@ export default function FloatTools() {
   async function handleDeleteMMA(id: string) {
     await db.moneyMarketAccounts.delete(id);
     await deleteFromCloud('money_market_accounts', id);
-    triggerSync();
   }
 
   async function handleSavePlan() {
     if (!planForm.description.trim() || !planForm.linkedCardId) return;
     const totalMonths = parseInt(planForm.totalMonths) || 1;
     const monthsPaid  = parseInt(planForm.monthsPaid)  || 0;
-    await db.installmentPlans.add({ id: `plan-${Date.now()}-${uid()}`, linkedCardId: planForm.linkedCardId, description: planForm.description.trim(), totalAmount: parseFloat(planForm.totalAmount) || 0, monthlyAmount: parseFloat(planForm.monthlyAmount) || 0, totalMonths, monthsPaid, active: monthsPaid < totalMonths, updatedAt: Date.now() });
-    triggerSync();
+    const planId = `plan-${Date.now()}-${uid()}`;
+    await db.installmentPlans.add({ id: planId, linkedCardId: planForm.linkedCardId, description: planForm.description.trim(), totalAmount: parseFloat(planForm.totalAmount) || 0, monthlyAmount: parseFloat(planForm.monthlyAmount) || 0, totalMonths, monthsPaid, active: monthsPaid < totalMonths, updatedAt: Date.now() });
+    triggerSync('installment_plans', planId);
     setPlanForm({ linkedCardId: '', description: '', totalAmount: '', monthlyAmount: '', totalMonths: '', monthsPaid: '0' });
     setIsAddingPlan(false);
   }
@@ -410,19 +421,19 @@ export default function FloatTools() {
   async function handleMarkPlanPaid(plan: InstallmentPlan) {
     const next = plan.monthsPaid + 1;
     await db.installmentPlans.update(plan.id, { monthsPaid: next, active: next < plan.totalMonths, updatedAt: Date.now() });
-    triggerSync();
+    triggerSync('installment_plans', plan.id);
   }
 
   async function handleDeletePlan(id: string) {
     await db.installmentPlans.delete(id);
     await deleteFromCloud('installment_plans', id);
-    triggerSync();
   }
 
   async function handleSavePromo() {
     if (!promoForm.description.trim() || !promoForm.linkedCardId) return;
-    await db.cardPromos.add({ id: `promo-${Date.now()}-${uid()}`, linkedCardId: promoForm.linkedCardId, description: promoForm.description.trim(), spendThreshold: parseFloat(promoForm.spendThreshold) || 0, minTransactionCount: parseInt(promoForm.minTransactionCount) || 0, windowStart: promoForm.windowStart ? new Date(promoForm.windowStart).getTime() : Date.now(), windowEnd: promoForm.windowEnd ? new Date(promoForm.windowEnd).getTime() : Date.now(), cashbackPercent: parseFloat(promoForm.cashbackPercent) || 0, cashbackCap: parseFloat(promoForm.cashbackCap) || 0, currentSpend: parseFloat(promoForm.currentSpend) || 0, currentTransactionCount: parseInt(promoForm.currentTransactionCount) || 0, updatedAt: Date.now() });
-    triggerSync();
+    const promoId = `promo-${Date.now()}-${uid()}`;
+    await db.cardPromos.add({ id: promoId, linkedCardId: promoForm.linkedCardId, description: promoForm.description.trim(), spendThreshold: parseFloat(promoForm.spendThreshold) || 0, minTransactionCount: parseInt(promoForm.minTransactionCount) || 0, windowStart: promoForm.windowStart ? new Date(promoForm.windowStart).getTime() : Date.now(), windowEnd: promoForm.windowEnd ? new Date(promoForm.windowEnd).getTime() : Date.now(), cashbackPercent: parseFloat(promoForm.cashbackPercent) || 0, cashbackCap: parseFloat(promoForm.cashbackCap) || 0, currentSpend: parseFloat(promoForm.currentSpend) || 0, currentTransactionCount: parseInt(promoForm.currentTransactionCount) || 0, updatedAt: Date.now() });
+    triggerSync('card_promos', promoId);
     setPromoForm({ linkedCardId: '', description: '', spendThreshold: '', minTransactionCount: '', windowStart: '', windowEnd: '', cashbackPercent: '', cashbackCap: '', currentSpend: '0', currentTransactionCount: '0' });
     setIsAddingPromo(false);
   }
@@ -432,13 +443,12 @@ export default function FloatTools() {
       ? { currentSpend: parseFloat(value) || 0, updatedAt: Date.now() }
       : { currentTransactionCount: parseInt(value) || 0, updatedAt: Date.now() };
     await db.cardPromos.update(promo.id, updates);
-    triggerSync();
+    triggerSync('card_promos', promo.id);
   }
 
   async function handleDeletePromo(id: string) {
     await db.cardPromos.delete(id);
     await deleteFromCloud('card_promos', id);
-    triggerSync();
   }
 
   async function handleAddGapEntry() {
@@ -449,8 +459,9 @@ export default function FloatTools() {
     const fresh = await db.floatGapHistory.where('cardId').equals(resolvedCardId).toArray();
     const sortedFresh = fresh.sort((a, b) => a.cycleLabel.localeCompare(b.cycleLabel));
     const prevCumulative = sortedFresh.length > 0 ? sortedFresh[sortedFresh.length - 1].cumulativeGap : 0;
-    await db.floatGapHistory.add({ id: `gap-${Date.now()}-${uid()}`, cardId: resolvedCardId, cycleLabel: gapForm.cycleLabel, totalBill, cashReceived, delta, cumulativeGap: prevCumulative + delta, updatedAt: Date.now() });
-    triggerSync();
+    const gapId = `gap-${Date.now()}-${uid()}`;
+    await db.floatGapHistory.add({ id: gapId, cardId: resolvedCardId, cycleLabel: gapForm.cycleLabel, totalBill, cashReceived, delta, cumulativeGap: prevCumulative + delta, updatedAt: Date.now() });
+    triggerSync('float_gap_history', gapId);
     setGapForm({ cycleLabel: '', totalBill: '', cashReceived: '' });
     setIsAddingGap(false);
   }
@@ -464,28 +475,32 @@ export default function FloatTools() {
     for (const h of sorted) {
       running += h.delta;
       await db.floatGapHistory.update(h.id, { cumulativeGap: running, updatedAt: Date.now() });
+      triggerSync('float_gap_history', h.id);
     }
-    triggerSync();
   }
 
   async function handleAddLedger() {
     if (!newLedgerName.trim()) return;
     const id = `ledger-${Date.now()}-${uid()}`;
     await db.reimbursementLedgers.add({ id, counterpartyName: newLedgerName.trim(), updatedAt: Date.now() });
-    triggerSync();
+    triggerSync('reimbursement_ledgers', id);
     setNewLedgerName('');
     setIsAddingLedger(false);
     setSelectedLedgerId(id);
   }
 
   async function handleDeleteLedger(ledger: ReimbursementLedger) {
-    if (!confirm(`Delete the "${ledger.counterpartyName}" ledger and all its entries?`)) return;
+    const ok = await requestConfirm({
+      title: `Delete the "${ledger.counterpartyName}" ledger and all its entries?`,
+      body: 'All reimbursement entries in this ledger will be removed.',
+      danger: true,
+    });
+    if (!ok) return;
     const entryIds = (await db.reimbursementEntries.where('ledgerId').equals(ledger.id).toArray()).map(e => e.id);
     await db.reimbursementEntries.where('ledgerId').equals(ledger.id).delete();
     for (const eid of entryIds) await deleteFromCloud('reimbursement_entries', eid);
     await db.reimbursementLedgers.delete(ledger.id);
     await deleteFromCloud('reimbursement_ledgers', ledger.id);
-    triggerSync();
     setSelectedLedgerId('');
   }
 
@@ -493,8 +508,9 @@ export default function FloatTools() {
     if (!resolvedLedgerId || !entryForm.note.trim()) return;
     const amountOwed = parseFloat(entryForm.amountOwed) || 0;
     const amountPaid = parseFloat(entryForm.amountPaid) || 0;
-    await db.reimbursementEntries.add({ id: `entry-${Date.now()}-${uid()}`, ledgerId: resolvedLedgerId, date: entryForm.dateStr ? new Date(entryForm.dateStr).getTime() : Date.now(), note: entryForm.note.trim(), amountOwed, amountPaid, delta: amountPaid - amountOwed, updatedAt: Date.now() });
-    triggerSync();
+    const entryId = `entry-${Date.now()}-${uid()}`;
+    await db.reimbursementEntries.add({ id: entryId, ledgerId: resolvedLedgerId, date: entryForm.dateStr ? new Date(entryForm.dateStr).getTime() : Date.now(), note: entryForm.note.trim(), amountOwed, amountPaid, delta: amountPaid - amountOwed, updatedAt: Date.now() });
+    triggerSync('reimbursement_entries', entryId);
     setEntryForm({ note: '', amountOwed: '', amountPaid: '', dateStr: new Date().toISOString().slice(0, 10) });
     setIsAddingEntry(false);
   }
@@ -502,11 +518,11 @@ export default function FloatTools() {
   async function handleDeleteEntry(id: string) {
     await db.reimbursementEntries.delete(id);
     await deleteFromCloud('reimbursement_entries', id);
-    triggerSync();
   }
 
   return (
     <div className="p-6 pb-28 max-w-5xl mx-auto">
+      {confirmDialog}
 
       <div className="flex items-center gap-1.5 mb-1 text-xs text-muted-foreground">
         <Link to="/settings" className="hover:text-foreground transition-colors flex items-center gap-0.5">
@@ -1083,7 +1099,7 @@ export default function FloatTools() {
                             isCardRelated: e.target.checked,
                             updatedAt: Date.now(),
                           });
-                          triggerSync();
+                          triggerSync('reimbursement_ledgers', ledger.id);
                         }}
                         className="rounded border-border text-accent focus:ring-accent"
                       />
@@ -1100,7 +1116,7 @@ export default function FloatTools() {
                               linkedCardId: e.target.value || undefined,
                               updatedAt: Date.now(),
                             });
-                            triggerSync();
+                            triggerSync('reimbursement_ledgers', ledger.id);
                           }}
                           className="p-1 px-2 bg-background border border-border rounded-lg text-xs font-medium outline-none"
                         >

@@ -1,6 +1,7 @@
 import { create } from 'zustand';
 import { supabase } from '../lib/supabase';
 import { db } from '../db/db';
+import { ALL_TABLES } from '../sync/syncEngine';
 import type { User, Session } from '@supabase/supabase-js';
 
 interface AuthState {
@@ -19,6 +20,29 @@ interface AuthState {
   sendPasswordReset: (email: string) => Promise<string | null>;
   deleteAccountData: () => Promise<string | null>;
 }
+
+// Map of TableName → the Dexie collection for that table
+// Used by signOut to clear all local data without an explicit list
+const DEXIE_TABLES: Record<string, () => Promise<void>> = {
+  accounts: () => db.accounts.clear(),
+  transactions: () => db.transactions.clear(),
+  budgets: () => db.budgets.clear(),
+  tags: () => db.tags.clear(),
+  categories: () => db.categories.clear(),
+  recurring_transactions: () => db.recurringTransactions.clear(),
+  savings_goals: () => db.savingsGoals.clear(),
+  people: () => db.people.clear(),
+  debts: () => db.debts.clear(),
+  credit_cards: () => db.creditCards.clear(),
+  cash_offset_sources: () => db.cashOffsetSources.clear(),
+  fixed_deposits: () => db.fixedDeposits.clear(),
+  money_market_accounts: () => db.moneyMarketAccounts.clear(),
+  installment_plans: () => db.installmentPlans.clear(),
+  card_promos: () => db.cardPromos.clear(),
+  float_gap_history: () => db.floatGapHistory.clear(),
+  reimbursement_ledgers: () => db.reimbursementLedgers.clear(),
+  reimbursement_entries: () => db.reimbursementEntries.clear(),
+};
 
 export const useAuthStore = create<AuthState>((set, get) => ({
   user: null,
@@ -46,30 +70,11 @@ export const useAuthStore = create<AuthState>((set, get) => ({
 
   signOut: async () => {
     await supabase.auth.signOut();
-    localStorage.removeItem('finora-pending-sync');
+    localStorage.removeItem('finora-dirty');
     set({ user: null, session: null, lastSyncedAt: null });
-    // Clear all local user data
-    await Promise.all([
-      db.accounts.clear(),
-      db.transactions.clear(),
-      db.budgets.clear(),
-      db.tags.clear(),
-      db.categories.clear(),
-      db.people.clear(),
-      db.debts.clear(),
-      db.recurringTransactions.clear(),
-      db.savingsGoals.clear(),
-      db.creditCards.clear(),
-      db.cashOffsetSources.clear(),
-      db.fixedDeposits.clear(),
-      db.moneyMarketAccounts.clear(),
-      db.installmentPlans.clear(),
-      db.cardPromos.clear(),
-      db.floatGapHistory.clear(),
-      db.reimbursementLedgers.clear(),
-      db.reimbursementEntries.clear(),
-    ]);
+    await Promise.all(ALL_TABLES.map(t => DEXIE_TABLES[t]?.()));
   },
+
 
   sendPasswordReset: async (email) => {
     const { error } = await supabase.auth.resetPasswordForEmail(email, {
@@ -84,27 +89,7 @@ export const useAuthStore = create<AuthState>((set, get) => ({
     const user = get().user;
     if (!user) return 'Not logged in.';
     try {
-      const tables = [
-        'accounts',
-        'transactions',
-        'budgets',
-        'tags',
-        'categories',
-        'recurring_transactions',
-        'savings_goals',
-        'people',
-        'debts',
-        'credit_cards',
-        'cash_offset_sources',
-        'fixed_deposits',
-        'money_market_accounts',
-        'installment_plans',
-        'card_promos',
-        'float_gap_history',
-        'reimbursement_ledgers',
-        'reimbursement_entries',
-      ] as const;
-      for (const table of tables) {
+      for (const table of ALL_TABLES) {
         const { error } = await supabase.from(table).delete().eq('user_id', user.id);
         if (error && !error.message.includes('does not exist') && !error.message.includes('schema cache')) {
           return error.message;

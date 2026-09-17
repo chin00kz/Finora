@@ -13,8 +13,11 @@ import ImportDataModal from '../components/ImportDataModal';
 import MonthlyDigestModal from '../components/MonthlyDigestModal';
 import { exportFullBackupJSON, restoreFullBackupJSON } from '../utils/jsonBackup';
 import Logo from '../components/Logo';
+import { createId } from '../utils/createId';
+import { useConfirm } from '../components/ConfirmDialog';
 
 export default function Settings() {
+  const { confirmDialog, requestConfirm } = useConfirm();
   const navigate = useNavigate();
   const tags = useLiveQuery(() => db.tags.toArray()) || [];
   const categories = useLiveQuery(() => db.categories.toArray()) || [];
@@ -48,6 +51,8 @@ export default function Settings() {
   const [mergingId, setMergingId] = useState<string | null>(null);
   const [targetMergeId, setTargetMergeId] = useState('');
 
+
+
   const handleEdit = (id: string, name: string) => {
     setEditingId(id);
     setEditName(name);
@@ -58,51 +63,64 @@ export default function Settings() {
     if (!editName.trim()) return;
     await db.tags.update(id, { name: editName.trim(), updatedAt: Date.now() });
     setEditingId(null);
-    triggerSync();
+    triggerSync('tags', id);
   };
 
   const handleDelete = async (id: string) => {
-    if (confirm('Are you sure you want to delete this tag? It will be removed from all transactions.')) {
-      await db.transaction('rw', db.tags, db.transactions, async () => {
-        const txns = await db.transactions.filter(t => !!t.tagIds && t.tagIds.includes(id)).toArray();
-        for (const txn of txns) {
-          if (txn.tagIds) {
-            await db.transactions.update(txn.id, {
-              tagIds: txn.tagIds.filter(tid => tid !== id),
-              updatedAt: Date.now()
-            });
-          }
+    const ok = await requestConfirm({
+      title: 'Delete this tag?',
+      body: 'It will be removed from all transactions.',
+      danger: true,
+    });
+    if (!ok) return;
+    let updatedTxnIds: string[] = [];
+    await db.transaction('rw', db.tags, db.transactions, async () => {
+      const txns = await db.transactions.filter(t => !!t.tagIds && t.tagIds.includes(id)).toArray();
+      updatedTxnIds = txns.map(t => t.id);
+      for (const txn of txns) {
+        if (txn.tagIds) {
+          await db.transactions.update(txn.id, {
+            tagIds: txn.tagIds.filter(tid => tid !== id),
+            updatedAt: Date.now()
+          });
         }
-        await db.tags.delete(id);
-      });
-      await deleteFromCloud('tags', id);
-      triggerSync();
-    }
+      }
+      await db.tags.delete(id);
+    });
+    await deleteFromCloud('tags', id);
+    updatedTxnIds.forEach(txnId => triggerSync('transactions', txnId));
   };
 
   const handleMerge = async (sourceId: string) => {
     if (!targetMergeId || targetMergeId === sourceId) return;
     
-    if (confirm('Are you sure you want to merge these tags? This cannot be undone.')) {
-      await db.transaction('rw', db.tags, db.transactions, async () => {
-        const txns = await db.transactions.filter(t => !!t.tagIds && t.tagIds.includes(sourceId)).toArray();
-        for (const txn of txns) {
-          if (txn.tagIds) {
-            const newTags = new Set(txn.tagIds.filter(tid => tid !== sourceId));
-            newTags.add(targetMergeId);
-            await db.transactions.update(txn.id, { 
-              tagIds: Array.from(newTags),
-              updatedAt: Date.now()
-            });
-          }
+    const ok = await requestConfirm({
+      title: 'Merge these tags?',
+      body: 'This will re-tag all transactions and delete the source tag.',
+      danger: true,
+    });
+    if (!ok) return;
+
+    let updatedTxnIds: string[] = [];
+    await db.transaction('rw', db.tags, db.transactions, async () => {
+      const txns = await db.transactions.filter(t => !!t.tagIds && t.tagIds.includes(sourceId)).toArray();
+      updatedTxnIds = txns.map(t => t.id);
+      for (const txn of txns) {
+        if (txn.tagIds) {
+          const newTags = new Set(txn.tagIds.filter(tid => tid !== sourceId));
+          newTags.add(targetMergeId);
+          await db.transactions.update(txn.id, { 
+            tagIds: Array.from(newTags),
+            updatedAt: Date.now()
+          });
         }
-        await db.tags.delete(sourceId);
-      });
-      await deleteFromCloud('tags', sourceId);
-      triggerSync();
-      setMergingId(null);
-      setTargetMergeId('');
-    }
+      }
+      await db.tags.delete(sourceId);
+    });
+    await deleteFromCloud('tags', sourceId);
+    updatedTxnIds.forEach(txnId => triggerSync('transactions', txnId));
+    setMergingId(null);
+    setTargetMergeId('');
   };
 
   // ── Category management ──────────────────────────────────────────────────────
@@ -127,9 +145,9 @@ export default function Settings() {
       return;
     }
     setCatError('');
-    const id = `cat-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`;
+    const id = createId('cat');
     await db.categories.add({ id, name, type: newCatType, icon: 'tag', color: newCatColor, updatedAt: Date.now() });
-    triggerSync();
+    triggerSync('categories', id);
     setNewCatName('');
     setShowAddCat(false);
   };
@@ -145,22 +163,27 @@ export default function Settings() {
     }
     setEditCatError('');
     await db.categories.update(id, { name, updatedAt: Date.now() });
-    triggerSync();
+    triggerSync('categories', id);
     setEditingCatId(null);
   };
 
   const handleDeleteCategory = async (id: string, name: string) => {
-    if (!confirm(`Delete the "${name}" category? Transactions using it will have no category.`)) return;
+    const ok = await requestConfirm({
+      title: `Delete the "${name}" category?`,
+      body: 'Transactions using it will have no category.',
+      danger: true,
+    });
+    if (!ok) return;
     await db.transaction('rw', db.categories, db.transactions, async () => {
       await db.transactions.filter(t => t.categoryId === id).modify({ categoryId: undefined });
       await db.categories.delete(id);
     });
     await deleteFromCloud('categories', id);
-    triggerSync();
   };
 
   return (
     <div className="p-6 pb-28 max-w-5xl mx-auto">
+      {confirmDialog}
       <h2 className="text-2xl font-medium text-foreground mb-6">Settings</h2>
 
       {/* ── Account ─────────────────────────────────────────────────────────── */}
@@ -235,9 +258,12 @@ export default function Settings() {
             <div className="pt-2">
               <button
                 onClick={async () => {
-                  if (!confirm(
-                    'This will DELETE all cloud data for your account and re-upload your current local data as the source of truth.\n\nUse this to fix duplicate categories, budgets, or transactions in the cloud.\n\nYour local data is NOT touched. Continue?'
-                  )) return;
+                  const ok = await requestConfirm({
+                    title: 'Purge & re-upload cloud data?',
+                    body: 'This will DELETE all cloud data for your account and re-upload your current local data as the source of truth.\n\nYour local data is not touched.',
+                    danger: true,
+                  });
+                  if (!ok) return;
                   setIsSyncing(true);
                   setSyncFeedback(null);
                   const res = await purgeAndRepushCloud(user.id);
@@ -266,7 +292,12 @@ export default function Settings() {
               </button>
               <button
                 onClick={async () => {
-                  if (!confirm('This will permanently delete all your synced cloud data. Local data on this device remains intact. Continue?')) return;
+                  const ok = await requestConfirm({
+                    title: 'Delete all cloud data and sign out?',
+                    body: 'This will permanently delete all your synced cloud data. Local data on this device remains intact.',
+                    danger: true,
+                  });
+                  if (!ok) return;
                   setIsDeletingAccount(true);
                   const err = await deleteAccountData();
                   setIsDeletingAccount(false);
@@ -418,7 +449,12 @@ export default function Settings() {
 
           <button
             onClick={async () => {
-              if (!confirm('Are you sure you want to delete ALL local data (accounts, transactions, categories, budgets, tags)?\n\nThis will completely wipe local storage on this device.')) return;
+              const ok = await requestConfirm({
+                title: 'Wipe ALL local data?',
+                body: 'This will completely wipe local database storage on this device for all accounts, transactions, and categories.',
+                danger: true,
+              });
+              if (!ok) return;
               await Promise.all([
                 db.accounts.clear(),
                 db.transactions.clear(),
@@ -439,7 +475,7 @@ export default function Settings() {
                 db.people.clear(),
                 db.debts.clear(),
               ]);
-              localStorage.removeItem('finora-pending-sync');
+              localStorage.removeItem('finora-dirty');
               alert('All local data has been cleared.');
             }}
             className="flex items-center justify-between w-full p-3.5 bg-red-500/5 hover:bg-red-500/10 border border-red-500/20 rounded-xl text-xs font-medium text-red-500 transition-colors"

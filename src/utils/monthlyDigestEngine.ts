@@ -9,6 +9,7 @@ import {
   endOfMonth,
   subMonths,
 } from 'date-fns';
+import { formatMoney } from './formatters';
 
 export interface CategoryTrend {
   categoryId: string;
@@ -229,9 +230,9 @@ export function computeMonthlyDigestSync({
 
       if (matchCat) {
         if (!plan.active || plan.monthsPaid >= plan.totalMonths) {
-          contextNote = `Reflects completion of ${plan.description} (LKR ${plan.monthlyAmount.toLocaleString()}/mo), not a behavioral change.`;
+          contextNote = `Reflects completion of ${plan.description} (${formatMoney(plan.monthlyAmount)}/mo), not a behavioral change.`;
         } else if (plan.monthsPaid <= 1) {
-          contextNote = `Reflects start of installment plan: ${plan.description} (LKR ${plan.monthlyAmount.toLocaleString()}/mo).`;
+          contextNote = `Reflects start of installment plan: ${plan.description} (${formatMoney(plan.monthlyAmount)}/mo).`;
         }
       }
     }

@@ -9,6 +9,7 @@ import type {
   ReimbursementEntry,
 } from '../db/db';
 import { addDays, endOfDay } from 'date-fns';
+import { formatMoney } from './formatters';
 
 export interface MmaAnnotation {
   mmaId: string;
@@ -146,8 +147,8 @@ export function computeSafeToSpendSync({
           currentRate: mma.currentRatePercent,
           baseRate: mma.baseRatePercent,
           message: isBelow
-            ? `Balance is below LKR ${mma.minimumBalanceForRate.toLocaleString()} minimum — earning base rate of ${mma.baseRatePercent}%.`
-            : `Includes LKR ${mma.balance.toLocaleString()} from ${mma.name} — withdrawing below LKR ${mma.minimumBalanceForRate.toLocaleString()} drops it out of preferential rate (${mma.currentRatePercent}% → ${mma.baseRatePercent}%).`,
+            ? `Balance is below ${formatMoney(mma.minimumBalanceForRate)} minimum — earning base rate of ${mma.baseRatePercent}%.`
+            : `Includes ${formatMoney(mma.balance)} from ${mma.name} — withdrawing below ${formatMoney(mma.minimumBalanceForRate)} drops it out of preferential rate (${mma.currentRatePercent}% → ${mma.baseRatePercent}%).`,
         });
       }
     }

@@ -5,6 +5,8 @@ import type { TransactionType } from '../db/db';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { useUIStore } from '../store/uiStore';
 import { triggerSync } from '../sync/syncEngine';
+import { createId } from '../utils/createId';
+import { formatMoney } from '../utils/formatters';
 import QuickAddChips from './QuickAddChips';
 
 export default function TransactionModal() {
@@ -137,7 +139,7 @@ export default function TransactionModal() {
     // Smart Amount Memory: Auto-fill amount if empty or 0
     if (item.txn.amount && (!amount || amount === '0')) {
       setAmount(item.txn.amount.toString());
-      filledDetails.push(`LKR ${item.txn.amount.toLocaleString()}`);
+      filledDetails.push(formatMoney(item.txn.amount));
       setTimeout(() => {
         amountInputRef.current?.select();
       }, 50);
@@ -183,6 +185,23 @@ export default function TransactionModal() {
     }
   }, [filteredCategories.length, type]);
 
+  // Shared helper for creating a new category inline.
+  // Called by both the Enter-key handler and the Save button (was duplicated twice).
+  const handleSaveNewCategory = async () => {
+    const name = newCatName.trim();
+    if (!name) return;
+    const catType = type as 'expense' | 'income';
+    const dup = categories.find(c => c.name.toLowerCase() === name.toLowerCase() && c.type === catType);
+    if (dup) { setNewCatError(`A ${catType} category named "${name}" already exists.`); return; }
+    const id = createId('cat');
+    await db.categories.add({ id, name, type: catType, icon: 'tag', color: newCatColor, updatedAt: Date.now() });
+    triggerSync('categories', id);
+    setCategoryId(id);
+    setNewCatName('');
+    setNewCatError('');
+    setShowNewCat(false);
+  };
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!amount || isNaN(Number(amount))) return;
@@ -190,13 +209,14 @@ export default function TransactionModal() {
     const numAmount = Number(amount);
 
     try {
-      await db.transaction('rw', [db.transactions, db.accounts, db.tags, db.debts, db.people], async () => {
-        // Resolve tags (create if new)
-        const tagsToProcess = [...selectedTags];
-        if (tagInput.trim() && !tagsToProcess.includes(tagInput.trim())) {
-          tagsToProcess.push(tagInput.trim());
-        }
+      const txnId = createId('txn');
+      // Resolve tags (create if new)
+      const tagsToProcess = [...selectedTags];
+      if (tagInput.trim() && !tagsToProcess.includes(tagInput.trim())) {
+        tagsToProcess.push(tagInput.trim());
+      }
 
+      await db.transaction('rw', [db.transactions, db.accounts, db.tags, db.debts, db.people], async () => {
         const resolvedTagIds: string[] = [];
         for (const tagName of tagsToProcess) {
           const allTags = await db.tags.toArray();
@@ -204,14 +224,13 @@ export default function TransactionModal() {
           if (existingTag) {
             resolvedTagIds.push(existingTag.id);
           } else {
-            const newId = `tag-${Date.now()}-${Math.random().toString(36).substr(2, 5)}`;
+            const newId = createId('tag');
             await db.tags.add({ id: newId, name: tagName, updatedAt: Date.now() });
             resolvedTagIds.push(newId);
           }
         }
 
         const now = Date.now();
-        const txnId = `txn-${now}`;
 
         // 1. Add transaction record
         await db.transactions.add({
@@ -283,8 +302,9 @@ export default function TransactionModal() {
         }
       });
 
-      // Trigger cloud sync in background
-      triggerSync();
+      // Trigger cloud sync for this specific record
+      triggerSync('transactions', txnId);
+      triggerSync('accounts', accountId);
 
       // Reset & close
       setAmount('');
@@ -335,7 +355,7 @@ export default function TransactionModal() {
                     .filter(Boolean) as string[];
                   setSelectedTags(tagNames);
                 }
-                setAutoFillIndicator(`Selected: ${candidate.canonicalNote} · LKR ${candidate.amount.toLocaleString()}`);
+                setAutoFillIndicator(`Selected: ${candidate.canonicalNote} · ${formatMoney(candidate.amount)}`);
                 setTimeout(() => {
                   amountInputRef.current?.select();
                   setAutoFillIndicator(null);
@@ -460,7 +480,7 @@ export default function TransactionModal() {
                 onChange={e => setAccountId(e.target.value)}
                 className="w-full p-4 bg-background border border-border rounded-xl font-medium text-foreground outline-none focus:border-foreground"
               >
-                {accounts.map(a => <option key={a.id} value={a.id}>{a.name} — LKR {a.balance.toLocaleString()}</option>)}
+                {accounts.map(a => <option key={a.id} value={a.id}>{a.name} — {formatMoney(a.balance)}</option>)}
               </select>
             </div>
 
@@ -474,7 +494,7 @@ export default function TransactionModal() {
                   className="w-full p-4 bg-background border border-border rounded-xl font-medium text-foreground outline-none focus:border-foreground"
                 >
                   <option value="">Select destination...</option>
-                  {accounts.filter(a => a.id !== accountId).map(a => <option key={a.id} value={a.id}>{a.name} — LKR {a.balance.toLocaleString()}</option>)}
+                  {accounts.filter(a => a.id !== accountId).map(a => <option key={a.id} value={a.id}>{a.name} — {formatMoney(a.balance)}</option>)}
                 </select>
               </div>
             )}
@@ -519,18 +539,7 @@ export default function TransactionModal() {
                       onKeyDown={async e => {
                         if (e.key === 'Enter') {
                           e.preventDefault();
-                          const name = newCatName.trim();
-                          if (!name) return;
-                          const catType = type as 'expense' | 'income';
-                          const dup = categories.find(c => c.name.toLowerCase() === name.toLowerCase() && c.type === catType);
-                          if (dup) { setNewCatError(`A ${catType} category named "${name}" already exists.`); return; }
-                          const id = `cat-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`;
-                          await db.categories.add({ id, name, type: catType, icon: 'tag', color: newCatColor, updatedAt: Date.now() });
-                          triggerSync();
-                          setCategoryId(id);
-                          setNewCatName('');
-                          setNewCatError('');
-                          setShowNewCat(false);
+                          await handleSaveNewCategory();
                         }
                       }}
                       autoFocus
@@ -553,20 +562,7 @@ export default function TransactionModal() {
                       <button
                         type="button"
                         disabled={!newCatName.trim()}
-                        onClick={async () => {
-                          const name = newCatName.trim();
-                          if (!name) return;
-                          const catType = type as 'expense' | 'income';
-                          const dup = categories.find(c => c.name.toLowerCase() === name.toLowerCase() && c.type === catType);
-                          if (dup) { setNewCatError(`A ${catType} category named "${name}" already exists.`); return; }
-                          const id = `cat-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`;
-                          await db.categories.add({ id, name, type: catType, icon: 'tag', color: newCatColor, updatedAt: Date.now() });
-                          triggerSync();
-                          setCategoryId(id);
-                          setNewCatName('');
-                          setNewCatError('');
-                          setShowNewCat(false);
-                        }}
+                        onClick={handleSaveNewCategory}
                         className="flex-1 py-2 bg-accent text-accent-foreground rounded-xl text-sm font-medium active:scale-[0.98] transition-transform disabled:opacity-50"
                       >
                         Save

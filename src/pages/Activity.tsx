@@ -20,12 +20,16 @@ import { useLocation } from 'react-router-dom';
 import TransactionEditSheet from '../components/TransactionEditSheet';
 import ImportDataModal from '../components/ImportDataModal';
 import { triggerSync, deleteFromCloud } from '../sync/syncEngine';
+import { createId } from '../utils/createId';
+import { formatMoney } from '../utils/formatters';
 import { syncSettlementFromTransactionDelete } from '../utils/debtSettlementEngine';
 import { useUIStore } from '../store/uiStore';
 import { usePrivacyStore } from '../store/privacyStore';
 import MaskedAmount from '../components/MaskedAmount';
+import { useConfirm } from '../components/ConfirmDialog';
 
 export default function Activity() {
+  const { confirmDialog, requestConfirm } = useConfirm();
   const location = useLocation();
   const initStart = location.state?.filterStartDate;
   const initEnd = location.state?.filterEndDate;
@@ -82,7 +86,7 @@ export default function Activity() {
     }
 
     try {
-      const id = `txn-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`;
+      const id = createId('txn');
       const now = Date.now();
 
       await db.transactions.add({
@@ -104,11 +108,12 @@ export default function Activity() {
         updatedAt: now,
       });
 
-      triggerSync();
+      triggerSync('transactions', id);
+      if (acc) triggerSync('accounts', acc.id);
 
       showUndoToast({
         id: `undo-${id}`,
-        message: `Repeated "${txn.notes || 'Transaction'}" · LKR ${txn.amount.toLocaleString()} (${acc.name})`,
+        message: `Repeated "${txn.notes || 'Transaction'}" · ${formatMoney(txn.amount)} (${acc?.name})`,
         transactionId: id,
         accountId: txn.accountId,
         amount: txn.amount,
@@ -246,7 +251,12 @@ export default function Activity() {
 
   const handleBulkDelete = async () => {
     if (selectedIds.size === 0) return;
-    if (!confirm(`Permanently delete ${selectedIds.size} transactions?`)) return;
+    const ok = await requestConfirm({
+      title: `Permanently delete ${selectedIds.size} transaction${selectedIds.size > 1 ? 's' : ''}?`,
+      body: 'Account balances will be reversed.',
+      danger: true,
+    });
+    if (!ok) return;
 
     const idsToDelete = Array.from(selectedIds);
     const txnsToDelete = transactions.filter(t => idsToDelete.includes(t.id));
@@ -279,7 +289,6 @@ export default function Activity() {
       }
       await deleteFromCloud('transactions', txn.id);
     }
-    triggerSync();
     setSelectedIds(new Set());
   };
 
@@ -293,7 +302,7 @@ export default function Activity() {
         });
       }
     });
-    triggerSync();
+    ids.forEach(id => triggerSync('transactions', id));
     setShowBulkCategoryMenu(false);
     setSelectedIds(new Set());
   };
@@ -314,7 +323,7 @@ export default function Activity() {
         }
       }
     });
-    triggerSync();
+    ids.forEach(id => triggerSync('transactions', id));
     setShowBulkTagMenu(false);
   };
 
@@ -330,6 +339,7 @@ export default function Activity() {
 
   return (
     <div className="p-6 pb-28 max-w-5xl mx-auto">
+      {confirmDialog}
       {/* Header & Controls */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-6">
         <div>
@@ -874,7 +884,7 @@ export default function Activity() {
                           )}
                           {txn.isShared && (
                             <span className="text-xs text-blue-500 font-medium">
-                              Split · Your share: LKR {txn.personalAmount}
+                              Split · Your share: LKR <MaskedAmount amount={txn.personalAmount || 0} />
                             </span>
                           )}
                         </div>

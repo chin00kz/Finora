@@ -215,15 +215,15 @@ Finora uses a 20-table local schema managed by Dexie.js (`FinoraDB`):
 | `debts` | Auto-generated splits and manual IOUs with settlement logs | Yes |
 | `recurring` | Scheduled recurring expense and income templates | Yes |
 | `goals` | Target savings goals with funding amounts | Yes |
-| `creditCards` | Credit limits, APR rates, grace periods, payment intent | Local |
-| `cashOffsetSources`| Earmarked monthly cash inflows linked to cards | Local |
-| `fixedDeposits` | FD principal amounts, interest rates, maturities | Local |
-| `moneyMarketAccounts` | MMA balances, rate tiers, minimum balance requirements | Local |
-| `installmentPlans` | 0% installment tenures, monthly payments, remaining terms | Local |
-| `cardPromos` | Minimum spend thresholds, cashback caps, expiry windows | Local |
-| `floatGapHistory` | Historical card bills vs cash offset deltas and cumulative gaps | Local |
-| `reimbursementLedgers` | Counterparty card expense ledgers with card association | Local |
-| `reimbursementEntries` | Individual entries tracking owed vs paid balances | Local |
+| `creditCards` | Credit limits, APR rates, grace periods, payment intent | Yes |
+| `cashOffsetSources`| Earmarked monthly cash inflows linked to cards | Yes |
+| `fixedDeposits` | FD principal amounts, interest rates, maturities | Yes |
+| `moneyMarketAccounts` | MMA balances, rate tiers, minimum balance requirements | Yes |
+| `installmentPlans` | 0% installment tenures, monthly payments, remaining terms | Yes |
+| `cardPromos` | Minimum spend thresholds, cashback caps, expiry windows | Yes |
+| `floatGapHistory` | Historical card bills vs cash offset deltas and cumulative gaps | Yes |
+| `reimbursementLedgers` | Counterparty card expense ledgers with card association | Yes |
+| `reimbursementEntries` | Individual entries tracking owed vs paid balances | Yes |
 | `statementCards` | Saved card labels for PDF statement uploads | Local |
 | `parsedStatements` | Client-side parsed PDF statements with transactions & plans | Local |
 
@@ -277,6 +277,8 @@ Finora/
 │   │   ├── FloatTools.tsx          # Credit & Float power tools module
 │   │   ├── StatementReader.tsx     # Client-side PDF credit card statement reader
 │   │   └── Settings.tsx            # Preferences, sync, tags & backups
+│   ├── lib/                        # Client libraries & setup
+│   │   └── supabase.ts             # Supabase client initialization & env guard
 │   ├── store/                      # Zustand state management
 │   │   ├── authStore.ts            # User auth & sync timestamp state
 │   │   ├── navStore.ts             # Mobile navigation slot preferences
@@ -284,18 +286,19 @@ Finora/
 │   │   ├── themeStore.ts           # Light, Dark, System theme mode
 │   │   └── uiStore.ts              # Modal states, prefill, undo toast
 │   ├── sync/                       # Synchronization engine
-│   │   ├── supabaseClient.ts       # Supabase client initialization
-│   │   └── syncEngine.ts           # Two-way sync, delta queue, dedupe
+│   │   └── syncEngine.ts           # Record-level dirty queue, updatedAt merge, pull-on-focus
 │   ├── utils/                      # Core calculation & business engines
+│   │   ├── createId.ts             # Monotonic prefix ID generator
+│   │   ├── formatters.ts           # Currency and compact money utilities
 │   │   ├── quickLogEngine.ts       # Habitual frequency & time-of-day scoring
 │   │   ├── safeToSpendEngine.ts    # Liquidity forecast formula & MMA checks
 │   │   ├── monthlyDigestEngine.ts  # Retrospectives, spike checks & insights
 │   │   ├── statementParser.ts      # PDF text extraction & Combank layout parser
-│   │   ├── jsonBackup.ts           # Full database JSON snapshot import/export
-│   │   └── formatters.ts           # Currency and date utilities
+│   │   └── jsonBackup.ts           # Full database JSON snapshot import/export
 │   ├── App.tsx                     # AppShell, routing, global modals & toast
 │   └── main.tsx                    # React application bootstrap
-├── supabase-schema.sql             # Cloud database schema & RLS policies
+├── .env.example                    # Template environment variables
+├── supabase-schema.sql             # Cloud database schema, RLS policies & auth trigger
 ├── tailwind.config.js              # Tailwind styling configuration
 └── vite.config.ts                  # Vite build tool configuration
 ```
@@ -322,11 +325,16 @@ Finora/
    ```
 
 3. **Configure Environment Variables (Optional):**
-   Finora is completely functional offline as a guest without any external service. If you wish to connect Supabase cloud sync, create a `.env` file in the project root:
+   Finora is completely functional offline as a guest without any external service. If you wish to connect Supabase cloud sync, copy the example environment file and fill in your Supabase credentials:
+   ```bash
+   cp .env.example .env.local
+   ```
+   Edit `.env.local`:
    ```env
    VITE_SUPABASE_URL=https://your-project.supabase.co
    VITE_SUPABASE_ANON_KEY=your-anon-key
    ```
+   > **Note:** `.env` and `.env.local` files are ignored by git to protect credentials. Never commit production keys to a public repository. Ensure you execute `supabase-schema.sql` in your Supabase SQL Editor to enable Row Level Security (RLS) and the signup domain trigger.
 
 4. **Start the local development server:**
    ```bash

@@ -3,7 +3,10 @@ import { X, CheckCircle2, RotateCcw, Wallet, Ban, Trash2, ArrowDownLeft, ArrowUp
 import { db, type Debt } from '../db/db';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { recordDebtSettlement, undoDebtSettlement, getDebtSettlementStatus } from '../utils/debtSettlementEngine';
-import { deleteFromCloud, triggerSync } from '../sync/syncEngine';
+import { deleteFromCloud } from '../sync/syncEngine';
+import { useConfirm } from './ConfirmDialog';
+import { formatMoney } from '../utils/formatters';
+import MaskedAmount from './MaskedAmount';
 
 interface Props {
   debt: Debt | null;
@@ -12,6 +15,7 @@ interface Props {
 }
 
 export default function SettleDebtModal({ debt, isOpen, onClose }: Props) {
+  const { confirmDialog, requestConfirm } = useConfirm();
   const accounts = useLiveQuery(() => db.accounts.toArray()) || [];
 
   // Live debt query so settlement history updates dynamically when undoing
@@ -59,7 +63,7 @@ export default function SettleDebtModal({ debt, isOpen, onClose }: Props) {
     }
 
     if (numAmount > remainingAmount + 0.0001) {
-      setError(`Amount cannot exceed remaining balance of LKR ${remainingAmount.toLocaleString()}`);
+      setError(`Amount cannot exceed remaining balance of ${formatMoney(remainingAmount)}`);
       return;
     }
 
@@ -104,7 +108,12 @@ export default function SettleDebtModal({ debt, isOpen, onClose }: Props) {
   };
 
   const handleUndo = async (settlementId: string) => {
-    if (!confirm('Undo this settlement? Account balance will be restored.')) return;
+    const ok = await requestConfirm({
+      title: 'Undo this settlement?',
+      body: 'The associated account balance will be restored.',
+      danger: true,
+    });
+    if (!ok) return;
     try {
       const res = await undoDebtSettlement(liveDebt.id, settlementId);
       if (!res.success) {
@@ -117,7 +126,12 @@ export default function SettleDebtModal({ debt, isOpen, onClose }: Props) {
   };
 
   const handleDeleteDebt = async () => {
-    if (!confirm('Delete this debt? Any account-linked settlements will be undone.')) return;
+    const ok = await requestConfirm({
+      title: 'Delete this debt?',
+      body: 'Any account-linked settlements will be undone and balances restored.',
+      danger: true,
+    });
+    if (!ok) return;
     try {
       // Undo settlements in reverse order
       const copySettlements = [...(liveDebt.settlements || [])].reverse();
@@ -126,7 +140,6 @@ export default function SettleDebtModal({ debt, isOpen, onClose }: Props) {
       }
       await db.debts.delete(liveDebt.id);
       await deleteFromCloud('debts', liveDebt.id);
-      triggerSync();
       onClose();
     } catch (err: any) {
       console.error('Failed to delete debt', err);
@@ -136,6 +149,7 @@ export default function SettleDebtModal({ debt, isOpen, onClose }: Props) {
 
   return (
     <div className="fixed inset-0 z-50 flex flex-col justify-end sm:justify-center sm:items-center bg-black/40 backdrop-blur-sm animate-in fade-in duration-200">
+      {confirmDialog}
       <div className="bg-card w-full sm:max-w-lg sm:rounded-3xl rounded-t-3xl shadow-xl flex flex-col max-h-[90vh] animate-in slide-in-from-bottom-full duration-300">
         
         {/* Header */}
@@ -179,13 +193,13 @@ export default function SettleDebtModal({ debt, isOpen, onClose }: Props) {
               <p className="text-xs text-muted-foreground uppercase tracking-wider font-medium">Remaining Balance</p>
               <p className="text-2xl font-semibold text-foreground">
                 <span className="text-base font-normal text-muted-foreground mr-1">LKR</span>
-                {remainingAmount.toLocaleString()}
+                <MaskedAmount amount={remainingAmount} />
               </p>
             </div>
             <div className="text-right">
-              <p className="text-xs text-muted-foreground">Original: LKR {liveDebt.amount.toLocaleString()}</p>
+              <p className="text-xs text-muted-foreground">Original: LKR <MaskedAmount amount={liveDebt.amount} /></p>
               <p className="text-xs text-emerald-600 dark:text-emerald-400 font-medium">
-                Settled: LKR {settledAmount.toLocaleString()} ({progressPercent}%)
+                Settled: LKR <MaskedAmount amount={settledAmount} /> ({progressPercent}%)
               </p>
             </div>
           </div>
@@ -244,7 +258,7 @@ export default function SettleDebtModal({ debt, isOpen, onClose }: Props) {
                       onClick={() => setSettleAmount(String(remainingAmount))}
                       className="text-xs font-medium text-accent hover:underline"
                     >
-                      Pay full (LKR {remainingAmount.toLocaleString()})
+                      Pay full ({formatMoney(remainingAmount)})
                     </button>
                   )}
                 </div>
@@ -314,7 +328,7 @@ export default function SettleDebtModal({ debt, isOpen, onClose }: Props) {
                   >
                     {accounts.map(acc => (
                       <option key={acc.id} value={acc.id}>
-                        {acc.name} — LKR {acc.balance.toLocaleString()}
+                        {acc.name} — {formatMoney(acc.balance)}
                       </option>
                     ))}
                   </select>
@@ -372,7 +386,7 @@ export default function SettleDebtModal({ debt, isOpen, onClose }: Props) {
               </div>
               <h3 className="font-medium text-foreground">This debt is fully settled!</h3>
               <p className="text-xs text-muted-foreground max-w-xs mx-auto">
-                All LKR {liveDebt.amount.toLocaleString()} has been settled. You can review or undo settlement events in the History tab.
+                All {formatMoney(liveDebt.amount)} has been settled. You can review or undo settlement events in the History tab.
               </p>
               <button
                 type="button"
@@ -411,7 +425,7 @@ export default function SettleDebtModal({ debt, isOpen, onClose }: Props) {
                     <div>
                       <div className="flex items-center gap-2">
                         <span className="font-semibold text-foreground text-sm">
-                          LKR {s.amount.toLocaleString()}
+                          LKR <MaskedAmount amount={s.amount} />
                         </span>
                         <span
                           className={`text-[10px] px-2 py-0.5 rounded-md font-medium ${

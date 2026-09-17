@@ -4,6 +4,8 @@ import { db } from '../db/db';
 import type { AccountType } from '../db/db';
 import { Plus, X, Trash2 } from 'lucide-react';
 import { triggerSync, deleteFromCloud } from '../sync/syncEngine';
+import { createId } from '../utils/createId';
+import { useConfirm } from '../components/ConfirmDialog';
 import MaskedAmount from '../components/MaskedAmount';
 
 const ACCOUNT_TYPES: { id: AccountType; label: string; icon: string }[] = [
@@ -18,6 +20,7 @@ const ACCOUNT_TYPES: { id: AccountType; label: string; icon: string }[] = [
 export default function Accounts() {
   const accounts = useLiveQuery(() => db.accounts.toArray()) || [];
   const totalBalance = accounts.filter(a => a.includeInTotal).reduce((sum, acc) => sum + acc.balance, 0);
+  const { confirmDialog, requestConfirm } = useConfirm();
 
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
@@ -58,9 +61,11 @@ export default function Accounts() {
         balance: Number(balance),
         updatedAt: now,
       });
+      triggerSync('accounts', editingId);
     } else {
+      const id = createId('acc');
       await db.accounts.add({
-        id: `acc-${now}`,
+        id,
         name,
         type,
         balance: Number(balance),
@@ -68,23 +73,30 @@ export default function Accounts() {
         includeInTotal,
         updatedAt: now,
       });
+      triggerSync('accounts', id);
     }
-    triggerSync();
     setIsModalOpen(false);
   };
 
   const handleDelete = async (id: string) => {
-    if (confirm('Are you sure you want to delete this account?')) {
+    const ok = await requestConfirm({
+      title: 'Delete account?',
+      body: 'This cannot be undone.',
+      danger: true,
+    });
+    if (ok) {
       await db.accounts.delete(id);
       await deleteFromCloud('accounts', id);
-      triggerSync();
       setIsModalOpen(false);
     }
   };
 
   const getIcon = (t: string) => ACCOUNT_TYPES.find(a => a.id === t)?.icon || '📦';
 
+
   return (
+    <>
+    {confirmDialog}
     <div className="p-6 pb-28 max-w-5xl mx-auto">
       <div className="flex justify-between items-center mb-6">
         <h2 className="text-2xl font-medium text-foreground">Accounts</h2>
@@ -218,5 +230,6 @@ export default function Accounts() {
         </div>
       )}
     </div>
+    </>
   );
 }

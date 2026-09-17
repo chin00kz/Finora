@@ -4,7 +4,10 @@ import { db } from '../db/db';
 import type { Transaction, TransactionType } from '../db/db';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { triggerSync, deleteFromCloud } from '../sync/syncEngine';
+import { createId } from '../utils/createId';
+import { formatMoney } from '../utils/formatters';
 import { syncSettlementFromTransactionDelete, syncSettlementFromTransactionEdit } from '../utils/debtSettlementEngine';
+import { useConfirm } from './ConfirmDialog';
 
 interface Props {
   transaction: Transaction;
@@ -12,6 +15,7 @@ interface Props {
 }
 
 export default function TransactionEditSheet({ transaction, onClose }: Props) {
+  const { confirmDialog, requestConfirm } = useConfirm();
   const accounts = useLiveQuery(() => db.accounts.toArray()) || [];
   const categories = useLiveQuery(() => db.categories.toArray()) || [];
   const tags = useLiveQuery(() => db.tags.toArray()) || [];
@@ -146,7 +150,7 @@ export default function TransactionEditSheet({ transaction, onClose }: Props) {
           await syncSettlementFromTransactionEdit(transaction, numAmount, accountId, notes);
         }
       });
-      triggerSync();
+      triggerSync('transactions', transaction.id);
       onClose();
     } catch (err) {
       console.error('Failed to save transaction edit', err);
@@ -155,7 +159,12 @@ export default function TransactionEditSheet({ transaction, onClose }: Props) {
 
   // ── Delete ──────────────────────────────────────────────────────────────────
   const handleDelete = async () => {
-    if (!confirm('Delete this transaction? The account balance will be reversed.')) return;
+    const ok = await requestConfirm({
+      title: 'Delete this transaction?',
+      body: 'The account balance will be reversed.',
+      danger: true,
+    });
+    if (!ok) return;
     try {
       await db.transaction('rw', db.transactions, db.accounts, async () => {
         await reverseBalance();
@@ -165,7 +174,6 @@ export default function TransactionEditSheet({ transaction, onClose }: Props) {
         await syncSettlementFromTransactionDelete(transaction);
       }
       await deleteFromCloud('transactions', transaction.id);
-      triggerSync();
       onClose();
     } catch (err) {
       console.error('Failed to delete transaction', err);
@@ -183,16 +191,42 @@ export default function TransactionEditSheet({ transaction, onClose }: Props) {
     if (!name) return;
     // Find or stage by name — we'll resolve to real ID on save
     const existing = tags.find(t => t.name.toLowerCase() === name.toLowerCase());
-    const idToAdd = existing ? existing.id : name; // use name as placeholder id if new
-    if (!selectedTagIds.includes(idToAdd)) {
-      setSelectedTagIds(prev => [...prev, idToAdd]);
+    if (existing) {
+      if (!selectedTagIds.includes(existing.id)) {
+        setSelectedTagIds(prev => [...prev, existing.id]);
+      }
+    } else {
+      // Stage new tag by name
+      if (!selectedTagIds.includes(name)) {
+        setSelectedTagIds(prev => [...prev, name]);
+      }
     }
     setTagInput('');
   };
 
   const getTagDisplay = (tid: string) => {
-    const t = tags.find(t => t.id === tid);
+    const t = tags.find(tag => tag.id === tid);
     return t ? t.name : tid; // fallback to raw value (new tag name)
+  };
+
+  // Shared handler for creating a new category inline — used in both the
+  // Enter-key handler and the Save button below (was copy-pasted twice).
+  const handleSaveNewCategory = async () => {
+    const name = newCatName.trim();
+    if (!name) return;
+    const catType = (type === 'income' ? 'income' : 'expense');
+    const dup = filteredCategories.find(c => c.name.toLowerCase() === name.toLowerCase() && c.type === catType);
+    if (dup) {
+      setNewCatError(`A ${catType} category named "${name}" already exists.`);
+      return;
+    }
+    const id = createId('cat');
+    await db.categories.add({ id, name, type: catType, icon: 'tag', color: newCatColor, updatedAt: Date.now() });
+    triggerSync('categories', id);
+    setCategoryId(id);
+    setNewCatName('');
+    setNewCatError('');
+    setShowNewCat(false);
   };
 
   const typeLabel =
@@ -206,6 +240,7 @@ export default function TransactionEditSheet({ transaction, onClose }: Props) {
 
   return (
     <div className="fixed inset-0 z-50 flex flex-col justify-end bg-black/40 backdrop-blur-sm animate-in fade-in duration-200">
+      {confirmDialog}
       <div className="bg-card w-full max-w-md mx-auto rounded-t-3xl shadow-xl flex flex-col max-h-[90vh] animate-in slide-in-from-bottom-full duration-300">
 
         {/* Header */}
@@ -283,7 +318,7 @@ export default function TransactionEditSheet({ transaction, onClose }: Props) {
               className="w-full p-3.5 bg-background border border-border rounded-xl text-sm font-medium text-foreground outline-none"
             >
               {accounts.map(a => (
-                <option key={a.id} value={a.id}>{a.name} — LKR {a.balance.toLocaleString()}</option>
+                <option key={a.id} value={a.id}>{a.name} — {formatMoney(a.balance)}</option>
               ))}
             </select>
           </div>
@@ -299,7 +334,7 @@ export default function TransactionEditSheet({ transaction, onClose }: Props) {
               >
                 <option value="">Select destination...</option>
                 {accounts.filter(a => a.id !== accountId).map(a => (
-                  <option key={a.id} value={a.id}>{a.name} — LKR {a.balance.toLocaleString()}</option>
+                  <option key={a.id} value={a.id}>{a.name} — {formatMoney(a.balance)}</option>
                 ))}
               </select>
             </div>
@@ -345,17 +380,7 @@ export default function TransactionEditSheet({ transaction, onClose }: Props) {
                     onKeyDown={async e => {
                       if (e.key === 'Enter') {
                         e.preventDefault();
-                        const name = newCatName.trim();
-                        if (!name) return;
-                        const dup = filteredCategories.find(c => c.name.toLowerCase() === name.toLowerCase());
-                        if (dup) { setNewCatError(`A ${type} category named "${name}" already exists.`); return; }
-                        const id = `cat-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`;
-                        await db.categories.add({ id, name, type, icon: 'tag', color: newCatColor, updatedAt: Date.now() });
-                        triggerSync();
-                        setCategoryId(id);
-                        setNewCatName('');
-                        setNewCatError('');
-                        setShowNewCat(false);
+                        await handleSaveNewCategory();
                       }
                     }}
                     autoFocus
@@ -378,19 +403,7 @@ export default function TransactionEditSheet({ transaction, onClose }: Props) {
                     <button
                       type="button"
                       disabled={!newCatName.trim()}
-                      onClick={async () => {
-                        const name = newCatName.trim();
-                        if (!name) return;
-                        const dup = filteredCategories.find(c => c.name.toLowerCase() === name.toLowerCase());
-                        if (dup) { setNewCatError(`A ${type} category named "${name}" already exists.`); return; }
-                        const id = `cat-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`;
-                        await db.categories.add({ id, name, type, icon: 'tag', color: newCatColor, updatedAt: Date.now() });
-                        triggerSync();
-                        setCategoryId(id);
-                        setNewCatName('');
-                        setNewCatError('');
-                        setShowNewCat(false);
-                      }}
+                      onClick={handleSaveNewCategory}
                       className="flex-1 py-2 bg-accent text-accent-foreground rounded-xl text-sm font-medium active:scale-[0.98] transition-transform disabled:opacity-50"
                     >
                       Save

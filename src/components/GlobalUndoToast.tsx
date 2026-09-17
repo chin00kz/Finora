@@ -1,7 +1,7 @@
 import { useEffect, useState, useRef } from 'react';
 import { useUIStore } from '../store/uiStore';
 import { db } from '../db/db';
-import { deleteFromCloud, triggerSync } from '../sync/syncEngine';
+import { deleteFromCloud } from '../sync/syncEngine';
 import { RotateCcw, X, CheckCircle2 } from 'lucide-react';
 
 export default function GlobalUndoToast() {
@@ -68,24 +68,23 @@ export default function GlobalUndoToast() {
       // 3. Prevent in-flight race condition:
       // Remove any pending insert for this transaction from localStorage pending queue
       try {
-        const rawQueue = localStorage.getItem('finora-pending-sync');
-        if (rawQueue) {
-          const queue = JSON.parse(rawQueue);
-          if (Array.isArray(queue)) {
-            const filtered = queue.filter(
-              (item: any) =>
-                !(item.table === 'transactions' && item.id === undoToast.transactionId)
+        // Remove the deleted transaction from the dirty map if it was queued
+        const rawDirty = localStorage.getItem('finora-dirty');
+        if (rawDirty) {
+          const dirty = JSON.parse(rawDirty);
+          if (dirty?.transactions) {
+            dirty.transactions = (dirty.transactions as string[]).filter(
+              (id: string) => id !== undoToast.transactionId
             );
-            localStorage.setItem('finora-pending-sync', JSON.stringify(filtered));
+            localStorage.setItem('finora-dirty', JSON.stringify(dirty));
           }
         }
       } catch (err) {
-        console.warn('Could not update pending sync queue on undo:', err);
+        console.warn('Could not update dirty map on undo:', err);
       }
 
       // 4. Issue cloud delete
       await deleteFromCloud('transactions', undoToast.transactionId);
-      triggerSync();
 
       // Show brief success feedback
       setUndoneSuccess(true);

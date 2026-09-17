@@ -15,6 +15,10 @@ import {
 } from 'lucide-react';
 import { format, differenceInDays, differenceInMonths } from 'date-fns';
 import { triggerSync, deleteFromCloud } from '../sync/syncEngine';
+import { createId } from '../utils/createId';
+import { formatMoney } from '../utils/formatters';
+import { useConfirm } from '../components/ConfirmDialog';
+import MaskedAmount from '../components/MaskedAmount';
 
 const GOAL_COLORS = [
   '#10b981', // emerald
@@ -28,6 +32,8 @@ const GOAL_COLORS = [
 export default function Goals() {
   const goals = useLiveQuery(() => db.savingsGoals.toArray()) || [];
   const accounts = useLiveQuery(() => db.accounts.toArray()) || [];
+
+  const { confirmDialog, requestConfirm } = useConfirm();
 
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingGoal, setEditingGoal] = useState<SavingsGoal | null>(null);
@@ -78,6 +84,8 @@ export default function Goals() {
       targetDate = new Date(y, m - 1, d, 12, 0, 0).getTime();
     }
 
+    let savedId = editingGoal?.id ?? '';
+
     if (editingGoal) {
       await db.savingsGoals.update(editingGoal.id, {
         name: name.trim(),
@@ -89,9 +97,10 @@ export default function Goals() {
         updatedAt: Date.now(),
       });
     } else {
-      const rand = Math.random().toString(36).substring(2, 7);
+      const id = createId('goal');
+      savedId = id;
       await db.savingsGoals.add({
-        id: `goal-${Date.now()}-${rand}`,
+        id,
         name: name.trim(),
         targetAmount: numTarget,
         currentAmount: numCurrent,
@@ -102,15 +111,16 @@ export default function Goals() {
       });
     }
 
-    triggerSync();
+    triggerSync('savings_goals', savedId);
     setIsModalOpen(false);
   };
 
   const handleDeleteGoal = async (goal: SavingsGoal) => {
-    if (!confirm(`Delete savings goal "${goal.name}"?`)) return;
-    await db.savingsGoals.delete(goal.id);
-    await deleteFromCloud('savings_goals', goal.id);
-    triggerSync();
+    const ok = await requestConfirm({ title: `Delete savings goal "${goal.name}"?`, danger: true });
+    if (ok) {
+      await db.savingsGoals.delete(goal.id);
+      await deleteFromCloud('savings_goals', goal.id);
+    }
   };
 
   const handleAdjustFunds = async () => {
@@ -128,7 +138,7 @@ export default function Goals() {
       updatedAt: Date.now(),
     });
 
-    triggerSync();
+    triggerSync('savings_goals', adjustModalGoal.id);
     setAdjustModalGoal(null);
     setAdjustAmount('');
   };
@@ -143,6 +153,7 @@ export default function Goals() {
 
   return (
     <div className="p-6 pb-28 max-w-5xl mx-auto">
+      {confirmDialog}
       {/* Header */}
       <div className="flex items-center justify-between mb-6">
         <div>
@@ -196,7 +207,7 @@ export default function Goals() {
                 timeRemainingText = `${days} days left (${format(new Date(goal.targetDate), 'MMM yyyy')})`;
                 const remainingAmount = target - current;
                 const monthly = Math.round(remainingAmount / months);
-                monthlyNeededText = `~LKR ${monthly.toLocaleString()}/mo needed`;
+                monthlyNeededText = `~${formatMoney(monthly)}/mo needed`;
               } else {
                 timeRemainingText = 'Target date reached';
               }
@@ -209,45 +220,44 @@ export default function Goals() {
               >
                 {/* 100% Celebration Banner */}
                 {isCompleted && (
-                  <div className="mb-3 p-2 bg-emerald-500/10 border border-emerald-500/20 rounded-xl flex items-center gap-2 text-emerald-600 dark:text-emerald-400 text-xs font-semibold">
-                    <Sparkles size={16} />
-                    <span>Goal Completed! 100% Achieved</span>
+                  <div className="absolute top-0 right-0 bg-emerald-500 text-white text-[10px] font-bold px-3 py-0.5 rounded-bl-xl flex items-center gap-1">
+                    <Sparkles size={11} /> Completed
                   </div>
                 )}
 
                 <div>
-                  {/* Title & Actions */}
-                  <div className="flex items-start justify-between gap-3 mb-3">
-                    <div className="flex items-center gap-2.5">
+                  {/* Title & Color Badge */}
+                  <div className="flex items-center justify-between mb-3">
+                    <div className="flex items-center gap-2">
                       <span
                         className="w-3.5 h-3.5 rounded-full shrink-0"
-                        style={{ backgroundColor: goal.color || GOAL_COLORS[0] }}
+                        style={{ backgroundColor: goal.color }}
                       />
                       <div>
-                        <h3 className="font-medium text-foreground text-base">{goal.name}</h3>
+                        <h3 className="font-medium text-foreground text-base leading-tight">
+                          {goal.name}
+                        </h3>
                         {linkedAcc ? (
                           <p className="text-[11px] text-muted-foreground flex items-center gap-1 mt-0.5">
                             <LinkIcon size={12} />
-                            <span>Linked to {linkedAcc.name} (auto-tracked)</span>
+                            <span>Linked to {linkedAcc.name}</span>
                           </p>
-                        ) : (
-                          <p className="text-[11px] text-muted-foreground mt-0.5">Manual tracking</p>
-                        )}
+                        ) : null}
                       </div>
                     </div>
 
                     <div className="flex items-center gap-1">
                       <button
                         onClick={() => openEditModal(goal)}
-                        className="p-1.5 text-muted-foreground hover:text-foreground rounded-lg hover:bg-muted transition-colors"
+                        className="p-1.5 text-muted-foreground hover:text-foreground active:scale-95 transition-transform"
                       >
-                        <Edit2 size={14} />
+                        <Edit2 size={15} />
                       </button>
                       <button
                         onClick={() => handleDeleteGoal(goal)}
-                        className="p-1.5 text-muted-foreground hover:text-red-500 rounded-lg hover:bg-red-500/10 transition-colors"
+                        className="p-1.5 text-muted-foreground hover:text-red-500 active:scale-95 transition-transform"
                       >
-                        <Trash2 size={14} />
+                        <Trash2 size={15} />
                       </button>
                     </div>
                   </div>
@@ -256,10 +266,10 @@ export default function Goals() {
                   <div className="flex justify-between items-baseline mb-2">
                     <div>
                       <span className="text-2xl font-light text-foreground">
-                        LKR {current.toLocaleString()}
+                        LKR <MaskedAmount amount={current} />
                       </span>
                       <span className="text-xs text-muted-foreground ml-1.5">
-                        of LKR {target.toLocaleString()}
+                        of LKR <MaskedAmount amount={target} />
                       </span>
                     </div>
                     <span
@@ -384,7 +394,7 @@ export default function Goals() {
                   <option value="">No linked account (Manual tracking)</option>
                   {accounts.map(a => (
                     <option key={a.id} value={a.id}>
-                      {a.name} (Balance: LKR {a.balance.toLocaleString()})
+                      {a.name} (Balance: {formatMoney(a.balance)})
                     </option>
                   ))}
                 </select>
@@ -484,8 +494,8 @@ export default function Goals() {
 
             <div className="p-4 space-y-3">
               <p className="text-xs text-muted-foreground">
-                Current progress: LKR {adjustModalGoal.currentAmount.toLocaleString()} of LKR{' '}
-                {adjustModalGoal.targetAmount.toLocaleString()}
+                Current progress: {formatMoney(adjustModalGoal.currentAmount)} of{' '}
+                {formatMoney(adjustModalGoal.targetAmount)}
               </p>
               <div>
                 <label className="block text-xs font-medium text-muted-foreground uppercase tracking-wider mb-1">

@@ -6,8 +6,12 @@ import { Plus, Repeat, Pause, Play, Edit2, Trash2, X, Clock } from 'lucide-react
 import { format, differenceInDays } from 'date-fns';
 import { processDueRecurringTransactions } from '../utils/recurringEngine';
 import { triggerSync, deleteFromCloud } from '../sync/syncEngine';
+import { createId } from '../utils/createId';
+import { useConfirm } from '../components/ConfirmDialog';
+import MaskedAmount from '../components/MaskedAmount';
 
 export default function Recurring() {
+  const { confirmDialog, requestConfirm } = useConfirm();
   const recurringRules = useLiveQuery(() => db.recurringTransactions.toArray()) || [];
   const accounts = useLiveQuery(() => db.accounts.toArray()) || [];
   const categories = useLiveQuery(() => db.categories.toArray()) || [];
@@ -62,7 +66,9 @@ export default function Recurring() {
     const dateObj = new Date(y, m - 1, d, 12, 0, 0);
     const nextDueDate = dateObj.getTime();
 
+    let savedId = '';
     if (editingRule) {
+      savedId = editingRule.id;
       await db.recurringTransactions.update(editingRule.id, {
         name: name.trim(),
         amount: numAmount,
@@ -74,9 +80,10 @@ export default function Recurring() {
         updatedAt: Date.now(),
       });
     } else {
-      const rand = Math.random().toString(36).substring(2, 7);
+      const id = createId('rec');
+      savedId = id;
       await db.recurringTransactions.add({
-        id: `rec-${Date.now()}-${rand}`,
+        id,
         name: name.trim(),
         amount: numAmount,
         type,
@@ -89,7 +96,7 @@ export default function Recurring() {
       });
     }
 
-    triggerSync();
+    triggerSync('recurring_transactions', savedId);
     setIsModalOpen(false);
     // Process if user picked today or a past date
     processDueRecurringTransactions();
@@ -100,14 +107,18 @@ export default function Recurring() {
       active: !rule.active,
       updatedAt: Date.now(),
     });
-    triggerSync();
+    triggerSync('recurring_transactions', rule.id);
   };
 
   const handleDeleteRule = async (rule: RecurringTransaction) => {
-    if (!confirm(`Delete recurring rule "${rule.name}"? Past generated transactions will stay safe.`)) return;
+    const ok = await requestConfirm({
+      title: `Delete recurring rule "${rule.name}"?`,
+      body: 'Past generated transactions will stay safe.',
+      danger: true,
+    });
+    if (!ok) return;
     await db.recurringTransactions.delete(rule.id);
     await deleteFromCloud('recurring_transactions', rule.id);
-    triggerSync();
   };
 
   const getAccountName = (id: string) => accounts.find(a => a.id === id)?.name || 'Unknown Account';
@@ -133,6 +144,7 @@ export default function Recurring() {
 
   return (
     <div className="p-6 pb-28 max-w-5xl mx-auto">
+      {confirmDialog}
       {/* Header */}
       <div className="flex items-center justify-between mb-6">
         <div>
@@ -188,7 +200,7 @@ export default function Recurring() {
                           </div>
                         </div>
                         <span className={`text-sm font-medium ${r.type === 'expense' ? 'text-foreground' : 'text-emerald-500'}`}>
-                          {r.type === 'expense' ? '-' : '+'}LKR {r.amount.toLocaleString()}
+                          {r.type === 'expense' ? '-' : '+'}LKR <MaskedAmount amount={r.amount} />
                         </span>
                       </div>
                     );
@@ -224,7 +236,7 @@ export default function Recurring() {
                           </div>
                         </div>
                         <span className={`text-sm font-medium ${r.type === 'expense' ? 'text-foreground' : 'text-emerald-500'}`}>
-                          {r.type === 'expense' ? '-' : '+'}LKR {r.amount.toLocaleString()}
+                          {r.type === 'expense' ? '-' : '+'}LKR <MaskedAmount amount={r.amount} />
                         </span>
                       </div>
                     );
@@ -305,7 +317,7 @@ export default function Recurring() {
 
                   <div className="flex items-center justify-between sm:justify-end gap-3 pt-2 sm:pt-0 border-t sm:border-0 border-border/50">
                     <span className={`text-base font-semibold ${rule.type === 'expense' ? 'text-foreground' : 'text-emerald-500'}`}>
-                      {rule.type === 'expense' ? '-' : '+'}LKR {rule.amount.toLocaleString()}
+                      {rule.type === 'expense' ? '-' : '+'}LKR <MaskedAmount amount={rule.amount} />
                     </span>
                     <div className="flex items-center gap-1">
                       <button

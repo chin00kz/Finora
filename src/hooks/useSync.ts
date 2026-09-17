@@ -1,21 +1,24 @@
 import { useEffect, useRef, useState, useCallback } from 'react';
 import { useAuthStore } from '../store/authStore';
-import { syncAll, drainPendingSync } from '../sync/syncEngine';
+import { pullAll, pullLiveActivity, pushDirtyRecords, drainPendingSync } from '../sync/syncEngine';
+import { isSupabaseConfigured } from '../lib/supabase';
 export type SyncStatus = 'idle' | 'syncing' | 'error';
 
-// Minimum time between background syncs triggered by focus/visibility (ms)
-const MIN_SYNC_INTERVAL = 5 * 60 * 1000; // 5 minutes
+// Minimum time between full 18-table background pulls (ms)
+const MIN_FULL_SYNC_INTERVAL = 5 * 60 * 1000; // 5 minutes
+// Interval to pull accounts + transactions while tab is visible (ms)
+const LIVE_PULL_INTERVAL = 15 * 1000; // 15 seconds
 
 /**
- * useSync — drives automatic and manual synchronization.
+ * useSync — drives automatic and manual synchronisation.
  *
- * Sync fires:
- *  1. On first login / app mount
- *  2. On every write (via triggerSync debounce in syncEngine)
- *  3. When the app comes back into focus / tab becomes visible (max once per 5 min)
- *  4. When the device comes back online
- *
- * No polling interval — much friendlier on battery and data.
+ * Sync model:
+ *  1. LOGIN / MOUNT    → pullAll() only (load cloud data into local)
+ *  2. LOCAL WRITE      → triggerSync(table, id) → debounced pushDirtyRecords()
+ *  3. FOCUS / VISIBLE  → pullLiveActivity() immediately; pullAll() if >5 min
+ *  4. LIVE INTERVAL    → pullLiveActivity() every 15s while tab is visible
+ *  5. RECONNECT        → drainPendingSync() (flush failed writes) then pullAll()
+ *  6. MANUAL SYNC      → pushDirtyRecords() then pullAll()
  */
 export function useSync(): {
   syncStatus: SyncStatus;
@@ -23,83 +26,98 @@ export function useSync(): {
 } {
   const { user } = useAuthStore();
   const [syncStatus, setSyncStatus] = useState<SyncStatus>('idle');
-  const lastSyncRef = useRef<number>(0);
+  const lastFullSyncRef = useRef<number>(0);
 
-  const performSync = useCallback(async (userId: string) => {
+  // Pull cloud data into local — used on login, focus, and visibility change.
+  const performPull = useCallback(async (userId: string) => {
     setSyncStatus('syncing');
     try {
-      // syncAll does a full push + pull cycle; no need to also hydrateFromCloud
-      // (that causes double-inserts on every refresh).
-      const res = await syncAll(userId);
+      const res = await pullAll(userId);
       setSyncStatus(res.success ? 'idle' : 'error');
-      lastSyncRef.current = Date.now();
+      lastFullSyncRef.current = Date.now();
       return res.success;
     } catch (err) {
-      console.warn('[useSync] Sync error:', err);
+      console.warn('[useSync] Pull error:', err);
       setSyncStatus('error');
       return false;
     }
   }, []);
 
+  // Manual sync: flush any unsent local writes, then pull.
   const manualSync = useCallback(async () => {
     if (!user) return false;
-    return await performSync(user.id);
-  }, [user, performSync]);
+    setSyncStatus('syncing');
+    try {
+      await pushDirtyRecords(user.id);
+      const res = await pullAll(user.id);
+      setSyncStatus(res.success ? 'idle' : 'error');
+      lastFullSyncRef.current = Date.now();
+      return res.success;
+    } catch (err) {
+      console.warn('[useSync] Manual sync error:', err);
+      setSyncStatus('error');
+      return false;
+    }
+  }, [user]);
 
   useEffect(() => {
-    if (!user) {
+    if (!user || !isSupabaseConfigured) {
       setSyncStatus('idle');
       return;
     }
 
     const userId = user.id;
 
-    // 1. Sync on mount/login
-    void performSync(userId);
+    // 1. Pull on mount/login
+    void performPull(userId);
 
-    // 2. Sync when user returns to the tab (visibility change)
+    const pullActivity = () => {
+      void pullLiveActivity(userId);
+    };
+
+    // 2. Pull when user returns to the tab (visibility change)
     const onVisibilityChange = () => {
       if (document.visibilityState === 'visible') {
-        const timeSinceLast = Date.now() - lastSyncRef.current;
-        if (timeSinceLast > MIN_SYNC_INTERVAL) {
-          void syncAll(userId).then(res => {
-            setSyncStatus(res.success ? 'idle' : 'error');
-            lastSyncRef.current = Date.now();
-          });
+        pullActivity();
+        const timeSinceLast = Date.now() - lastFullSyncRef.current;
+        if (timeSinceLast > MIN_FULL_SYNC_INTERVAL) {
+          void performPull(userId);
         }
       }
     };
 
-    // 3. Sync when window regains focus (e.g. alt-tab back)
+    // 3. Pull when window regains focus (e.g. alt-tab back)
     const onFocus = () => {
-      const timeSinceLast = Date.now() - lastSyncRef.current;
-      if (timeSinceLast > MIN_SYNC_INTERVAL) {
-        void syncAll(userId).then(res => {
-          setSyncStatus(res.success ? 'idle' : 'error');
-          lastSyncRef.current = Date.now();
-        });
-      }
+      pullActivity();
     };
 
-    // 4. Sync when network comes back online
+    // 4. On reconnect: flush failed local writes, then pull
     const onOnline = async () => {
       setSyncStatus('syncing');
       await drainPendingSync(userId);
-      const res = await syncAll(userId);
+      const res = await pullAll(userId);
       setSyncStatus(res.success ? 'idle' : 'error');
-      lastSyncRef.current = Date.now();
+      lastFullSyncRef.current = Date.now();
     };
+
+    // 5. Fast background polling for accounts + transactions while active
+    const livePull = window.setInterval(() => {
+      if (document.visibilityState === 'visible') {
+        pullActivity();
+      }
+    }, LIVE_PULL_INTERVAL);
 
     document.addEventListener('visibilitychange', onVisibilityChange);
     window.addEventListener('focus', onFocus);
     window.addEventListener('online', onOnline);
 
     return () => {
+      window.clearInterval(livePull);
       document.removeEventListener('visibilitychange', onVisibilityChange);
       window.removeEventListener('focus', onFocus);
       window.removeEventListener('online', onOnline);
     };
-  }, [user?.id, performSync]);
+  }, [user?.id, performPull]);
 
   return { syncStatus, manualSync };
 }
