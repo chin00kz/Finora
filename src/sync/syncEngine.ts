@@ -1069,6 +1069,46 @@ export async function drainDeletedRecords(userId: string): Promise<void> {
 }
 
 /**
+ * upsertSingleRemoteRow — writes a single incoming realtime row to Dexie if newer.
+ * Crucially does NOT run deletion reconciliation on the rest of the table.
+ */
+async function upsertSingleRemoteRow(
+  table: TableName,
+  row: Record<string, unknown>,
+): Promise<void> {
+  async function putIfNewer<T extends { id: string; updatedAt?: number }>(
+    dexieTable: any,
+    item: T,
+  ) {
+    const local = await dexieTable.get(item.id);
+    if (!local || (item.updatedAt ?? 0) >= (local.updatedAt ?? 0)) {
+      await dexieTable.put(item);
+    }
+  }
+
+  switch (table) {
+    case 'accounts': await putIfNewer(db.accounts, fromSupabaseAccount(row)); break;
+    case 'transactions': await putIfNewer(db.transactions, fromSupabaseTransaction(row)); break;
+    case 'budgets': await putIfNewer(db.budgets, fromSupabaseBudget(row)); break;
+    case 'tags': await putIfNewer(db.tags, fromSupabaseTag(row)); break;
+    case 'categories': await putIfNewer(db.categories, fromSupabaseCategory(row)); break;
+    case 'recurring_transactions': await putIfNewer(db.recurringTransactions, fromSupabaseRecurring(row)); break;
+    case 'savings_goals': await putIfNewer(db.savingsGoals, fromSupabaseGoal(row)); break;
+    case 'people': await putIfNewer(db.people, fromSupabasePerson(row)); break;
+    case 'debts': await putIfNewer(db.debts, fromSupabaseDebt(row)); break;
+    case 'credit_cards': await putIfNewer(db.creditCards, fromSupabaseCreditCard(row)); break;
+    case 'cash_offset_sources': await putIfNewer(db.cashOffsetSources, fromSupabaseCashOffsetSource(row)); break;
+    case 'fixed_deposits': await putIfNewer(db.fixedDeposits, fromSupabaseFixedDeposit(row)); break;
+    case 'money_market_accounts': await putIfNewer(db.moneyMarketAccounts, fromSupabaseMMA(row)); break;
+    case 'installment_plans': await putIfNewer(db.installmentPlans, fromSupabaseInstallmentPlan(row)); break;
+    case 'card_promos': await putIfNewer(db.cardPromos, fromSupabaseCardPromo(row)); break;
+    case 'float_gap_history': await putIfNewer(db.floatGapHistory, fromSupabaseFloatGapHistory(row)); break;
+    case 'reimbursement_ledgers': await putIfNewer(db.reimbursementLedgers, fromSupabaseReimbursementLedger(row)); break;
+    case 'reimbursement_entries': await putIfNewer(db.reimbursementEntries, fromSupabaseReimbursementEntry(row)); break;
+  }
+}
+
+/**
  * applyRealtimeChange — processes an instant change arriving over Supabase Realtime WebSocket.
  */
 export async function applyRealtimeChange(
@@ -1104,7 +1144,7 @@ export async function applyRealtimeChange(
   }
 
   if ((eventType === 'INSERT' || eventType === 'UPDATE') && newRow) {
-    await mergeRemoteRows(table, [newRow]);
+    await upsertSingleRemoteRow(table, newRow);
   }
 }
 
