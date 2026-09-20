@@ -122,6 +122,43 @@ function clearDirtyIds(table: TableName, ids: string[]): void {
   localStorage.setItem(DIRTY_KEY, JSON.stringify(map));
 }
 
+// ── Deleted-record tracking (offline queue for deletes) ──────────────────────
+
+const DELETED_KEY = 'finora-deleted';
+
+type DeletedMap = Partial<Record<TableName, string[]>>;
+
+function getDeleted(): DeletedMap {
+  try {
+    const raw = localStorage.getItem(DELETED_KEY);
+    return raw ? (JSON.parse(raw) as DeletedMap) : {};
+  } catch {
+    return {};
+  }
+}
+
+function markDeleted(table: TableName, id: string): void {
+  // If it was pending creation/update, remove from dirty queue
+  clearDirtyIds(table, [id]);
+
+  const map = getDeleted();
+  const ids = map[table] ?? [];
+  if (!ids.includes(id)) ids.push(id);
+  map[table] = ids;
+  localStorage.setItem(DELETED_KEY, JSON.stringify(map));
+}
+
+function clearDeletedIds(table: TableName, ids: string[]): void {
+  const map = getDeleted();
+  const remaining = (map[table] ?? []).filter(id => !ids.includes(id));
+  if (remaining.length === 0) {
+    delete map[table];
+  } else {
+    map[table] = remaining;
+  }
+  localStorage.setItem(DELETED_KEY, JSON.stringify(map));
+}
+
 function isTableMissingError(errMsg?: string): boolean {
   if (!errMsg) return false;
   return (
@@ -712,17 +749,35 @@ async function mergeRemoteRows(
   remoteData: Record<string, unknown>[],
 ): Promise<void> {
   // Helper: merge a batch of remote rows into a Dexie table.
-  // Remote wins only if remote.updatedAt >= local.updatedAt.
+  // 1. Reconciles deletions: removes any local rows missing from remoteData (unless pending dirty write)
+  // 2. Upserts: writes remote rows where remote.updatedAt >= local.updatedAt or !local
   async function merge<T extends { id: string; updatedAt?: number }>(
-    dexieTable: { bulkGet: (ids: string[]) => Promise<(T | undefined)[]>; bulkPut: (items: T[]) => Promise<unknown> },
+    dexieTable: {
+      bulkGet: (ids: string[]) => Promise<(T | undefined)[]>;
+      bulkPut: (items: T[]) => Promise<unknown>;
+      bulkDelete: (ids: string[]) => Promise<void>;
+      toCollection: () => { primaryKeys: () => Promise<string[]> };
+    },
     remoteRows: T[],
   ) {
-    const localRows = await dexieTable.bulkGet(remoteRows.map(r => r.id));
-    const toWrite = remoteRows.filter((remote, i) => {
-      const local = localRows[i];
-      return !local || (remote.updatedAt ?? 0) >= (local.updatedAt ?? 0);
-    });
-    if (toWrite.length) await dexieTable.bulkPut(toWrite);
+    // 1. Identify and delete local rows that were deleted from cloud
+    const remoteIdSet = new Set(remoteRows.map(r => r.id));
+    const dirtyIdSet = new Set(getDirty()[table] ?? []);
+    const localIds = await dexieTable.toCollection().primaryKeys();
+    const toDelete = localIds.filter(id => !remoteIdSet.has(id) && !dirtyIdSet.has(id));
+    if (toDelete.length > 0) {
+      await dexieTable.bulkDelete(toDelete);
+    }
+
+    // 2. Upsert changed or new remote rows
+    if (remoteRows.length > 0) {
+      const localRows = await dexieTable.bulkGet(remoteRows.map(r => r.id));
+      const toWrite = remoteRows.filter((remote, i) => {
+        const local = localRows[i];
+        return !local || (remote.updatedAt ?? 0) >= (local.updatedAt ?? 0);
+      });
+      if (toWrite.length > 0) await dexieTable.bulkPut(toWrite);
+    }
   }
 
   switch (table) {
@@ -937,9 +992,7 @@ export async function pullTable(
       console.warn(`[sync] pullTable failed for ${table}:`, error.message);
       return { success: false, error: `${table}: ${error.message}` };
     }
-    if (!data || data.length === 0) return { success: true };
-
-    await mergeRemoteRows(table, data);
+    await mergeRemoteRows(table, data ?? []);
     return { success: true };
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
@@ -973,13 +1026,85 @@ export async function pullAll(userId: string): Promise<{ success: boolean; error
 // ── Delete from Supabase ────────────────────────────────────────────────────
 
 export async function deleteFromCloud(table: TableName, id: string): Promise<void> {
+  // Always queue in offline deletion tracker (and clear any pending dirty write)
+  markDeleted(table, id);
+
   if (!isSupabaseConfigured) return;
   const user = useAuthStore.getState().user;
   if (!user) return;
+
   try {
-    await supabase.from(table).delete().eq('id', id).eq('user_id', user.id);
+    const { error } = await supabase.from(table).delete().eq('id', id).eq('user_id', user.id);
+    if (error) {
+      console.warn(`[sync] Delete failed for ${table}/${id}:`, error.message);
+      return;
+    }
+    clearDeletedIds(table, [id]);
   } catch (err) {
     console.warn(`[sync] Delete failed for ${table}/${id}:`, err);
+  }
+}
+
+/** Retry any deletions that failed while offline */
+export async function drainDeletedRecords(userId: string): Promise<void> {
+  if (!isSupabaseConfigured) return;
+  const map = getDeleted();
+  const tables = Object.keys(map) as TableName[];
+  if (tables.length === 0) return;
+
+  await Promise.all(
+    tables.map(async table => {
+      const ids = map[table];
+      if (!ids || ids.length === 0) return;
+      try {
+        const { error } = await supabase.from(table).delete().in('id', ids).eq('user_id', userId);
+        if (!error) {
+          clearDeletedIds(table, ids);
+        }
+      } catch (err) {
+        console.warn(`[sync] Failed to drain deletes for ${table}:`, err);
+      }
+    }),
+  );
+}
+
+/**
+ * applyRealtimeChange — processes an instant change arriving over Supabase Realtime WebSocket.
+ */
+export async function applyRealtimeChange(
+  table: TableName,
+  eventType: 'INSERT' | 'UPDATE' | 'DELETE',
+  newRow: Record<string, unknown> | null,
+  oldRow: Record<string, unknown> | null,
+): Promise<void> {
+  if (eventType === 'DELETE') {
+    const id = oldRow?.id ? String(oldRow.id) : null;
+    if (!id) return;
+    switch (table) {
+      case 'accounts': await db.accounts.delete(id); break;
+      case 'transactions': await db.transactions.delete(id); break;
+      case 'budgets': await db.budgets.delete(id); break;
+      case 'tags': await db.tags.delete(id); break;
+      case 'categories': await db.categories.delete(id); break;
+      case 'recurring_transactions': await db.recurringTransactions.delete(id); break;
+      case 'savings_goals': await db.savingsGoals.delete(id); break;
+      case 'people': await db.people.delete(id); break;
+      case 'debts': await db.debts.delete(id); break;
+      case 'credit_cards': await db.creditCards.delete(id); break;
+      case 'cash_offset_sources': await db.cashOffsetSources.delete(id); break;
+      case 'fixed_deposits': await db.fixedDeposits.delete(id); break;
+      case 'money_market_accounts': await db.moneyMarketAccounts.delete(id); break;
+      case 'installment_plans': await db.installmentPlans.delete(id); break;
+      case 'card_promos': await db.cardPromos.delete(id); break;
+      case 'float_gap_history': await db.floatGapHistory.delete(id); break;
+      case 'reimbursement_ledgers': await db.reimbursementLedgers.delete(id); break;
+      case 'reimbursement_entries': await db.reimbursementEntries.delete(id); break;
+    }
+    return;
+  }
+
+  if ((eventType === 'INSERT' || eventType === 'UPDATE') && newRow) {
+    await mergeRemoteRows(table, [newRow]);
   }
 }
 
@@ -1089,8 +1214,9 @@ export function triggerSync(table: TableName, id: string, immediate = false): vo
   }, delay);
 }
 
-/** Retry any records that failed to push last time (called on reconnect). */
+/** Retry any records or deletions that failed while offline (called on reconnect). */
 export async function drainPendingSync(userId: string): Promise<void> {
+  await drainDeletedRecords(userId);
   const map = getDirty();
   const hasAny = Object.values(map).some(ids => ids && ids.length > 0);
   if (!hasAny) return;

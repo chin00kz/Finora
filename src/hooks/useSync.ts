@@ -1,7 +1,8 @@
 import { useEffect, useRef, useState, useCallback } from 'react';
 import { useAuthStore } from '../store/authStore';
-import { pullAll, pullLiveActivity, pushDirtyRecords, drainPendingSync } from '../sync/syncEngine';
-import { isSupabaseConfigured } from '../lib/supabase';
+import { pullAll, pullLiveActivity, pushDirtyRecords, drainPendingSync, applyRealtimeChange, ALL_TABLES } from '../sync/syncEngine';
+import type { TableName } from '../sync/syncEngine';
+import { supabase, isSupabaseConfigured } from '../lib/supabase';
 export type SyncStatus = 'idle' | 'syncing' | 'error';
 
 // Minimum time between full 18-table background pulls (ms)
@@ -13,12 +14,13 @@ const LIVE_PULL_INTERVAL = 15 * 1000; // 15 seconds
  * useSync — drives automatic and manual synchronisation.
  *
  * Sync model:
- *  1. LOGIN / MOUNT    → pullAll() only (load cloud data into local)
+ *  1. LOGIN / MOUNT    → pullAll() (load cloud data into local) + Realtime subscribe
  *  2. LOCAL WRITE      → triggerSync(table, id) → debounced pushDirtyRecords()
- *  3. FOCUS / VISIBLE  → pullLiveActivity() immediately; pullAll() if >5 min
- *  4. LIVE INTERVAL    → pullLiveActivity() every 15s while tab is visible
- *  5. RECONNECT        → drainPendingSync() (flush failed writes) then pullAll()
- *  6. MANUAL SYNC      → pushDirtyRecords() then pullAll()
+ *  3. REALTIME EVENT   → applyRealtimeChange() immediately (<300ms cross-device)
+ *  4. FOCUS / VISIBLE  → pullLiveActivity() immediately; pullAll() if >5 min
+ *  5. LIVE INTERVAL    → pullLiveActivity() every 15s while tab is visible
+ *  6. RECONNECT        → drainPendingSync() (flush failed writes & deletes) then pullAll()
+ *  7. MANUAL SYNC      → pushDirtyRecords() then pullAll()
  */
 export function useSync(): {
   syncStatus: SyncStatus;
@@ -71,11 +73,39 @@ export function useSync(): {
     // 1. Pull on mount/login
     void performPull(userId);
 
+    // 2. Realtime WebSocket subscription for instant cross-device updates
+    const channel = supabase
+      .channel(`realtime-finora-${userId}`)
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+        },
+        payload => {
+          const table = payload.table as TableName;
+          if (ALL_TABLES.includes(table)) {
+            const rowUser =
+              (payload.new as Record<string, unknown> | undefined)?.user_id ||
+              (payload.old as Record<string, unknown> | undefined)?.user_id;
+            if (rowUser && rowUser !== userId) return;
+
+            void applyRealtimeChange(
+              table,
+              payload.eventType as 'INSERT' | 'UPDATE' | 'DELETE',
+              (payload.new as Record<string, unknown>) || null,
+              (payload.old as Record<string, unknown>) || null,
+            );
+          }
+        },
+      )
+      .subscribe();
+
     const pullActivity = () => {
       void pullLiveActivity(userId);
     };
 
-    // 2. Pull when user returns to the tab (visibility change)
+    // 3. Pull when user returns to the tab (visibility change)
     const onVisibilityChange = () => {
       if (document.visibilityState === 'visible') {
         pullActivity();
@@ -86,12 +116,12 @@ export function useSync(): {
       }
     };
 
-    // 3. Pull when window regains focus (e.g. alt-tab back)
+    // 4. Pull when window regains focus (e.g. alt-tab back)
     const onFocus = () => {
       pullActivity();
     };
 
-    // 4. On reconnect: flush failed local writes, then pull
+    // 5. On reconnect: flush failed local writes & deletes, then pull
     const onOnline = async () => {
       setSyncStatus('syncing');
       await drainPendingSync(userId);
@@ -100,7 +130,7 @@ export function useSync(): {
       lastFullSyncRef.current = Date.now();
     };
 
-    // 5. Fast background polling for accounts + transactions while active
+    // 6. Fast background polling for accounts + transactions while active (heartbeat fallback)
     const livePull = window.setInterval(() => {
       if (document.visibilityState === 'visible') {
         pullActivity();
@@ -112,6 +142,7 @@ export function useSync(): {
     window.addEventListener('online', onOnline);
 
     return () => {
+      void supabase.removeChannel(channel);
       window.clearInterval(livePull);
       document.removeEventListener('visibilitychange', onVisibilityChange);
       window.removeEventListener('focus', onFocus);

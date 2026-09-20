@@ -355,3 +355,31 @@ DROP POLICY IF EXISTS "Users can manage their own reimbursement entries" ON publ
 CREATE POLICY "Users can manage their own reimbursement entries" ON public.reimbursement_entries
   FOR ALL USING (auth.uid() = user_id) WITH CHECK (auth.uid() = user_id);
 
+-- ==============================================================================
+-- SECTION 12: Realtime Publication Setup
+-- Enables instant WebSocket broadcasts across devices for core tables.
+-- ==============================================================================
+
+DO $$
+BEGIN
+  IF NOT EXISTS (SELECT 1 FROM pg_publication WHERE pubname = 'supabase_realtime') THEN
+    CREATE PUBLICATION supabase_realtime;
+  END IF;
+END $$;
+
+ALTER PUBLICATION supabase_realtime ADD TABLE public.accounts;
+ALTER PUBLICATION supabase_realtime ADD TABLE public.transactions;
+ALTER PUBLICATION supabase_realtime ADD TABLE public.budgets;
+ALTER PUBLICATION supabase_realtime ADD TABLE public.tags;
+ALTER PUBLICATION supabase_realtime ADD TABLE public.categories;
+ALTER PUBLICATION supabase_realtime ADD TABLE public.savings_goals;
+ALTER PUBLICATION supabase_realtime ADD TABLE public.recurring_transactions;
+ALTER PUBLICATION supabase_realtime ADD TABLE public.debts;
+
+ALTER TABLE public.accounts REPLICA IDENTITY DEFAULT;
+ALTER TABLE public.transactions REPLICA IDENTITY DEFAULT;
+ALTER TABLE public.budgets REPLICA IDENTITY DEFAULT;
+ALTER TABLE public.tags REPLICA IDENTITY DEFAULT;
+ALTER TABLE public.categories REPLICA IDENTITY DEFAULT;
+
+
