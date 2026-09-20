@@ -20,7 +20,7 @@ export default function Maintenance({ onBypass }: MaintenanceProps) {
   };
 
   return (
-    <div className="min-h-screen bg-background text-foreground flex flex-col justify-between p-4 sm:p-6 md:p-12 relative overflow-hidden">
+    <div className="min-h-[100dvh] bg-background text-foreground flex flex-col justify-between p-4 sm:p-6 md:p-12 relative overflow-hidden">
       {/* Background decorative ambient glow */}
       <div className="absolute top-1/4 left-1/2 -translate-x-1/2 -translate-y-1/2 w-96 h-96 bg-accent/10 rounded-full blur-3xl pointer-events-none" />
 

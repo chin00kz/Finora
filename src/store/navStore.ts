@@ -28,8 +28,8 @@ export const ALL_NAV_ITEMS: NavItemConfig[] = [
   { id: 'goals',            label: 'Goals',           to: '/goals' },
   { id: 'recurring',        label: 'Recurring',       to: '/recurring' },
   { id: 'float-tools',      label: 'Float Tools',     to: '/float-tools' },
-  { id: 'budgets',          label: 'Budgets',         to: '/budget-detail' },
-  { id: 'statement-reader', label: 'Statements',      to: '/statement-reader' },
+  { id: 'budgets',          label: 'Budgets',         to: '/budget' },
+  { id: 'statement-reader', label: 'Statements',      to: '/statements' },
 ];
 
 export const DEFAULT_FRONT_ITEMS: NavItemId[] = ['home', 'accounts', 'activity', 'debts'];

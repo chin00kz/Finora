@@ -1,3 +1,4 @@
+import { createId } from '../utils/createId';
 import { useState, useMemo } from 'react';
 import type { ReactNode } from 'react';
 import { useLiveQuery } from 'dexie-react-hooks';
@@ -35,7 +36,7 @@ import {
 // ─── Pure helpers ────────────────────────────────────────────────────────────
 
 function uid() {
-  return Math.random().toString(36).substring(2, 10);
+  return createId('gen');
 }
 
 function fmt(n: number): string {

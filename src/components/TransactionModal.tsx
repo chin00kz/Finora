@@ -261,7 +261,7 @@ export default function TransactionModal() {
             );
             let personId = existingPerson?.id;
             if (!existingPerson && trimmedName !== 'Friend') {
-              personId = `person-${now}-${Math.random().toString(36).substring(2, 6)}`;
+              personId = createId('person');
               await db.people.add({
                 id: personId,
                 name: trimmedName,
@@ -270,7 +270,7 @@ export default function TransactionModal() {
             }
 
             await db.debts.add({
-              id: `debt-${now}-${Math.random().toString(36).substring(2, 6)}`,
+              id: createId('debt'),
               source: 'shared_expense',
               direction: 'theyOweMe',
               personId,

@@ -37,7 +37,7 @@ export function formatMoney(
   }
 
   const sign = showSign && num > 0 ? '+' : num < 0 && !showSign ? '−' : '';
-  const absFormatted = Math.abs(num).toLocaleString('en-US', {
+  const absFormatted = Math.abs(num).toLocaleString('en-LK', {
     minimumFractionDigits: decimals,
     maximumFractionDigits: decimals,
   });

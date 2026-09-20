@@ -336,7 +336,7 @@ export default function StatementReader() {
               <div className="p-3.5 bg-muted/40 rounded-xl space-y-1">
                 <span className="text-[11px] font-medium text-muted-foreground uppercase tracking-wider">Total Outstanding</span>
                 <p className="text-lg sm:text-xl font-bold text-foreground">
-                  LKR <MaskedAmount amount={activeStatement.totalOutstanding} />
+                  <MaskedAmount amount={activeStatement.totalOutstanding} currency="LKR" />
                 </p>
                 <p className="text-[11px] text-muted-foreground truncate">
                   Due by {activeStatement.dueDate}
@@ -347,7 +347,7 @@ export default function StatementReader() {
               <div className="p-3.5 bg-muted/40 rounded-xl space-y-1">
                 <span className="text-[11px] font-medium text-muted-foreground uppercase tracking-wider">Minimum Payment Due</span>
                 <p className="text-lg sm:text-xl font-bold text-foreground">
-                  LKR <MaskedAmount amount={activeStatement.minimumPaymentDue} />
+                  <MaskedAmount amount={activeStatement.minimumPaymentDue} currency="LKR" />
                 </p>
                 <p className="text-[11px] text-muted-foreground truncate">
                   Min to avoid late charge
@@ -383,10 +383,10 @@ export default function StatementReader() {
               <div className="p-3.5 bg-muted/40 rounded-xl space-y-1">
                 <span className="text-[11px] font-medium text-muted-foreground uppercase tracking-wider">Credit Limit</span>
                 <p className="text-lg sm:text-xl font-bold text-foreground">
-                  LKR <MaskedAmount amount={activeStatement.creditLimit} />
+                  <MaskedAmount amount={activeStatement.creditLimit} currency="LKR" />
                 </p>
                 <p className="text-[11px] text-muted-foreground truncate">
-                  Available: LKR <MaskedAmount amount={activeStatement.availableCredit || 0} />
+                  Available: <MaskedAmount amount={activeStatement.availableCredit || 0} currency="LKR" />
                 </p>
               </div>
             </div>
@@ -394,13 +394,13 @@ export default function StatementReader() {
             {/* Reconciliation Strip (Statement's printed math) */}
             <div className="pt-2 border-t border-border flex flex-col sm:flex-row sm:items-center justify-between gap-2 text-xs">
               <div className="flex flex-wrap items-center gap-1.5 text-muted-foreground font-mono">
-                <span>Opening (LKR <MaskedAmount amount={activeStatement.openingBalance} />)</span>
+                <span>Opening (<MaskedAmount amount={activeStatement.openingBalance} currency="LKR" />)</span>
                 <span>+</span>
-                <span className="text-foreground">Purchases (LKR <MaskedAmount amount={activeStatement.totalPurchases} />)</span>
+                <span className="text-foreground">Purchases (<MaskedAmount amount={activeStatement.totalPurchases} currency="LKR" />)</span>
                 <span>−</span>
-                <span className="text-emerald-500">Payments (LKR <MaskedAmount amount={activeStatement.totalPayments} />)</span>
+                <span className="text-emerald-500">Payments (<MaskedAmount amount={activeStatement.totalPayments} currency="LKR" />)</span>
                 <span>=</span>
-                <span className="text-foreground font-bold">Closing (LKR <MaskedAmount amount={activeStatement.closingBalance} />)</span>
+                <span className="text-foreground font-bold">Closing (<MaskedAmount amount={activeStatement.closingBalance} currency="LKR" />)</span>
               </div>
               <div>
                 {activeStatement.isReconciled ? (
@@ -440,7 +440,7 @@ export default function StatementReader() {
                         <div>
                           <p className="font-semibold text-sm text-foreground">{plan.label}</p>
                           <p className="text-xs text-muted-foreground">
-                            This cycle: <span className="font-medium text-foreground">LKR <MaskedAmount amount={plan.cycleAmount} /></span>
+                            This cycle: <span className="font-medium text-foreground"><MaskedAmount amount={plan.cycleAmount} currency="LKR" /></span>
                           </p>
                         </div>
                         <span className="px-2 py-0.5 rounded-md bg-accent/15 text-accent text-xs font-semibold">
@@ -459,7 +459,7 @@ export default function StatementReader() {
                         <div className="flex items-center justify-between text-[11px] text-muted-foreground">
                           <span>{pct}% complete</span>
                           <span>
-                            Est. Remaining: <span className="font-medium text-foreground">LKR <MaskedAmount amount={plan.estimatedRemainingBalance} /></span>
+                            Est. Remaining: <span className="font-medium text-foreground"><MaskedAmount amount={plan.estimatedRemainingBalance} currency="LKR" /></span>
                           </span>
                         </div>
                       </div>
@@ -507,7 +507,7 @@ export default function StatementReader() {
                         <p className="text-[11px] text-muted-foreground">{t.transactionDate} · {t.category}</p>
                       </div>
                       <p className={`font-semibold ${t.isCredit ? 'text-emerald-500' : 'text-foreground'}`}>
-                        {t.isCredit ? '−' : ''}LKR <MaskedAmount amount={t.amount} />
+                        {t.isCredit ? '−' : ''}<MaskedAmount amount={t.amount} currency="LKR" />
                         {t.isCredit && <span className="ml-1 text-[10px] text-emerald-500 font-mono">CR</span>}
                       </p>
                     </div>
@@ -541,7 +541,7 @@ export default function StatementReader() {
 
                         <div className="text-right">
                           <p className="text-xs font-bold text-foreground">
-                            LKR <MaskedAmount amount={group.total} />
+                            <MaskedAmount amount={group.total} currency="LKR" />
                           </p>
                         </div>
                       </button>
@@ -556,7 +556,7 @@ export default function StatementReader() {
                                 <p className="text-[11px] text-muted-foreground">Txn Date: {t.transactionDate} (Processed: {t.processedDate})</p>
                               </div>
                               <p className="font-semibold text-foreground">
-                                LKR <MaskedAmount amount={t.amount} />
+                                <MaskedAmount amount={t.amount} currency="LKR" />
                               </p>
                             </div>
                           ))}
@@ -580,7 +580,7 @@ export default function StatementReader() {
                   </p>
                 </div>
                 <span className="text-xs font-bold text-emerald-600 dark:text-emerald-400 bg-emerald-500/10 px-3 py-1.5 rounded-xl">
-                  Total: LKR <MaskedAmount amount={activeStatement.totalPayments} />
+                  Total: <MaskedAmount amount={activeStatement.totalPayments} currency="LKR" />
                 </span>
               </div>
 
@@ -592,7 +592,7 @@ export default function StatementReader() {
                       <p className="text-[11px] text-muted-foreground">Processed: {t.processedDate} · Txn Date: {t.transactionDate}</p>
                     </div>
                     <p className="font-semibold text-emerald-600 dark:text-emerald-400 font-mono">
-                      LKR <MaskedAmount amount={t.amount} /> CR
+                      <MaskedAmount amount={t.amount} currency="LKR" /> CR
                     </p>
                   </div>
                 ))}

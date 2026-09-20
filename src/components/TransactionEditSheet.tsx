@@ -118,7 +118,7 @@ export default function TransactionEditSheet({ transaction, onClose }: Props) {
             if (byName) {
               resolvedTagIds.push(byName.id);
             } else {
-              const newId = `tag-${Date.now()}-${Math.random().toString(36).substr(2, 5)}`;
+              const newId = createId('tag');
               await db.tags.add({ id: newId, name: tid, updatedAt: Date.now() });
               resolvedTagIds.push(newId);
             }

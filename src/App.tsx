@@ -464,13 +464,13 @@ function MainAppShell() {
   const isHomeDashboard = location.pathname === '/';
 
   return (
-    <div className="min-h-screen bg-background text-foreground flex flex-col md:flex-row">
+    <div className="min-h-[100dvh] bg-background text-foreground flex flex-col md:flex-row">
       {/* Desktop Sidebar (hidden on mobile) */}
       {!hideNav && <DesktopSidebar syncStatus={syncStatus} />}
 
       {/* Main Content Area */}
-      <main className="flex-1 min-w-0 min-h-screen overflow-y-auto">
-        <div className={isHomeDashboard ? 'max-w-md mx-auto min-h-screen' : 'w-full min-h-screen'}>
+      <main className="flex-1 min-w-0 min-h-[100dvh] overflow-y-auto">
+        <div className={isHomeDashboard ? 'max-w-md mx-auto min-h-[100dvh]' : 'w-full min-h-[100dvh]'}>
           <Routes>
             <Route
               path="/"

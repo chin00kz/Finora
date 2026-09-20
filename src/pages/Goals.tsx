@@ -266,10 +266,10 @@ export default function Goals() {
                   <div className="flex justify-between items-baseline mb-2">
                     <div>
                       <span className="text-2xl font-light text-foreground">
-                        LKR <MaskedAmount amount={current} />
+                        <MaskedAmount amount={current} currency="LKR" />
                       </span>
                       <span className="text-xs text-muted-foreground ml-1.5">
-                        of LKR <MaskedAmount amount={target} />
+                        of <MaskedAmount amount={target} currency="LKR" />
                       </span>
                     </div>
                     <span

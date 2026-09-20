@@ -200,7 +200,7 @@ export default function Recurring() {
                           </div>
                         </div>
                         <span className={`text-sm font-medium ${r.type === 'expense' ? 'text-foreground' : 'text-emerald-500'}`}>
-                          {r.type === 'expense' ? '-' : '+'}LKR <MaskedAmount amount={r.amount} />
+                          {r.type === 'expense' ? '-' : '+'}<MaskedAmount amount={r.amount} currency="LKR" />
                         </span>
                       </div>
                     );
@@ -236,7 +236,7 @@ export default function Recurring() {
                           </div>
                         </div>
                         <span className={`text-sm font-medium ${r.type === 'expense' ? 'text-foreground' : 'text-emerald-500'}`}>
-                          {r.type === 'expense' ? '-' : '+'}LKR <MaskedAmount amount={r.amount} />
+                          {r.type === 'expense' ? '-' : '+'}<MaskedAmount amount={r.amount} currency="LKR" />
                         </span>
                       </div>
                     );
@@ -317,7 +317,7 @@ export default function Recurring() {
 
                   <div className="flex items-center justify-between sm:justify-end gap-3 pt-2 sm:pt-0 border-t sm:border-0 border-border/50">
                     <span className={`text-base font-semibold ${rule.type === 'expense' ? 'text-foreground' : 'text-emerald-500'}`}>
-                      {rule.type === 'expense' ? '-' : '+'}LKR <MaskedAmount amount={rule.amount} />
+                      {rule.type === 'expense' ? '-' : '+'}<MaskedAmount amount={rule.amount} currency="LKR" />
                     </span>
                     <div className="flex items-center gap-1">
                       <button

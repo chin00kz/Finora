@@ -53,7 +53,7 @@ export default function ResetPassword() {
 
   if (done) {
     return (
-      <div className="min-h-screen bg-background flex flex-col items-center justify-center p-6">
+      <div className="min-h-[100dvh] bg-background flex flex-col items-center justify-center p-6">
         <CheckCircle size={48} className="text-green-500 mb-4" />
         <h2 className="text-xl font-medium text-foreground mb-1">Password updated!</h2>
         <p className="text-muted-foreground text-sm">Taking you back to the app…</p>
@@ -63,14 +63,14 @@ export default function ResetPassword() {
 
   if (!isReady) {
     return (
-      <div className="min-h-screen bg-background flex flex-col items-center justify-center p-6">
+      <div className="min-h-[100dvh] bg-background flex flex-col items-center justify-center p-6">
         <p className="text-muted-foreground text-sm">Validating reset link…</p>
       </div>
     );
   }
 
   return (
-    <div className="min-h-screen bg-background flex flex-col justify-center px-6">
+    <div className="min-h-[100dvh] bg-background flex flex-col justify-center px-6">
       <div className="max-w-sm mx-auto w-full">
         <div className="flex items-center gap-3 mb-6">
           <Logo size={36} />

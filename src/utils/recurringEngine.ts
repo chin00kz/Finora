@@ -1,3 +1,4 @@
+import { createId } from '../utils/createId';
 import { db } from '../db/db';
 import type { RecurringFrequency } from '../db/db';
 import { addDays, addWeeks, addMonths, addYears } from 'date-fns';
@@ -43,8 +44,7 @@ export async function processDueRecurringTransactions(): Promise<number> {
     while (nextDue <= now && iter < maxIterations) {
       iter++;
       const txnDate = nextDue;
-      const rand = Math.random().toString(36).substring(2, 7);
-      const txnId = `txn-rec-${txnDate}-${rand}`;
+      const txnId = createId('txn-rec');
 
       await db.transaction('rw', [db.transactions, db.accounts, db.recurringTransactions], async () => {
         // 1. Create the regular transaction

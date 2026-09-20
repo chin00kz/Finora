@@ -1,3 +1,4 @@
+import { createId } from '../utils/createId';
 import { db, type Debt, type DebtSettlement, type Transaction } from '../db/db';
 import { triggerSync, deleteFromCloud } from '../sync/syncEngine';
 
@@ -53,7 +54,7 @@ export async function recordDebtSettlement({
     }
 
     const now = Date.now();
-    const settlementId = `ds-${now}-${Math.random().toString(36).substring(2, 7)}`;
+    const settlementId = createId('ds');
     let createdTxnId: string | undefined = undefined;
 
     await db.transaction('rw', [db.debts, db.accounts, db.transactions], async () => {
@@ -69,7 +70,7 @@ export async function recordDebtSettlement({
             updatedAt: now,
           });
 
-          createdTxnId = `txn-ds-${now}-${Math.random().toString(36).substring(2, 6)}`;
+          createdTxnId = createId('txn-ds');
           await db.transactions.add({
             id: createdTxnId,
             type: 'debt_settlement',

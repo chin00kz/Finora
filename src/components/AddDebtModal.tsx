@@ -1,3 +1,4 @@
+import { createId } from '../utils/createId';
 import React, { useState } from 'react';
 import { X, ArrowDownLeft, ArrowUpRight } from 'lucide-react';
 import { db, type DebtDirection } from '../db/db';
@@ -47,8 +48,8 @@ export default function AddDebtModal({ isOpen, onClose, defaultDirection = 'they
       const existingPersonForSync = people.find(
         p => p.name.toLowerCase() === trimmedPerson.toLowerCase()
       );
-      const newPersonId = existingPersonForSync?.id ?? `person-${now}-${Math.random().toString(36).substring(2, 6)}`;
-      const newDebtId = `debt-${now}-${Math.random().toString(36).substring(2, 7)}`;
+      const newPersonId = existingPersonForSync?.id ?? createId('person');
+      const newDebtId = createId('debt');
 
       await db.transaction('rw', [db.debts, db.people], async () => {
         if (!existingPersonForSync) {

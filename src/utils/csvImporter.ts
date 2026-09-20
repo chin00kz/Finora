@@ -1,3 +1,4 @@
+import { createId } from '../utils/createId';
 import { db } from '../db/db';
 import type { Transaction, Account, Category, Tag, TransactionType, AccountType } from '../db/db';
 import { triggerSync } from '../sync/syncEngine';
@@ -381,7 +382,6 @@ export async function executeImport(
 
       for (const name of accountsToCreate) {
         if (!accLookup.has(name.toLowerCase())) {
-          const rand = Math.random().toString(36).substring(2, 7);
           let type: AccountType = 'bank';
           const lower = name.toLowerCase();
           if (lower.includes('cash') || lower.includes('wallet')) type = 'wallet';
@@ -389,7 +389,7 @@ export async function executeImport(
           if (lower.includes('saving')) type = 'savings';
 
           const newAcc: Account = {
-            id: `acc-${Date.now()}-${rand}`,
+            id: createId('acc'),
             name,
             type,
             balance: 0,
@@ -413,12 +413,11 @@ export async function executeImport(
       for (const item of categoriesToCreate) {
         const key = `${item.name.toLowerCase()}|${item.type}`;
         if (!catLookup.has(key)) {
-          const rand = Math.random().toString(36).substring(2, 7);
           const color = DEFAULT_CATEGORY_COLORS[colorIdx % DEFAULT_CATEGORY_COLORS.length];
           colorIdx++;
 
           const newCat: Category = {
-            id: `cat-${Date.now()}-${rand}`,
+            id: createId('cat'),
             name: item.name,
             type: item.type,
             icon: item.type === 'income' ? 'briefcase' : 'tag',
@@ -439,9 +438,8 @@ export async function executeImport(
 
       for (const name of tagsToCreate) {
         if (!tagLookup.has(name.toLowerCase())) {
-          const rand = Math.random().toString(36).substring(2, 7);
           const newTag: Tag = {
-            id: `tag-${Date.now()}-${rand}`,
+            id: createId('tag'),
             name,
             updatedAt: Date.now(),
           };
@@ -466,9 +464,8 @@ export async function executeImport(
           .map(tName => tagLookup.get(tName.toLowerCase())?.id)
           .filter((id): id is string => Boolean(id));
 
-        const rand = Math.random().toString(36).substring(2, 7);
         const txn: Transaction = {
-          id: `txn-imp-${Date.now()}-${rand}`,
+          id: createId('txn-imp'),
           type: row.type,
           amount: row.amount,
           date: row.timestamp,

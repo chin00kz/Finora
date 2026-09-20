@@ -25,7 +25,7 @@ export default function Skip({ onBypass }: SkipProps) {
   }, [navigate, onBypass]);
 
   return (
-    <div className="min-h-screen bg-background text-foreground flex flex-col items-center justify-center p-6 text-center">
+    <div className="min-h-[100dvh] bg-background text-foreground flex flex-col items-center justify-center p-6 text-center">
       <div className="bg-card border border-border rounded-3xl p-8 max-w-sm w-full shadow-2xl space-y-4">
         <div className="flex justify-center">
           <Logo size={44} />

@@ -21,6 +21,7 @@ import {
   Info,
   Check,
   MoreHorizontal,
+  FileText,
 } from 'lucide-react';
 
 export default function CustomizeNavModal() {
@@ -64,6 +65,12 @@ export default function CustomizeNavModal() {
         return <MoreHorizontal size={16} />;
       case 'settings':
         return <SettingsIcon size={16} />;
+      case 'float-tools':
+        return <BarChart3 size={16} />;
+      case 'budgets':
+        return <PieChart size={16} />;
+      case 'statement-reader':
+        return <FileText size={16} />;
     }
   };
 

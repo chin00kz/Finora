@@ -5,7 +5,7 @@
  * which saves a token in localStorage.
  */
 export const MAINTENANCE_CONFIG = {
-  enabled: true,
+  enabled: false,
   title: "We're Upgrading Finora",
   badge: 'Scheduled Maintenance & Upgrades',
   description:

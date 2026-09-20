@@ -67,7 +67,7 @@ export default function Auth() {
   };
 
   return (
-    <div className="min-h-screen bg-background flex flex-col">
+    <div className="min-h-[100dvh] bg-background flex flex-col">
       {/* Back button */}
       <div className="p-4 pt-6">
         <button
