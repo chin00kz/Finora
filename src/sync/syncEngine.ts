@@ -908,7 +908,7 @@ export async function pushDirtyRecords(userId: string): Promise<void> {
             clearDirtyIds(table, ids);
             return;
           }
-          console.warn(`[sync] pushDirtyRecords failed for ${table}:`, error.message);
+          console.warn(`[sync] pushDirtyRecords failed for ${table}:`, error);
           return; // Keep dirty — will retry next time
         }
         clearDirtyIds(table, ids);
