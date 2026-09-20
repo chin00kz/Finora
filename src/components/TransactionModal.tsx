@@ -305,6 +305,9 @@ export default function TransactionModal() {
       // Trigger cloud sync for this specific record
       triggerSync('transactions', txnId);
       triggerSync('accounts', accountId);
+      if (type === 'transfer' && toAccountId) {
+        triggerSync('accounts', toAccountId);
+      }
 
       // Reset & close
       setAmount('');

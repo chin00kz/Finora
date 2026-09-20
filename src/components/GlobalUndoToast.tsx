@@ -1,7 +1,7 @@
 import { useEffect, useState, useRef } from 'react';
 import { useUIStore } from '../store/uiStore';
 import { db } from '../db/db';
-import { deleteFromCloud } from '../sync/syncEngine';
+import { deleteFromCloud, triggerSync } from '../sync/syncEngine';
 import { RotateCcw, X, CheckCircle2 } from 'lucide-react';
 
 export default function GlobalUndoToast() {
@@ -63,6 +63,7 @@ export default function GlobalUndoToast() {
           balance: acc.balance + balanceDelta,
           updatedAt: Date.now(),
         });
+        triggerSync('accounts', acc.id);
       }
 
       // 3. Prevent in-flight race condition:

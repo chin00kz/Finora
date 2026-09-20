@@ -54,20 +54,21 @@ export default function TransactionEditSheet({ transaction, onClose }: Props) {
     const oldAmount = transaction.amount;
     const fromAcc = await db.accounts.get(transaction.accountId);
     if (!fromAcc) return;
+    const now = Date.now();
 
     if (transaction.type === 'expense') {
-      await db.accounts.update(transaction.accountId, { balance: fromAcc.balance + oldAmount });
+      await db.accounts.update(transaction.accountId, { balance: fromAcc.balance + oldAmount, updatedAt: now });
     } else if (transaction.type === 'income') {
-      await db.accounts.update(transaction.accountId, { balance: fromAcc.balance - oldAmount });
+      await db.accounts.update(transaction.accountId, { balance: fromAcc.balance - oldAmount, updatedAt: now });
     } else if (transaction.type === 'transfer' && transaction.toAccountId) {
       const toAcc = await db.accounts.get(transaction.toAccountId);
       if (toAcc) {
-        await db.accounts.update(transaction.accountId, { balance: fromAcc.balance + oldAmount });
-        await db.accounts.update(transaction.toAccountId, { balance: toAcc.balance - oldAmount });
+        await db.accounts.update(transaction.accountId, { balance: fromAcc.balance + oldAmount, updatedAt: now });
+        await db.accounts.update(transaction.toAccountId, { balance: toAcc.balance - oldAmount, updatedAt: now });
       }
     } else if (transaction.type === 'debt_settlement') {
       const delta = transaction.debtDirection === 'theyOweMe' ? -oldAmount : oldAmount;
-      await db.accounts.update(transaction.accountId, { balance: fromAcc.balance + delta });
+      await db.accounts.update(transaction.accountId, { balance: fromAcc.balance + delta, updatedAt: now });
     }
   };
 
@@ -75,20 +76,21 @@ export default function TransactionEditSheet({ transaction, onClose }: Props) {
   const applyBalance = async (newAmount: number, newAccountId: string, newToAccountId?: string) => {
     const fromAcc = await db.accounts.get(newAccountId);
     if (!fromAcc) return;
+    const now = Date.now();
 
     if (type === 'expense') {
-      await db.accounts.update(newAccountId, { balance: fromAcc.balance - newAmount });
+      await db.accounts.update(newAccountId, { balance: fromAcc.balance - newAmount, updatedAt: now });
     } else if (type === 'income') {
-      await db.accounts.update(newAccountId, { balance: fromAcc.balance + newAmount });
+      await db.accounts.update(newAccountId, { balance: fromAcc.balance + newAmount, updatedAt: now });
     } else if (type === 'transfer' && newToAccountId) {
       const toAcc = await db.accounts.get(newToAccountId);
       if (toAcc) {
-        await db.accounts.update(newAccountId, { balance: fromAcc.balance - newAmount });
-        await db.accounts.update(newToAccountId, { balance: toAcc.balance + newAmount });
+        await db.accounts.update(newAccountId, { balance: fromAcc.balance - newAmount, updatedAt: now });
+        await db.accounts.update(newToAccountId, { balance: toAcc.balance + newAmount, updatedAt: now });
       }
     } else if (type === 'debt_settlement') {
       const delta = transaction.debtDirection === 'theyOweMe' ? newAmount : -newAmount;
-      await db.accounts.update(newAccountId, { balance: fromAcc.balance + delta });
+      await db.accounts.update(newAccountId, { balance: fromAcc.balance + delta, updatedAt: now });
     }
   };
 
@@ -151,6 +153,13 @@ export default function TransactionEditSheet({ transaction, onClose }: Props) {
         }
       });
       triggerSync('transactions', transaction.id);
+
+      // Sync all affected account balances to cloud
+      const affectedAccs = new Set<string>([transaction.accountId, accountId]);
+      if (transaction.toAccountId) affectedAccs.add(transaction.toAccountId);
+      if (toAccountId) affectedAccs.add(toAccountId);
+      affectedAccs.forEach(id => triggerSync('accounts', id));
+
       onClose();
     } catch (err) {
       console.error('Failed to save transaction edit', err);
@@ -174,6 +183,13 @@ export default function TransactionEditSheet({ transaction, onClose }: Props) {
         await syncSettlementFromTransactionDelete(transaction);
       }
       await deleteFromCloud('transactions', transaction.id);
+
+      // Sync reversed account balances to cloud
+      triggerSync('accounts', transaction.accountId);
+      if (transaction.toAccountId) {
+        triggerSync('accounts', transaction.toAccountId);
+      }
+
       onClose();
     } catch (err) {
       console.error('Failed to delete transaction', err);

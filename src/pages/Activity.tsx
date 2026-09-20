@@ -283,12 +283,16 @@ export default function Activity() {
       await db.transactions.bulkDelete(idsToDelete);
     });
 
+    const affectedAccountIds = new Set<string>();
     for (const txn of txnsToDelete) {
+      if (txn.accountId) affectedAccountIds.add(txn.accountId);
+      if (txn.toAccountId) affectedAccountIds.add(txn.toAccountId);
       if (txn.type === 'debt_settlement') {
         await syncSettlementFromTransactionDelete(txn);
       }
       await deleteFromCloud('transactions', txn.id);
     }
+    affectedAccountIds.forEach(accId => triggerSync('accounts', accId));
     setSelectedIds(new Set());
   };
 
