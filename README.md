@@ -171,8 +171,9 @@ The everyday surface is disciplined, distraction-free, and lightning-fast. Deep 
 
 ### 11. Local-First Engine & Cloud Sync Engine
 - **Dexie.js IndexedDB Store**: Real-time reactivity via `useLiveQuery` with sub-millisecond local latency.
-- **Supabase Cloud Sync**: Two-way synchronization on window focus, visibility change, or manual trigger.
-- **Offline Sync Queue**: Queues offline mutations in `localStorage` (`finora-pending-sync`) and drains them in order once online.
+- **Realtime Supabase Sync**: Production-grade two-way synchronization using WebSockets for instant (<300ms) cross-device updates.
+- **Robust Reconciliation**: Set-difference deletion reconciliation and timestamp-based (`updated_at`) upserts to prevent race conditions and ensure data consistency.
+- **Offline Resiliency**: Queues offline creations/updates (`finora-dirty`) and deletions (`finora-deleted`) in `localStorage` to be drained safely once connectivity is restored.
 - **Cloud Duplicate Resolver**: Dedicated tool in Settings to clean up remote duplicate IDs and align cloud state with local storage.
 
 ### 12. Standalone PDF Statement Reader (`/statements`)
@@ -334,7 +335,11 @@ Finora/
    VITE_SUPABASE_URL=https://your-project.supabase.co
    VITE_SUPABASE_ANON_KEY=your-anon-key
    ```
-   > **Note:** `.env` and `.env.local` files are ignored by git to protect credentials. Never commit production keys to a public repository. Ensure you execute `supabase-schema.sql` in your Supabase SQL Editor to enable Row Level Security (RLS) and the signup domain trigger.
+   > **Note:** `.env` and `.env.local` files are ignored by git to protect credentials. Never commit production keys to a public repository. 
+   
+   > **Supabase Setup:** You **must** execute `supabase-schema.sql` in your Supabase SQL Editor to provision the tables, enable Row Level Security (RLS), attach the signup domain trigger, and configure the `supabase_realtime` publication for instant cross-device sync.
+
+   > **Deployment Tip (Vercel):** When deploying to Vercel, ensure your `VITE_` environment variables are set as **Plaintext/Config**, not as Secrets, otherwise they will be blocked at build time.
 
 4. **Start the local development server:**
    ```bash
