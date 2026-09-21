@@ -764,9 +764,20 @@ async function mergeRemoteRows(
     const remoteIdSet = new Set(remoteRows.map(r => r.id));
     const dirtyIdSet = new Set(getDirty()[table] ?? []);
     const localIds = await dexieTable.toCollection().primaryKeys();
-    const toDelete = localIds.filter(id => !remoteIdSet.has(id) && !dirtyIdSet.has(id));
-    if (toDelete.length > 0) {
-      await dexieTable.bulkDelete(toDelete);
+    const candidateIds = localIds.filter(id => !remoteIdSet.has(id) && !dirtyIdSet.has(id));
+    if (candidateIds.length > 0) {
+      const candidateRows = await dexieTable.bulkGet(candidateIds);
+      const graceThreshold = Date.now() - 60_000; // 60-second backstop for in-flight/recent writes
+      const toDelete = candidateIds.filter((_, i) => {
+        const row = candidateRows[i];
+        if (row && (row.updatedAt ?? 0) > graceThreshold) {
+          return false; // Protect recent local write
+        }
+        return true;
+      });
+      if (toDelete.length > 0) {
+        await dexieTable.bulkDelete(toDelete);
+      }
     }
 
     // 2. Upsert changed or new remote rows
@@ -1241,10 +1252,12 @@ let syncTimer: ReturnType<typeof setTimeout> | null = null;
  * The push is debounced 1.5 s so rapid writes batch into one network request.
  */
 export function triggerSync(table: TableName, id: string, immediate = false): void {
+  // Always mark dirty immediately to protect the record from remote deletion sweeps,
+  // even if the user session is still resolving or currently offline.
+  markDirty(table, id);
+
   const user = useAuthStore.getState().user;
   if (!user) return;
-
-  markDirty(table, id);
 
   if (syncTimer) clearTimeout(syncTimer);
   const delay = immediate ? 100 : 1500;
@@ -1252,6 +1265,15 @@ export function triggerSync(table: TableName, id: string, immediate = false): vo
     void pushDirtyRecords(user.id);
     syncTimer = null;
   }, delay);
+}
+
+/** Check if any pending dirty writes exist, optionally filtered by specific tables. */
+export function hasPendingDirty(tables?: TableName[]): boolean {
+  const map = getDirty();
+  if (!tables) {
+    return Object.values(map).some(ids => ids && ids.length > 0);
+  }
+  return tables.some(t => map[t] && map[t]!.length > 0);
 }
 
 /** Retry any records or deletions that failed while offline (called on reconnect). */

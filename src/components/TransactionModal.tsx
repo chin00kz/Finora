@@ -1,5 +1,6 @@
 import { useState, useEffect, useMemo, useRef } from 'react';
-import { X, ChevronDown, ChevronUp, Plus, Sparkles } from 'lucide-react';
+import { useNavigate } from 'react-router-dom';
+import { X, ChevronDown, ChevronUp, Plus, Sparkles, AlertCircle } from 'lucide-react';
 import { db } from '../db/db';
 import type { TransactionType } from '../db/db';
 import { useLiveQuery } from 'dexie-react-hooks';
@@ -10,6 +11,7 @@ import { formatMoney } from '../utils/formatters';
 import QuickAddChips from './QuickAddChips';
 
 export default function TransactionModal() {
+  const navigate = useNavigate();
   const {
     isAddTransactionModalOpen,
     setAddTransactionModalOpen,
@@ -19,6 +21,7 @@ export default function TransactionModal() {
 
   const amountInputRef = useRef<HTMLInputElement>(null);
   
+  const [isSubmitting, setIsSubmitting] = useState(false);
   const [amount, setAmount] = useState('');
   const [type, setType] = useState<TransactionType>('expense');
   const [categoryId, setCategoryId] = useState('');
@@ -204,8 +207,11 @@ export default function TransactionModal() {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!amount || isNaN(Number(amount))) return;
+    if (isSubmitting) return;
+    if (accounts.length === 0 || !accountId) return;
+    if (!amount || isNaN(Number(amount)) || Number(amount) <= 0) return;
 
+    setIsSubmitting(true);
     const numAmount = Number(amount);
 
     try {
@@ -323,6 +329,8 @@ export default function TransactionModal() {
       setAddTransactionModalOpen(false);
     } catch (error) {
       console.error("Failed to save transaction", error);
+    } finally {
+      setIsSubmitting(false);
     }
   };
 
@@ -343,6 +351,30 @@ export default function TransactionModal() {
         {/* Form Content - Scrollable */}
         <div className="flex-1 overflow-y-auto">
           <form id="tx-form" onSubmit={handleSubmit} className="p-6 space-y-6">
+
+            {/* Zero-accounts prompt */}
+            {accounts.length === 0 && (
+              <div className="bg-amber-500/10 border border-amber-500/30 rounded-2xl p-4 flex items-start gap-3">
+                <AlertCircle size={18} className="text-amber-500 mt-0.5 shrink-0" />
+                <div className="flex-1 min-w-0">
+                  <p className="text-xs font-semibold text-foreground">No accounts found</p>
+                  <p className="text-[11px] text-muted-foreground mt-0.5">
+                    You need at least one account (e.g. Cash, Bank) to record transactions and track balances.
+                  </p>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setAddTransactionModalOpen(false);
+                      navigate('/accounts');
+                    }}
+                    className="mt-2.5 px-3 py-1.5 bg-amber-500/20 hover:bg-amber-500/30 text-amber-600 dark:text-amber-400 rounded-lg text-xs font-semibold transition-colors flex items-center gap-1.5"
+                  >
+                    <span>Create an Account</span>
+                    <span>→</span>
+                  </button>
+                </div>
+              </div>
+            )}
 
             {/* Quick-Add Favorite Chips */}
             <QuickAddChips
@@ -727,9 +759,17 @@ export default function TransactionModal() {
           <button 
             type="submit" 
             form="tx-form"
-            className="w-full py-4 bg-accent text-accent-foreground rounded-xl font-medium text-lg active:scale-[0.98] transition-transform"
+            disabled={isSubmitting || accounts.length === 0 || !amount || isNaN(Number(amount)) || Number(amount) <= 0 || !accountId}
+            className="w-full py-4 bg-accent text-accent-foreground rounded-xl font-medium text-lg active:scale-[0.98] transition-transform disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
           >
-            Save Transaction
+            {isSubmitting ? (
+              <>
+                <span className="w-5 h-5 border-2 border-accent-foreground/30 border-t-accent-foreground rounded-full animate-spin" />
+                <span>Saving…</span>
+              </>
+            ) : (
+              <span>Save Transaction</span>
+            )}
           </button>
         </div>
 

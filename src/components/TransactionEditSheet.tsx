@@ -22,6 +22,7 @@ export default function TransactionEditSheet({ transaction, onClose }: Props) {
   const allTransactions = useLiveQuery(() => db.transactions.toArray()) || [];
 
   // Form state — initialise from the transaction
+  const [isSubmitting, setIsSubmitting] = useState(false);
   const [amount, setAmount] = useState(String(transaction.amount));
   const [type] = useState<TransactionType>(transaction.type); // type changes are too complex; read-only
   const [accountId, setAccountId] = useState(transaction.accountId);
@@ -96,9 +97,11 @@ export default function TransactionEditSheet({ transaction, onClose }: Props) {
 
   // ── Save ────────────────────────────────────────────────────────────────────
   const handleSave = async () => {
+    if (isSubmitting) return;
     const numAmount = Number(amount);
-    if (!numAmount || isNaN(numAmount)) return;
+    if (!numAmount || isNaN(numAmount) || numAmount <= 0) return;
 
+    setIsSubmitting(true);
     try {
       await db.transaction('rw', db.transactions, db.accounts, db.tags, async () => {
         // Resolve any new tags
@@ -163,6 +166,8 @@ export default function TransactionEditSheet({ transaction, onClose }: Props) {
       onClose();
     } catch (err) {
       console.error('Failed to save transaction edit', err);
+    } finally {
+      setIsSubmitting(false);
     }
   };
 
@@ -534,9 +539,17 @@ export default function TransactionEditSheet({ transaction, onClose }: Props) {
           </button>
           <button
             onClick={handleSave}
-            className="flex-1 py-4 bg-accent text-accent-foreground rounded-xl font-medium text-base active:scale-[0.98] transition-transform"
+            disabled={isSubmitting || !amount || isNaN(Number(amount)) || Number(amount) <= 0}
+            className="flex-1 py-4 bg-accent text-accent-foreground rounded-xl font-medium text-base active:scale-[0.98] transition-transform disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
           >
-            Save Changes
+            {isSubmitting ? (
+              <>
+                <span className="w-5 h-5 border-2 border-accent-foreground/30 border-t-accent-foreground rounded-full animate-spin" />
+                <span>Saving…</span>
+              </>
+            ) : (
+              <span>Save Changes</span>
+            )}
           </button>
         </div>
 

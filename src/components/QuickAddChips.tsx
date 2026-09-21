@@ -1,4 +1,4 @@
-import { useMemo } from 'react';
+import { useMemo, useState } from 'react';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { db } from '../db/db';
 import { usePrivacyStore } from '../store/privacyStore';
@@ -21,6 +21,7 @@ export default function QuickAddChips({
   onSelectCandidate,
   className = '',
 }: QuickAddChipsProps) {
+  const [isLogging, setIsLogging] = useState(false);
   const transactions = useLiveQuery(() => db.transactions.toArray()) || [];
   const accounts = useLiveQuery(() => db.accounts.toArray()) || [];
   const categories = useLiveQuery(() => db.categories.toArray()) || [];
@@ -73,6 +74,9 @@ export default function QuickAddChips({
     }
 
     // 1-Tap Instant Log Mode
+    if (isLogging) return;
+    setIsLogging(true);
+
     try {
       const id = createId('txn');
       const now = Date.now();
@@ -115,6 +119,8 @@ export default function QuickAddChips({
       });
     } catch (err) {
       console.error('Error in 1-tap log:', err);
+    } finally {
+      setTimeout(() => setIsLogging(false), 500);
     }
   };
 
