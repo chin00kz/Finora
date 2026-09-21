@@ -64,6 +64,7 @@ export default function Activity() {
 
   const { oneTapLogMode } = usePrivacyStore();
   const { setAddTransactionModalOpen, setPrefillData, showUndoToast } = useUIStore();
+  const [isRepeating, setIsRepeating] = useState(false);
 
   const handleRepeatTransaction = async (txn: Transaction, e: React.MouseEvent) => {
     e.stopPropagation();
@@ -84,6 +85,9 @@ export default function Activity() {
       setAddTransactionModalOpen(true);
       return;
     }
+
+    if (isRepeating) return;
+    setIsRepeating(true);
 
     try {
       const id = createId('txn');
@@ -123,6 +127,8 @@ export default function Activity() {
       });
     } catch (err) {
       console.error('Failed to repeat transaction:', err);
+    } finally {
+      setTimeout(() => setIsRepeating(false), 500);
     }
   };
 

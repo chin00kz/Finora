@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState, useCallback } from 'react';
 import { useAuthStore } from '../store/authStore';
-import { pullAll, pullLiveActivity, pushDirtyRecords, drainPendingSync, applyRealtimeChange, ALL_TABLES } from '../sync/syncEngine';
+import { pullAll, pullLiveActivity, pushDirtyRecords, drainPendingSync, applyRealtimeChange, hasPendingDirty, ALL_TABLES } from '../sync/syncEngine';
 import type { TableName } from '../sync/syncEngine';
 import { supabase, isSupabaseConfigured } from '../lib/supabase';
 export type SyncStatus = 'idle' | 'syncing' | 'error';
@@ -13,14 +13,10 @@ const LIVE_PULL_INTERVAL = 15 * 1000; // 15 seconds
 /**
  * useSync — drives automatic and manual synchronisation.
  *
- * Sync model:
- *  1. LOGIN / MOUNT    → pullAll() (load cloud data into local) + Realtime subscribe
- *  2. LOCAL WRITE      → triggerSync(table, id) → debounced pushDirtyRecords()
- *  3. REALTIME EVENT   → applyRealtimeChange() immediately (<300ms cross-device)
- *  4. FOCUS / VISIBLE  → pullLiveActivity() immediately; pullAll() if >5 min
- *  5. LIVE INTERVAL    → pullLiveActivity() every 15s while tab is visible
- *  6. RECONNECT        → drainPendingSync() (flush failed writes & deletes) then pullAll()
- *  7. MANUAL SYNC      → pushDirtyRecords() then pullAll()
+ * Invariant: PUSH BEFORE PULL
+ * To prevent local mutations from ever being falsely deleted by incoming
+ * cloud snapshots, all dirty local records and pending offline deletions
+ * are flushed to Supabase BEFORE running reconciliation pulls.
  */
 export function useSync(): {
   syncStatus: SyncStatus;
@@ -30,16 +26,19 @@ export function useSync(): {
   const [syncStatus, setSyncStatus] = useState<SyncStatus>('idle');
   const lastFullSyncRef = useRef<number>(0);
 
-  // Pull cloud data into local — used on login, focus, and visibility change.
-  const performPull = useCallback(async (userId: string) => {
+  // Push pending writes then pull cloud data into local
+  const performSync = useCallback(async (userId: string) => {
     setSyncStatus('syncing');
     try {
+      // 1. Drain pending local writes & deletes FIRST
+      await drainPendingSync(userId);
+      // 2. Pull and reconcile from cloud
       const res = await pullAll(userId);
       setSyncStatus(res.success ? 'idle' : 'error');
       lastFullSyncRef.current = Date.now();
       return res.success;
     } catch (err) {
-      console.warn('[useSync] Pull error:', err);
+      console.warn('[useSync] Sync error:', err);
       setSyncStatus('error');
       return false;
     }
@@ -48,19 +47,8 @@ export function useSync(): {
   // Manual sync: flush any unsent local writes, then pull.
   const manualSync = useCallback(async () => {
     if (!user) return false;
-    setSyncStatus('syncing');
-    try {
-      await pushDirtyRecords(user.id);
-      const res = await pullAll(user.id);
-      setSyncStatus(res.success ? 'idle' : 'error');
-      lastFullSyncRef.current = Date.now();
-      return res.success;
-    } catch (err) {
-      console.warn('[useSync] Manual sync error:', err);
-      setSyncStatus('error');
-      return false;
-    }
-  }, [user]);
+    return performSync(user.id);
+  }, [user, performSync]);
 
   useEffect(() => {
     if (!user || !isSupabaseConfigured) {
@@ -70,8 +58,8 @@ export function useSync(): {
 
     const userId = user.id;
 
-    // 1. Pull on mount/login
-    void performPull(userId);
+    // 1. Drain pending offline/boot writes first, then pull on mount/login
+    void performSync(userId);
 
     // 2. Realtime WebSocket subscription for instant cross-device updates
     const channel = supabase
@@ -101,39 +89,40 @@ export function useSync(): {
       )
       .subscribe();
 
-    const pullActivity = () => {
-      void pullLiveActivity(userId);
+    const pullActivity = async () => {
+      // If there are pending dirty writes for accounts or transactions, flush them first
+      if (hasPendingDirty(['accounts', 'transactions'])) {
+        await pushDirtyRecords(userId);
+      }
+      await pullLiveActivity(userId);
     };
 
     // 3. Pull when user returns to the tab (visibility change)
     const onVisibilityChange = () => {
       if (document.visibilityState === 'visible') {
-        pullActivity();
         const timeSinceLast = Date.now() - lastFullSyncRef.current;
         if (timeSinceLast > MIN_FULL_SYNC_INTERVAL) {
-          void performPull(userId);
+          void performSync(userId);
+        } else {
+          void pullActivity();
         }
       }
     };
 
     // 4. Pull when window regains focus (e.g. alt-tab back)
     const onFocus = () => {
-      pullActivity();
+      void pullActivity();
     };
 
     // 5. On reconnect: flush failed local writes & deletes, then pull
-    const onOnline = async () => {
-      setSyncStatus('syncing');
-      await drainPendingSync(userId);
-      const res = await pullAll(userId);
-      setSyncStatus(res.success ? 'idle' : 'error');
-      lastFullSyncRef.current = Date.now();
+    const onOnline = () => {
+      void performSync(userId);
     };
 
     // 6. Fast background polling for accounts + transactions while active (heartbeat fallback)
     const livePull = window.setInterval(() => {
       if (document.visibilityState === 'visible') {
-        pullActivity();
+        void pullActivity();
       }
     }, LIVE_PULL_INTERVAL);
 
@@ -148,7 +137,7 @@ export function useSync(): {
       window.removeEventListener('focus', onFocus);
       window.removeEventListener('online', onOnline);
     };
-  }, [user?.id, performPull]);
+  }, [user?.id, performSync]);
 
   return { syncStatus, manualSync };
 }
