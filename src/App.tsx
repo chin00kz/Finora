@@ -240,6 +240,8 @@ function getNavIcon(id: NavItemId) {
       return PieChart;
     case 'statement-reader':
       return FileText;
+    case 'settings':
+      return SettingsIcon;
     default:
       return Home;
   }
@@ -259,15 +261,14 @@ function MobileBottomNav({ syncStatus }: { syncStatus: 'idle' | 'syncing' | 'err
 
   return (
     <>
-      {/* Floating Quick Add FAB on Mobile */}
-      <div className="md:hidden fixed bottom-20 left-0 right-0 max-w-md mx-auto pointer-events-none flex justify-center z-40">
-        <button
-          onClick={() => setAddTransactionModalOpen(true)}
-          className="bg-accent text-accent-foreground p-4 rounded-full shadow-lg active:scale-95 transition-transform pointer-events-auto"
-        >
-          <Plus size={28} />
-        </button>
-      </div>
+      {/* Floating Quick Add FAB on Mobile - Mathematically centered to viewport */}
+      <button
+        onClick={() => setAddTransactionModalOpen(true)}
+        className="md:hidden fixed bottom-20 left-1/2 -translate-x-1/2 z-40 pointer-events-auto w-14 h-14 rounded-full bg-foreground text-background shadow-xl hover:opacity-90 active:scale-95 transition-transform flex items-center justify-center"
+        title="Add transaction"
+      >
+        <Plus size={24} strokeWidth={2.25} />
+      </button>
 
       {/* Mobile "More" Drawer for hidden items */}
       {isMoreOpen && (
@@ -319,6 +320,7 @@ function MobileBottomNav({ syncStatus }: { syncStatus: 'idle' | 'syncing' | 'err
                 if (!item) return null;
                 const Icon = getNavIcon(id);
                 const active = isActive(item.to);
+                const isSettings = id === 'settings';
                 return (
                   <Link
                     key={id}
@@ -330,7 +332,17 @@ function MobileBottomNav({ syncStatus }: { syncStatus: 'idle' | 'syncing' | 'err
                         : 'bg-muted/50 hover:bg-muted text-foreground'
                     } text-xs font-medium`}
                   >
-                    <Icon size={20} className="mb-1" />
+                    <div className="relative mb-1">
+                      <Icon size={20} />
+                      {isSettings && syncStatus === 'syncing' && (
+                        <span className="absolute -top-0.5 -right-0.5 w-2 h-2 rounded-full bg-accent animate-pulse" />
+                      )}
+                      {isSettings && syncStatus === 'error' && (
+                        <span className="absolute -top-1 -right-1 text-orange-400">
+                          <AlertTriangle size={10} />
+                        </span>
+                      )}
+                    </div>
                     <span>{item.label}</span>
                   </Link>
                 );
@@ -364,6 +376,7 @@ function MobileBottomNav({ syncStatus }: { syncStatus: 'idle' | 'syncing' | 'err
                 <span className="truncate">Float Tools</span>
               </Link>
             </div>
+
           </div>
         </div>
       )}
@@ -376,6 +389,7 @@ function MobileBottomNav({ syncStatus }: { syncStatus: 'idle' | 'syncing' | 'err
             if (!item) return null;
             const Icon = getNavIcon(id);
             const active = isActive(item.to);
+            const isSettings = id === 'settings';
             return (
               <Link
                 key={id}
@@ -384,7 +398,17 @@ function MobileBottomNav({ syncStatus }: { syncStatus: 'idle' | 'syncing' | 'err
                   active ? 'text-foreground' : 'text-muted-foreground'
                 }`}
               >
-                <Icon size={22} />
+                <div className="relative">
+                  <Icon size={22} />
+                  {isSettings && syncStatus === 'syncing' && (
+                    <span className="absolute -top-0.5 -right-0.5 w-2 h-2 rounded-full bg-accent animate-pulse" />
+                  )}
+                  {isSettings && syncStatus === 'error' && (
+                    <span className="absolute -top-1 -right-1 text-orange-400">
+                      <AlertTriangle size={10} />
+                    </span>
+                  )}
+                </div>
                 <span className="text-[10px] mt-1 font-medium">{item.label}</span>
               </Link>
             );
@@ -403,31 +427,20 @@ function MobileBottomNav({ syncStatus }: { syncStatus: 'idle' | 'syncing' | 'err
                   : 'text-muted-foreground'
               }`}
             >
-              <MoreHorizontal size={22} />
+              <div className="relative">
+                <MoreHorizontal size={22} />
+                {hiddenItemIds.includes('settings') && syncStatus === 'syncing' && (
+                  <span className="absolute -top-0.5 -right-0.5 w-2 h-2 rounded-full bg-accent animate-pulse" />
+                )}
+                {hiddenItemIds.includes('settings') && syncStatus === 'error' && (
+                  <span className="absolute -top-1 -right-1 text-orange-400">
+                    <AlertTriangle size={10} />
+                  </span>
+                )}
+              </div>
               <span className="text-[10px] mt-1 font-medium">More</span>
             </button>
           )}
-
-          {/* Settings */}
-          <Link
-            to="/settings"
-            className={`relative flex flex-col items-center justify-center w-full h-full ${
-              isActive('/settings') ? 'text-foreground' : 'text-muted-foreground'
-            }`}
-          >
-            <div className="relative">
-              <SettingsIcon size={22} />
-              {syncStatus === 'syncing' && (
-                <span className="absolute -top-0.5 -right-0.5 w-2 h-2 rounded-full bg-accent animate-pulse" />
-              )}
-              {syncStatus === 'error' && (
-                <span className="absolute -top-1 -right-1 text-orange-400">
-                  <AlertTriangle size={10} />
-                </span>
-              )}
-            </div>
-            <span className="text-[10px] mt-1 font-medium">Settings</span>
-          </Link>
         </div>
       </nav>
     </>
@@ -461,8 +474,6 @@ function MainAppShell() {
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [setAddTransactionModalOpen]);
 
-  const isHomeDashboard = location.pathname === '/';
-
   return (
     <div className="min-h-[100dvh] bg-background text-foreground flex flex-col md:flex-row">
       {/* Desktop Sidebar (hidden on mobile) */}
@@ -470,7 +481,7 @@ function MainAppShell() {
 
       {/* Main Content Area */}
       <main className="flex-1 min-w-0 min-h-[100dvh] overflow-y-auto">
-        <div className={isHomeDashboard ? 'max-w-md mx-auto min-h-[100dvh]' : 'w-full min-h-[100dvh]'}>
+        <div className="w-full min-h-[100dvh]">
           <Routes>
             <Route
               path="/"

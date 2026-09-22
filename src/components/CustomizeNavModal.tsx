@@ -159,10 +159,6 @@ export default function CustomizeNavModal() {
                 <span className="text-[10px] font-medium mt-1">More</span>
               </div>
             )}
-            <div className="flex-1 min-w-[50px] py-1.5 px-1 bg-muted border border-border rounded-lg flex flex-col items-center justify-center text-foreground font-medium">
-              {getIcon('settings')}
-              <span className="text-[10px] font-medium mt-1">Settings</span>
-            </div>
           </div>
 
           {feedbackMsg && (
@@ -188,8 +184,8 @@ export default function CustomizeNavModal() {
               {frontItemIds.map((id, index) => {
                 const canMoveUp = index > 0;
                 const canMoveDown = index < frontItemIds.length - 1;
-                // If moving to more would make total count < 4, disable
-                const canHide = getTotalBarCount(frontItemIds.filter((i) => i !== id)) >= 4;
+                // If moving to more would make total count < 4, disable. Home cannot be hidden.
+                const canHide = id !== 'home' && getTotalBarCount(frontItemIds.filter((i) => i !== id)) >= 4;
 
                 return (
                   <div
@@ -233,7 +229,7 @@ export default function CustomizeNavModal() {
                             ? 'bg-card text-muted-foreground hover:text-foreground border border-border'
                             : 'opacity-30 cursor-not-allowed bg-muted text-muted-foreground'
                         }`}
-                        title={canHide ? 'Move to More drawer' : 'Minimum 4 options required'}
+                        title={id === 'home' ? 'Home is required on the bottom bar' : canHide ? 'Move to More drawer' : 'Minimum 4 options required'}
                       >
                         Hide
                       </button>
@@ -298,12 +294,11 @@ export default function CustomizeNavModal() {
             )}
           </div>
 
-          {/* Notice about Settings */}
+          {/* Bottom Bar Info */}
           <div className="flex items-start gap-2 p-3 bg-muted/40 rounded-xl border border-border text-xs text-muted-foreground">
             <Info size={16} className="shrink-0 mt-0.5" />
             <p>
-              <strong>Settings</strong> is always kept on the bottom bar for immediate access and
-              cloud sync status. Total bar slots will always remain between 4 and 6.
+              Choose which destinations appear directly on your bottom bar. Items moved under <strong>More</strong> can be accessed anytime from the More drawer. Total bar slots always remain between 4 and 6.
             </p>
           </div>
         </div>

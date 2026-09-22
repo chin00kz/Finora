@@ -1,36 +1,137 @@
+import { useState, useMemo } from 'react';
 import { useLiveQuery } from 'dexie-react-hooks';
-import { db } from '../db/db';
-import { differenceInDays } from 'date-fns';
+import { db, type Transaction, type Category } from '../db/db';
+import { differenceInDays, isToday, isYesterday, format } from 'date-fns';
 import { useNavigate } from 'react-router-dom';
-import { ChevronRight, ShieldCheck, Eye, EyeOff, Sparkles } from 'lucide-react';
+import {
+  ChevronRight,
+  Eye,
+  EyeOff,
+  ShieldCheck,
+  X,
+  ArrowDownLeft,
+  ArrowLeftRight,
+  ArrowUpRight,
+  Utensils,
+  Coffee,
+  Bus,
+  Car,
+  ShoppingBag,
+  Receipt,
+  Film,
+  HeartPulse,
+  GraduationCap,
+} from 'lucide-react';
 import { getBudgetStatus } from '../utils/budgetUtils';
+import { computeSafeToSpendSync } from '../utils/safeToSpendEngine';
 import SafeToSpendCard from '../components/SafeToSpendCard';
-import QuickAddChips from '../components/QuickAddChips';
 import { usePrivacyStore } from '../store/privacyStore';
 import MaskedAmount from '../components/MaskedAmount';
+
+/**
+ * Resolves a restrained, professional Lucide icon for a transaction row.
+ * Emojis are eliminated. Most icons are neutral zinc, reserving emerald for income.
+ */
+function getTransactionIcon(txn: Transaction, categories: Category[]) {
+  if (txn.type === 'income') {
+    return {
+      Icon: ArrowDownLeft,
+      iconClass: 'text-emerald-400',
+      containerClass: 'bg-emerald-500/10 border border-emerald-500/20',
+    };
+  }
+  if (txn.type === 'transfer') {
+    return {
+      Icon: ArrowLeftRight,
+      iconClass: 'text-zinc-400',
+      containerClass: 'bg-zinc-800/80 border border-zinc-700/40',
+    };
+  }
+
+  const cat = categories.find(c => c.id === txn.categoryId);
+  const text = `${cat?.name || ''} ${txn.notes || ''}`.toLowerCase();
+
+  let Icon = ArrowUpRight;
+  if (/food|lunch|dinner|meal|snack|restaurant|dining|grocer/i.test(text)) {
+    Icon = Utensils;
+  } else if (/coffee|tea|cafe/i.test(text)) {
+    Icon = Coffee;
+  } else if (/bus|train|transit/i.test(text)) {
+    Icon = Bus;
+  } else if (/transport|fuel|petrol|uber|pickme|taxi|ride|car/i.test(text)) {
+    Icon = Car;
+  } else if (/shop|cloth|store|retail|market|buy/i.test(text)) {
+    Icon = ShoppingBag;
+  } else if (/bill|utilit|electric|water|internet|wifi|phone|rent|recharge/i.test(text)) {
+    Icon = Receipt;
+  } else if (/movie|cinema|game|entertain|netflix|spotify|stream/i.test(text)) {
+    Icon = Film;
+  } else if (/health|medic|doctor|pharmacy|fitness|gym/i.test(text)) {
+    Icon = HeartPulse;
+  } else if (/educat|course|class|book|tuition/i.test(text)) {
+    Icon = GraduationCap;
+  }
+
+  return {
+    Icon,
+    iconClass: 'text-zinc-300',
+    containerClass: 'bg-zinc-800/70 border border-zinc-700/40',
+  };
+}
+
+function formatTransactionDate(timestamp: number): string {
+  const d = new Date(timestamp);
+  if (isToday(d)) return 'Today';
+  if (isYesterday(d)) return 'Yesterday';
+  return format(d, 'MMM d');
+}
 
 export default function Dashboard() {
   const navigate = useNavigate();
   const {
     showSafeToSpendHome,
-    setShowSafeToSpendHome,
-    showQuickAddHome,
-    setShowQuickAddHome,
     isMasked,
     toggleMask,
   } = usePrivacyStore();
+
+  const [showSafeBreakdownModal, setShowSafeBreakdownModal] = useState(false);
 
   const accounts = useLiveQuery(() => db.accounts.toArray()) || [];
   const budgets = useLiveQuery(() => db.budgets.toArray()) || [];
   const activeBudget = budgets.find(b => b.status === 'active');
   const transactions = useLiveQuery(() => db.transactions.toArray()) || [];
+  const categories = useLiveQuery(() => db.categories.toArray()) || [];
+
+  // Data for safe-to-spend calculation
+  const mmas = useLiveQuery(() => db.moneyMarketAccounts.toArray()) || [];
+  const cards = useLiveQuery(() => db.creditCards.toArray()) || [];
+  const offsets = useLiveQuery(() => db.cashOffsetSources.toArray()) || [];
+  const recurring = useLiveQuery(() => db.recurringTransactions.toArray()) || [];
+  const ledgers = useLiveQuery(() => db.reimbursementLedgers.toArray()) || [];
+  const entries = useLiveQuery(() => db.reimbursementEntries.toArray()) || [];
 
   // ── Balances ────────────────────────────────────────────────────────────────
   const totalBalance = accounts
     .filter(a => a.includeInTotal)
     .reduce((sum, a) => sum + a.balance, 0);
 
-  // ── Budget pace ─────────────────────────────────────────────────────────────
+  const activeAccountsCount = accounts.filter(a => a.includeInTotal).length;
+
+  // ── Safe-to-Spend Computation ───────────────────────────────────────────────
+  const safeToSpendBreakdown = useMemo(() => {
+    return computeSafeToSpendSync({
+      accounts,
+      mmas,
+      cards,
+      offsets,
+      recurring,
+      ledgers,
+      entries,
+      forecastDays: 14,
+    });
+  }, [accounts, mmas, cards, offsets, recurring, ledgers, entries]);
+
+  // ── Budget pace with centralized getBudgetStatus ────────────────────────────
   let spentThisPeriod = 0;
   let daysLeft = 0;
   let budgetStatus = getBudgetStatus(0, 0);
@@ -45,171 +146,221 @@ export default function Dashboard() {
       0
     );
     daysLeft = Math.max(0, differenceInDays(activeBudget.endDate, today));
-    budgetStatus = getBudgetStatus(spentThisPeriod, activeBudget.amount);
+    budgetStatus = getBudgetStatus(spentThisPeriod, activeBudget.amount, {
+      startDate: activeBudget.startDate,
+      endDate: activeBudget.endDate,
+    });
   }
 
-  // ── Recent transactions ──────────────────────────────────────────────────────
-  const recentTransactions = [...transactions]
-    .sort((a, b) => b.date - a.date)
-    .slice(0, 5);
+  // ── Recent transactions (Max 3) ─────────────────────────────────────────────
+  const recentTransactions = useMemo(() => {
+    return [...transactions]
+      .sort((a, b) => b.date - a.date)
+      .slice(0, 3);
+  }, [transactions]);
 
-  const accIcon = (type: string) =>
-    type === 'cash' ? '💵' : type === 'wallet' ? '👛' : type === 'bank' ? '🏦' : type === 'card' ? '💳' : type === 'savings' ? '🐷' : '📦';
+  // Contextual budget label: prefer 'This Month' or 'Budget' over arbitrary test names
+  const budgetContextLabel = useMemo(() => {
+    if (!activeBudget) return 'Budget';
+    const spanDays = differenceInDays(activeBudget.endDate, activeBudget.startDate);
+    if (spanDays >= 27 && spanDays <= 32) return 'This Month';
+    if (spanDays <= 7) return 'This Week';
+    return 'Budget';
+  }, [activeBudget]);
 
   return (
-    <div className="p-6 pb-36">
-      {/* ── Available balance ──────────────────────────────────────────────── */}
-      <header className="mb-6 mt-4">
+    <div className="w-full max-w-md md:max-w-xl lg:max-w-2xl mx-auto px-5 pt-7 sm:pt-8 md:pt-10 pb-36">
+      {/* ── CARD 1: Available Money (What do I have?) ───────────────────────── */}
+      <section className="bg-[#111113] border border-white/[0.04] rounded-xl p-5 shadow-none">
+        {/* Available row with quiet utility actions [shield] [eye] */}
         <div className="flex items-center justify-between">
-          <h1 className="text-5xl font-light tracking-tight text-foreground mb-1">
-            <span className="text-2xl align-top mr-1">LKR</span>
-            <MaskedAmount amount={totalBalance} />
-          </h1>
-          <div className="flex items-center gap-1.5">
+          <span className="text-[13px] font-medium text-zinc-400">Available</span>
+
+          <div className="flex items-center gap-1 -mr-1">
+            {/* Safe-to-Spend Status Shield Icon */}
+            {showSafeToSpendHome && (
+              <button
+                type="button"
+                onClick={() => setShowSafeBreakdownModal(true)}
+                className={`p-1.5 flex items-center justify-center rounded-lg transition-colors hover:bg-white/[0.04] ${
+                  safeToSpendBreakdown.isNegative
+                    ? 'text-amber-500'
+                    : 'text-emerald-500'
+                }`}
+                title={`Safe to spend: LKR ${safeToSpendBreakdown.safeToSpend.toLocaleString()}`}
+              >
+                <ShieldCheck size={18} />
+              </button>
+            )}
+
+            {/* Privacy Eye Toggle Icon (Quiet, unboxed) */}
             <button
+              type="button"
               onClick={toggleMask}
-              className={`p-2 rounded-xl border transition-colors ${
-                isMasked
-                  ? 'bg-accent/20 border-accent/40 text-accent font-semibold'
-                  : 'bg-muted/40 border-border text-muted-foreground hover:text-foreground'
-              }`}
-              title={isMasked ? 'Reveal figures' : 'Mask figures (Privacy mode)'}
+              className="p-1.5 flex items-center justify-center rounded-lg text-zinc-400 hover:text-zinc-200 transition-colors"
+              title={isMasked ? 'Reveal figures' : 'Mask figures'}
             >
-              {isMasked ? <EyeOff size={15} /> : <Eye size={15} />}
+              {isMasked ? <EyeOff size={18} /> : <Eye size={18} />}
             </button>
-            {!showQuickAddHome && (
-              <button
-                onClick={() => setShowQuickAddHome(true)}
-                className="px-2.5 py-1.5 bg-muted/60 hover:bg-muted text-muted-foreground hover:text-foreground border border-border/70 rounded-xl text-xs font-medium flex items-center gap-1.5 transition-colors"
-                title="Show Quick-Add favorite chips on Home"
-              >
-                <Sparkles size={13} className="text-accent" />
-                <span>+ Quick-Add</span>
-              </button>
-            )}
-            {!showSafeToSpendHome && (
-              <button
-                onClick={() => setShowSafeToSpendHome(true)}
-                className="px-2.5 py-1.5 bg-muted/60 hover:bg-muted text-muted-foreground hover:text-foreground border border-border/70 rounded-xl text-xs font-medium flex items-center gap-1.5 transition-colors"
-                title="Show Safe-to-Spend forecast card"
-              >
-                <ShieldCheck size={14} className="text-emerald-500" />
-                <span>+ Safe-to-Spend</span>
-              </button>
-            )}
           </div>
         </div>
-        <p className="text-muted-foreground text-sm font-medium mb-4">Available</p>
 
-        {/* Account pills — read-only glance */}
-        <div className="flex overflow-x-auto pb-1 -mx-6 px-6 hide-scrollbar space-x-2">
-          {accounts.map(acc => (
-            <div
-              key={acc.id}
-              className={`flex-shrink-0 px-3 py-1.5 rounded-xl border text-xs font-medium flex items-center gap-1.5
-                ${acc.includeInTotal
-                  ? 'bg-card border-border text-foreground'
-                  : 'bg-muted border-dashed border-border text-muted-foreground'}`}
-            >
-              <span>{accIcon(acc.type)}</span>
-              <span>{acc.name}</span>
-              <span className="text-muted-foreground">
-                LKR <MaskedAmount amount={acc.balance} />
-              </span>
-            </div>
-          ))}
+        {/* Hero Balance: dominant 48-52px, baseline aligned */}
+        <div className="flex items-baseline gap-2.5 mt-4">
+          <span className="text-[13px] sm:text-[14px] font-normal text-zinc-400 select-none">LKR</span>
+          <span className="text-5xl sm:text-[52px] font-normal tracking-tight text-zinc-50 tabular-nums leading-none">
+            <MaskedAmount amount={totalBalance} />
+          </span>
         </div>
-      </header>
 
-      {/* ── Quick-Add Favorite Habits (Gated by User Preference) ───────────── */}
-      {showQuickAddHome && (
-        <div className="mb-6 bg-card/60 border border-border/70 rounded-2xl p-4 shadow-2xs">
-          <QuickAddChips condensed />
-        </div>
-      )}
+        {/* 4 accounts › */}
+        <button
+          type="button"
+          onClick={() => navigate('/accounts')}
+          className="mt-3 text-[13px] text-zinc-400 hover:text-zinc-200 transition-colors flex items-center gap-1 cursor-pointer group"
+        >
+          <span>
+            {activeAccountsCount} {activeAccountsCount === 1 ? 'account' : 'accounts'}
+          </span>
+          <span className="text-zinc-500 group-hover:text-zinc-300 transition-colors">›</span>
+        </button>
+      </section>
 
-      {/* ── Safe-to-Spend Forecast (Gated by User Preference) ─────────────── */}
-      {showSafeToSpendHome && <SafeToSpendCard />}
+      {/* ── CARD 2: Monthly Budget (How am I doing?) ───────────────────────── */}
+      <section className="mt-3.5 sm:mt-4">
+        <button
+          type="button"
+          onClick={() => navigate('/budget')}
+          className="w-full text-left active:scale-[0.99] transition-transform block focus:outline-none"
+        >
+          {activeBudget ? (
+            <div className="bg-[#111113] border border-white/[0.04] rounded-xl p-5 shadow-none">
+              {/* Context Label (THIS MONTH or BUDGET) */}
+              <p className="text-[11px] font-semibold text-zinc-400 uppercase tracking-wider mb-3">
+                {budgetContextLabel}
+              </p>
 
-      {/* ── Budget glance — tap to manage ─────────────────────────────────── */}
-      <button
-        onClick={() => navigate('/budget')}
-        className="w-full text-left mb-8 active:scale-[0.99] transition-transform"
-      >
-        {activeBudget ? (
-          <div className="bg-card rounded-2xl p-5 border border-border shadow-sm">
-            <div className="flex justify-between items-center mb-3">
-              <div>
-                <p className="text-xs text-muted-foreground font-medium mb-1">{activeBudget.name}</p>
-                <p className="text-3xl font-light text-foreground">
-                  LKR <MaskedAmount amount={budgetStatus.remaining} />
-                  <span className={`text-sm font-normal ml-2 ${budgetStatus.isOverspent ? 'text-red-500 font-medium' : 'text-muted-foreground'}`}>
-                    {budgetStatus.label}
+              {/* Glance Remaining Amount & Total: around 30-34px */}
+              <div className="flex items-baseline justify-between mb-3.5 flex-wrap gap-2">
+                <div className="flex items-baseline gap-2">
+                  <span className="text-[30px] sm:text-[32px] font-normal text-zinc-50 tracking-tight tabular-nums leading-none">
+                    LKR <MaskedAmount amount={budgetStatus.remaining} />
                   </span>
-                </p>
+                  <span className="text-sm font-normal text-zinc-400">
+                    {budgetStatus.isOverspent ? 'over budget' : 'left'}
+                  </span>
+                </div>
+                <span className="text-[13px] text-zinc-400 tabular-nums">
+                  of LKR <MaskedAmount amount={activeBudget.amount} />
+                </span>
               </div>
-              <div className="flex items-center gap-2">
-                <span className={`w-3.5 h-3.5 rounded-full ${budgetStatus.dotColor} shadow-sm ${budgetStatus.glowColor}`} />
-                <ChevronRight size={18} className="text-muted-foreground opacity-50" />
-              </div>
-            </div>
-            <div className="h-2 w-full bg-muted rounded-full overflow-hidden mb-2">
-              <div
-                className={`h-full rounded-full transition-all duration-500 ${budgetStatus.barColor}`}
-                style={{ width: `${budgetStatus.percent}%` }}
-              />
-            </div>
-            <div className="flex justify-between text-xs text-muted-foreground font-medium">
-              <span>
-                LKR <MaskedAmount amount={spentThisPeriod} /> of LKR{' '}
-                <MaskedAmount amount={activeBudget.amount} /> spent
-              </span>
-              <span>{daysLeft}d left</span>
-            </div>
-          </div>
-        ) : (
-          <div className="bg-muted rounded-2xl p-5 border border-dashed border-border flex items-center justify-between text-muted-foreground">
-            <span className="text-sm font-medium">No budget · Tap to set one up</span>
-            <ChevronRight size={18} className="opacity-50" />
-          </div>
-        )}
-      </button>
 
-      {/* ── Recent activity glance ────────────────────────────────────────── */}
-      <section>
-        <h2 className="text-xs font-medium text-muted-foreground uppercase tracking-wider mb-3">Recent</h2>
-        <div className="space-y-2">
-          {recentTransactions.map(txn => (
-            <div key={txn.id} className="flex items-center justify-between p-3 bg-card border border-border rounded-xl shadow-sm">
-              <div className="flex items-center">
-                <div className="w-9 h-9 rounded-full bg-muted flex items-center justify-center text-base mr-3">
-                  {txn.type === 'expense' ? '💸' : txn.type === 'income' ? '💰' : '🔄'}
-                </div>
-                <div>
-                  <p className="font-medium text-foreground text-sm leading-tight">
-                    {txn.notes || (txn.type === 'expense' ? 'Expense' : txn.type === 'income' ? 'Income' : 'Transfer')}
-                  </p>
-                  <p className="text-xs text-muted-foreground flex items-center gap-1.5 mt-0.5">
-                    <span>{new Date(txn.date).toLocaleDateString()}</span>
-                    {txn.excludeFromBudget && (
-                      <span className="text-[10px] bg-amber-500/10 text-amber-600 dark:text-amber-400 font-medium px-1.5 py-0.5 rounded">
-                        Out of budget
-                      </span>
-                    )}
-                  </p>
-                </div>
+              {/* Intelligent Progress / Health Bar (clean solid bar, smooth rounded ends, strongest colored element) */}
+              <div className="h-[5px] w-full bg-zinc-800/80 rounded-full overflow-hidden mb-2.5">
+                <div
+                  className={`h-full rounded-full transition-all duration-500 ${budgetStatus.barColor}`}
+                  style={{ width: `${budgetStatus.percent}%` }}
+                />
               </div>
-              <span className={`font-medium text-sm ${txn.type === 'expense' ? 'text-foreground' : txn.type === 'income' ? 'text-green-500' : 'text-muted-foreground'}`}>
-                {txn.type === 'expense' ? '−' : txn.type === 'income' ? '+' : ''}LKR{' '}
-                <MaskedAmount amount={txn.amount} />
-              </span>
+
+              {/* Metrics Line: Spent on left, days left on right, pace warning if needed */}
+              <div className="flex items-center justify-between text-xs text-zinc-400 tabular-nums">
+                <span>
+                  LKR <MaskedAmount amount={spentThisPeriod} /> spent
+                </span>
+
+                {budgetStatus.paceWarning && (
+                  <span className={`font-medium ${budgetStatus.textColor}`}>
+                    {budgetStatus.paceWarning}
+                  </span>
+                )}
+
+                <span>{daysLeft}d left</span>
+              </div>
             </div>
-          ))}
+          ) : (
+            <div className="bg-[#111113] border border-white/[0.04] rounded-xl p-5 shadow-none flex items-center justify-between text-zinc-400 hover:text-zinc-200 transition-colors">
+              <span className="text-sm font-medium">No active budget · Tap to set up</span>
+              <ChevronRight size={18} className="text-zinc-500" />
+            </div>
+          )}
+        </button>
+      </section>
+
+      {/* ── LIST: Recent Activity (What just happened? - Completely unboxed) ─ */}
+      <section className="mt-7 sm:mt-8">
+        {/* Header: RECENT on left, See all › on right */}
+        <div className="flex items-center justify-between mb-3.5">
+          <h2 className="text-[11px] font-semibold text-zinc-400 uppercase tracking-wider">Recent</h2>
+          <button
+            type="button"
+            onClick={() => navigate('/activity')}
+            className="text-xs text-zinc-400 hover:text-zinc-200 transition-colors flex items-center gap-0.5"
+          >
+            <span>See all</span>
+            <span className="text-zinc-500">›</span>
+          </button>
+        </div>
+
+        {/* Clean unboxed rows with subtle dividers */}
+        <div className="divide-y divide-zinc-800/40">
+          {recentTransactions.map(txn => {
+            const iconData = getTransactionIcon(txn, categories);
+            const isIncome = txn.type === 'income';
+            const isExpense = txn.type === 'expense';
+            const dateLabel = formatTransactionDate(txn.date);
+
+            return (
+              <div key={txn.id} className="py-3 sm:py-3.5 flex items-center justify-between">
+                <div className="flex items-center min-w-0 pr-4">
+                  <div className="w-8 h-8 rounded-lg bg-zinc-800/50 border border-zinc-800/30 flex items-center justify-center mr-3 shrink-0 text-zinc-400">
+                    <iconData.Icon size={15} className={isIncome ? 'text-emerald-400' : 'text-zinc-400'} />
+                  </div>
+                  <div className="min-w-0">
+                    <p className="font-medium text-zinc-100 text-sm leading-tight truncate">
+                      {txn.notes || (isExpense ? 'Expense' : isIncome ? 'Income' : 'Transfer')}
+                    </p>
+                    <p className="text-xs text-zinc-400 mt-0.5">
+                      {dateLabel}
+                      {txn.excludeFromBudget && (
+                        <span className="ml-2 text-[10px] text-amber-400/90 font-medium">
+                          Out of budget
+                        </span>
+                      )}
+                    </p>
+                  </div>
+                </div>
+                <span className={`font-medium text-sm tabular-nums whitespace-nowrap ${isIncome ? 'text-emerald-400' : 'text-zinc-50'}`}>
+                  {isExpense ? '−' : isIncome ? '+' : ''}LKR <MaskedAmount amount={txn.amount} />
+                </span>
+              </div>
+            );
+          })}
+
           {recentTransactions.length === 0 && (
-            <p className="text-muted-foreground text-sm text-center py-6">No activity yet.</p>
+            <p className="text-zinc-500 text-xs py-4">No recent activity.</p>
           )}
         </div>
       </section>
+
+      {/* ── Safe to Spend Breakdown Modal (Opens upon tapping Shield icon) ── */}
+      {showSafeBreakdownModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70 backdrop-blur-sm animate-in fade-in duration-150">
+          <div className="relative w-full max-w-md bg-card border border-border rounded-2xl p-5 shadow-2xl max-h-[90vh] overflow-y-auto space-y-4">
+            <div className="flex items-center justify-between pb-2 border-b border-border">
+              <h3 className="text-sm font-semibold text-foreground">Safe to Spend Breakdown</h3>
+              <button
+                type="button"
+                onClick={() => setShowSafeBreakdownModal(false)}
+                className="p-1 text-muted-foreground hover:text-foreground rounded-lg"
+              >
+                <X size={18} />
+              </button>
+            </div>
+            <SafeToSpendCard />
+          </div>
+        </div>
+      )}
     </div>
   );
 }

@@ -11,7 +11,8 @@ export type NavItemId =
   | 'debts'
   | 'float-tools'
   | 'budgets'
-  | 'statement-reader';
+  | 'statement-reader'
+  | 'settings';
 
 export interface NavItemConfig {
   id: NavItemId;
@@ -30,9 +31,10 @@ export const ALL_NAV_ITEMS: NavItemConfig[] = [
   { id: 'float-tools',      label: 'Float Tools',     to: '/float-tools' },
   { id: 'budgets',          label: 'Budgets',         to: '/budget' },
   { id: 'statement-reader', label: 'Statements',      to: '/statements' },
+  { id: 'settings',         label: 'Settings',        to: '/settings' },
 ];
 
-export const DEFAULT_FRONT_ITEMS: NavItemId[] = ['home', 'accounts', 'activity', 'debts'];
+export const DEFAULT_FRONT_ITEMS: NavItemId[] = ['home', 'accounts', 'activity', 'debts', 'settings'];
 
 interface NavState {
   frontItemIds: NavItemId[];
@@ -52,7 +54,6 @@ export const useNavStore = create<NavState>()(
     (set, get) => ({
       frontItemIds: DEFAULT_FRONT_ITEMS,
       isCustomizeModalOpen: false,
-
       setCustomizeModalOpen: (open) => set({ isCustomizeModalOpen: open }),
 
       getHiddenItemIds: () => {
@@ -65,8 +66,8 @@ export const useNavStore = create<NavState>()(
         const front = candidateFrontIds ?? get().frontItemIds;
         const hiddenCount = ALL_NAV_ITEMS.length - front.length;
         const hasMore = hiddenCount > 0;
-        // Total options on bottom bar: front items + (1 if More is needed) + 1 (Settings)
-        return front.length + (hasMore ? 1 : 0) + 1;
+        // Total options on bottom bar: front items + (1 if More is needed)
+        return front.length + (hasMore ? 1 : 0);
       },
 
       moveToFront: (id: NavItemId) => {
