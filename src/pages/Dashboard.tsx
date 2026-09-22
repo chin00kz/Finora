@@ -188,13 +188,13 @@ export default function Dashboard() {
 
   return (
     <div className="w-full max-w-md md:max-w-xl lg:max-w-2xl mx-auto px-5 pt-7 sm:pt-8 md:pt-10 pb-36">
-      {/* ── CARD 1: Available Money (What do I have?) ───────────────────────── */}
-      <section className="bg-card border border-border rounded-xl p-5 shadow-none">
+      {/* ── SECTION 1: Available Context (Page Level) ───────────────────────── */}
+      <section className="mb-7 sm:mb-8 mt-1">
         {/* Available row with quiet utility actions [shield] [eye] */}
         <div className="flex items-center justify-between">
-          <span className="text-[13px] font-medium text-muted-foreground">Available</span>
+          <span className="text-sm font-medium text-muted-foreground">Available</span>
 
-          <div className="flex items-center gap-1 -mr-1">
+          <div className="flex items-center gap-1 -mr-2">
             {/* Safe-to-Spend Status Shield Icon */}
             {showSafeToSpendHome && (
               <button
@@ -207,7 +207,7 @@ export default function Dashboard() {
                 }`}
                 title={`Safe to spend: LKR ${safeToSpendBreakdown.safeToSpend.toLocaleString()}`}
               >
-                <ShieldCheck size={18} />
+                <ShieldCheck size={20} />
               </button>
             )}
 
@@ -218,15 +218,15 @@ export default function Dashboard() {
               className="p-1.5 flex items-center justify-center rounded-lg text-muted-foreground hover:text-foreground transition-colors"
               title={isMasked ? 'Reveal figures' : 'Mask figures'}
             >
-              {isMasked ? <EyeOff size={18} /> : <Eye size={18} />}
+              {isMasked ? <EyeOff size={20} /> : <Eye size={20} />}
             </button>
           </div>
         </div>
 
-        {/* Hero Balance: dominant 48-52px, baseline aligned */}
-        <div className="flex items-baseline gap-2.5 mt-4">
-          <span className="text-[13px] sm:text-[14px] font-normal text-muted-foreground select-none">LKR</span>
-          <span className="text-5xl sm:text-[52px] font-normal tracking-tight text-foreground tabular-nums leading-none">
+        {/* Hero Balance: printed on page */}
+        <div className="flex items-baseline gap-2 mt-2">
+          <span className="text-sm font-medium text-muted-foreground select-none">LKR</span>
+          <span className="text-[40px] font-light tracking-tight text-foreground tabular-nums leading-none">
             <MaskedAmount amount={totalBalance} />
           </span>
         </div>
@@ -235,33 +235,33 @@ export default function Dashboard() {
         <button
           type="button"
           onClick={() => navigate('/accounts')}
-          className="mt-3 text-[13px] text-muted-foreground hover:text-foreground transition-colors flex items-center gap-1 cursor-pointer group"
+          className="mt-1.5 text-[13px] text-muted-foreground hover:text-foreground transition-colors flex items-center gap-1 cursor-pointer group"
         >
           <span>
             {activeAccountsCount} {activeAccountsCount === 1 ? 'account' : 'accounts'}
           </span>
-          <span className="text-muted-foreground group-hover:text-muted-foreground transition-colors">›</span>
+          <span className="text-muted-foreground group-hover:text-foreground transition-colors">›</span>
         </button>
       </section>
 
-      {/* ── CARD 2: Monthly Budget (How am I doing?) ───────────────────────── */}
-      <section className="mt-3.5 sm:mt-4">
+      {/* ── CARD 2: Monthly Budget (The Single Hero Card) ────────────────────── */}
+      <section>
         <button
           type="button"
           onClick={() => navigate('/budget')}
           className="w-full text-left active:scale-[0.99] transition-transform block focus:outline-none"
         >
           {activeBudget ? (
-            <div className="bg-card border border-border rounded-xl p-5 shadow-none">
+            <div className="bg-card border border-border rounded-xl px-5 py-4 shadow-none">
               {/* Context Label (THIS MONTH or BUDGET) */}
-              <p className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wider mb-3">
+              <p className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wider mb-2">
                 {budgetContextLabel}
               </p>
 
-              {/* Glance Remaining Amount & Total: around 30-34px */}
-              <div className="flex items-baseline justify-between mb-3.5 flex-wrap gap-2">
+              {/* Glance Remaining Amount & Total: larger for emphasis */}
+              <div className="flex items-baseline justify-between mb-1 flex-wrap gap-2">
                 <div className="flex items-baseline gap-2">
-                  <span className="text-[30px] sm:text-[32px] font-normal text-foreground tracking-tight tabular-nums leading-none">
+                  <span className="text-[34px] font-normal text-foreground tracking-tight tabular-nums leading-none">
                     LKR <MaskedAmount amount={budgetStatus.remaining} />
                   </span>
                   <span className="text-sm font-normal text-muted-foreground">
@@ -273,8 +273,8 @@ export default function Dashboard() {
                 </span>
               </div>
 
-              {/* Intelligent Progress / Health Bar (clean solid bar, smooth rounded ends, strongest colored element) */}
-              <div className="h-[5px] w-full bg-muted rounded-full overflow-hidden mb-2.5">
+              {/* Intelligent Progress / Health Bar (substantial 8px height, generous breathing room) */}
+              <div className="h-[8px] w-full bg-muted rounded-full overflow-hidden mt-6 mb-5">
                 <div
                   className={`h-full rounded-full transition-all duration-500 ${budgetGlance.barColor}`}
                   style={{ width: `${budgetStatus.percent}%` }}
