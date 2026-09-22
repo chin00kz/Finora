@@ -23,6 +23,14 @@ interface PrivacyState {
   hiddenQuickNotes: string[];
   setHiddenQuickNotes: (notes: string[]) => void;
   hideQuickNote: (note: string) => void;
+
+  // Glance Colors
+  glanceBudget: boolean;
+  setGlanceBudget: (enabled: boolean) => void;
+  glanceTransactions: boolean;
+  setGlanceTransactions: (enabled: boolean) => void;
+  glanceUpcoming: boolean;
+  setGlanceUpcoming: (enabled: boolean) => void;
 }
 
 export const usePrivacyStore = create<PrivacyState>()(
@@ -63,6 +71,13 @@ export const usePrivacyStore = create<PrivacyState>()(
           }
           return { hiddenQuickNotes: [...state.hiddenQuickNotes, note.trim()] };
         }),
+
+      glanceBudget: true,
+      setGlanceBudget: (glanceBudget) => set({ glanceBudget }),
+      glanceTransactions: true,
+      setGlanceTransactions: (glanceTransactions) => set({ glanceTransactions }),
+      glanceUpcoming: true,
+      setGlanceUpcoming: (glanceUpcoming) => set({ glanceUpcoming }),
     }),
     {
       name: 'finora_user_preferences',

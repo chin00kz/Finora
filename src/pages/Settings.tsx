@@ -35,6 +35,12 @@ export default function Settings() {
     setOneTapLogMode,
     showQuickAddHome,
     setShowQuickAddHome,
+    glanceBudget,
+    setGlanceBudget,
+    glanceTransactions,
+    setGlanceTransactions,
+    glanceUpcoming,
+    setGlanceUpcoming,
   } = usePrivacyStore();
 
   const [isSyncing, setIsSyncing] = useState(false);
@@ -555,6 +561,60 @@ export default function Settings() {
                 {t}
               </button>
             ))}
+          </div>
+        </div>
+      </section>
+
+      {/* ── Glance Colors ──────────────────────────────────────────────────────── */}
+      <section className="bg-card rounded-2xl border border-border shadow-sm overflow-hidden mb-8">
+        <div className="p-5 border-b border-border bg-muted/50">
+          <h3 className="font-medium text-foreground">Glance Colors</h3>
+          <p className="text-xs text-muted-foreground mt-1">Use color to highlight financial importance.</p>
+        </div>
+        <div className="p-5 space-y-5">
+          <div className="flex items-center justify-between">
+            <div>
+              <p className="text-sm font-medium text-foreground">Budget progress</p>
+            </div>
+            <label className="relative inline-flex items-center cursor-pointer">
+              <input
+                type="checkbox"
+                checked={glanceBudget}
+                onChange={(e) => setGlanceBudget(e.target.checked)}
+                className="sr-only peer"
+              />
+              <div className="w-11 h-6 bg-muted peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-border after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-foreground"></div>
+            </label>
+          </div>
+          
+          <div className="flex items-center justify-between">
+            <div>
+              <p className="text-sm font-medium text-foreground">Transaction amounts</p>
+            </div>
+            <label className="relative inline-flex items-center cursor-pointer">
+              <input
+                type="checkbox"
+                checked={glanceTransactions}
+                onChange={(e) => setGlanceTransactions(e.target.checked)}
+                className="sr-only peer"
+              />
+              <div className="w-11 h-6 bg-muted peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-border after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-foreground"></div>
+            </label>
+          </div>
+          
+          <div className="flex items-center justify-between">
+            <div>
+              <p className="text-sm font-medium text-foreground">Upcoming payments</p>
+            </div>
+            <label className="relative inline-flex items-center cursor-pointer">
+              <input
+                type="checkbox"
+                checked={glanceUpcoming}
+                onChange={(e) => setGlanceUpcoming(e.target.checked)}
+                className="sr-only peer"
+              />
+              <div className="w-11 h-6 bg-muted peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-border after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-foreground"></div>
+            </label>
           </div>
         </div>
       </section>

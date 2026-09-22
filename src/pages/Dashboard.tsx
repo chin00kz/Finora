@@ -2,6 +2,7 @@ import { useState, useMemo } from 'react';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { db, type Transaction, type Category } from '../db/db';
 import { differenceInDays, isToday, isYesterday, format, isSameDay } from 'date-fns';
+import { getBudgetGlanceColors, getTransactionBaseline, getTransactionGlanceColor } from '../utils/glanceIntelligence';
 import { useNavigate } from 'react-router-dom';
 import {
   ChevronRight,
@@ -92,6 +93,9 @@ export default function Dashboard() {
     showSafeToSpendHome,
     isMasked,
     toggleMask,
+    glanceBudget,
+    glanceTransactions,
+    glanceUpcoming,
   } = usePrivacyStore();
 
   const [showSafeBreakdownModal, setShowSafeBreakdownModal] = useState(false);
@@ -116,6 +120,10 @@ export default function Dashboard() {
     .reduce((sum, a) => sum + a.balance, 0);
 
   const activeAccountsCount = accounts.filter(a => a.includeInTotal).length;
+
+  const transactionBaseline = useMemo(() => {
+    return getTransactionBaseline(transactions);
+  }, [transactions]);
 
   // ── Safe-to-Spend Computation ───────────────────────────────────────────────
   const safeToSpendBreakdown = useMemo(() => {
@@ -158,6 +166,8 @@ export default function Dashboard() {
       .sort((a, b) => b.date - a.date)
       .slice(0, 3);
   }, [transactions]);
+
+  const budgetGlance = getBudgetGlanceColors(budgetStatus.actualPercent, glanceBudget);
 
   // Contextual budget label: prefer 'This Month' or 'Budget' over arbitrary test names
   const budgetContextLabel = useMemo(() => {
@@ -266,7 +276,7 @@ export default function Dashboard() {
               {/* Intelligent Progress / Health Bar (clean solid bar, smooth rounded ends, strongest colored element) */}
               <div className="h-[5px] w-full bg-muted rounded-full overflow-hidden mb-2.5">
                 <div
-                  className={`h-full rounded-full transition-all duration-500 ${budgetStatus.barColor}`}
+                  className={`h-full rounded-full transition-all duration-500 ${budgetGlance.barColor}`}
                   style={{ width: `${budgetStatus.percent}%` }}
                 />
               </div>
@@ -277,7 +287,7 @@ export default function Dashboard() {
                   LKR <MaskedAmount amount={spentThisPeriod} /> spent
                 </span>
 
-                <span className="font-medium">
+                <span className={`font-medium ${budgetGlance.textColor}`}>
                   {Math.round(budgetStatus.actualPercent)}% spent
                 </span>
 
@@ -341,7 +351,7 @@ export default function Dashboard() {
                     </p>
                   </div>
                 </div>
-                <span className={`font-medium text-sm tabular-nums whitespace-nowrap ${isIncome ? 'text-emerald-500' : 'text-foreground'}`}>
+                <span className={`font-medium text-sm tabular-nums whitespace-nowrap ${getTransactionGlanceColor(txn.amount, txn.type, transactionBaseline, glanceTransactions)}`}>
                   {isExpense ? '−' : isIncome ? '+' : ''}LKR <MaskedAmount amount={txn.amount} />
                 </span>
               </button>
@@ -399,7 +409,7 @@ export default function Dashboard() {
                       </p>
                     </div>
                   </div>
-                  <span className={`font-medium text-sm tabular-nums whitespace-nowrap ${isIncome ? 'text-emerald-500' : 'text-foreground'}`}>
+                  <span className={`font-medium text-sm tabular-nums whitespace-nowrap ${getTransactionGlanceColor(r.amount, r.type, transactionBaseline, glanceUpcoming)}`}>
                     {isExpense ? '−' : isIncome ? '+' : ''}LKR <MaskedAmount amount={r.amount} />
                   </span>
                 </button>
