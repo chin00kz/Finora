@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { format, parse } from 'date-fns';
 import { X, Trash2, Plus } from 'lucide-react';
 import { db } from '../db/db';
 import type { Transaction, TransactionType } from '../db/db';
@@ -35,6 +36,8 @@ export default function TransactionEditSheet({ transaction, onClose }: Props) {
   const [selectedTagIds, setSelectedTagIds] = useState<string[]>(transaction.tagIds || []);
   const [tagInput, setTagInput] = useState('');
   const [showNoteSuggestions, setShowNoteSuggestions] = useState(false);
+  const [txnDate, setTxnDate] = useState(() => format(transaction.date || Date.now(), 'yyyy-MM-dd'));
+  const [txnTime, setTxnTime] = useState(() => format(transaction.date || Date.now(), 'HH:mm'));
 
   // Inline new-category form
   const PRESET_COLORS = ['#f43f5e', '#f97316', '#eab308', '#22c55e', '#10b981', '#3b82f6', '#8b5cf6', '#ec4899', '#64748b'];
@@ -134,11 +137,20 @@ export default function TransactionEditSheet({ transaction, onClose }: Props) {
         await reverseBalance();
         await applyBalance(numAmount, accountId, toAccountId || undefined);
 
-        const now = Date.now();
+        let txDateObj = new Date();
+        try {
+          if (txnDate && txnTime) {
+            txDateObj = parse(`${txnDate} ${txnTime}`, 'yyyy-MM-dd HH:mm', new Date());
+          }
+        } catch (e) {
+          txDateObj = new Date();
+        }
+        const now = txDateObj.getTime();
 
         // Update transaction record
         await db.transactions.update(transaction.id, {
           amount: numAmount,
+          date: now,
           accountId,
           toAccountId: type === 'transfer' ? toAccountId : undefined,
           categoryId: type !== 'transfer' && type !== 'debt_settlement' ? categoryId : undefined,
@@ -443,6 +455,24 @@ export default function TransactionEditSheet({ transaction, onClose }: Props) {
           )}
 
           {/* Tags */}
+          <div>
+            <label className="block text-xs font-medium text-muted-foreground mb-2 uppercase tracking-wider">Date & Time</label>
+            <div className="flex gap-3">
+              <input 
+                type="date"
+                value={txnDate}
+                onChange={e => setTxnDate(e.target.value)}
+                className="flex-1 bg-background border border-border rounded-xl px-4 py-3 text-sm focus:outline-none focus:border-foreground"
+              />
+              <input 
+                type="time"
+                value={txnTime}
+                onChange={e => setTxnTime(e.target.value)}
+                className="flex-1 bg-background border border-border rounded-xl px-4 py-3 text-sm focus:outline-none focus:border-foreground"
+              />
+            </div>
+          </div>
+
           <div>
             <label className="block text-xs font-medium text-muted-foreground mb-2 uppercase tracking-wider">Tags</label>
             <div className="p-3 bg-background border border-border rounded-xl flex flex-wrap gap-2 items-center min-h-[48px]">

@@ -1,4 +1,5 @@
 import { useState, useEffect, useMemo, useRef } from 'react';
+import { format, parse } from 'date-fns';
 import { useNavigate } from 'react-router-dom';
 import { X, ChevronDown, ChevronUp, Plus, Sparkles, AlertCircle } from 'lucide-react';
 import { db } from '../db/db';
@@ -37,6 +38,8 @@ export default function TransactionModal() {
   const [personalAmount, setPersonalAmount] = useState(''); // For shared expenses
   const [sharedPersonName, setSharedPersonName] = useState('');
   const [excludeFromBudget, setExcludeFromBudget] = useState(false);
+  const [txnDate, setTxnDate] = useState(() => format(Date.now(), 'yyyy-MM-dd'));
+  const [txnTime, setTxnTime] = useState(() => format(Date.now(), 'HH:mm'));
 
   const [showNoteSuggestions, setShowNoteSuggestions] = useState(false);
 
@@ -175,6 +178,13 @@ export default function TransactionModal() {
     }
   }, [isAddTransactionModalOpen, prefillData, tags, setPrefillData]);
 
+  useEffect(() => {
+    if (isAddTransactionModalOpen) {
+      setTxnDate(format(Date.now(), 'yyyy-MM-dd'));
+      setTxnTime(format(Date.now(), 'HH:mm'));
+    }
+  }, [isAddTransactionModalOpen]);
+
   const filteredCategories = categories.filter(c => c.type === (type === 'transfer' ? 'expense' : type));
 
   // Set sensible defaults once data arrives — must be in useEffect, not during render
@@ -236,7 +246,15 @@ export default function TransactionModal() {
           }
         }
 
-        const now = Date.now();
+        let txDateObj = new Date();
+        try {
+          if (txnDate && txnTime) {
+            txDateObj = parse(`${txnDate} ${txnTime}`, 'yyyy-MM-dd HH:mm', new Date());
+          }
+        } catch (e) {
+          txDateObj = new Date();
+        }
+        const now = txDateObj.getTime();
 
         // 1. Add transaction record
         await db.transactions.add({
@@ -630,6 +648,24 @@ export default function TransactionModal() {
             {/* Advanced Options */}
             {showAdvanced && (
               <div className="space-y-6 pt-2 pb-6 animate-in slide-in-from-top-4 fade-in duration-300 border-t border-border">
+
+                <div>
+                  <label className="block text-xs font-medium text-muted-foreground mb-2 uppercase tracking-wider">Date & Time</label>
+                  <div className="flex gap-3">
+                    <input 
+                      type="date"
+                      value={txnDate}
+                      onChange={e => setTxnDate(e.target.value)}
+                      className="flex-1 bg-background border border-border rounded-xl px-4 py-3 text-sm focus:outline-none focus:border-foreground"
+                    />
+                    <input 
+                      type="time"
+                      value={txnTime}
+                      onChange={e => setTxnTime(e.target.value)}
+                      className="flex-1 bg-background border border-border rounded-xl px-4 py-3 text-sm focus:outline-none focus:border-foreground"
+                    />
+                  </div>
+                </div>
 
                 <div>
                   <label className="block text-xs font-medium text-muted-foreground mb-2 uppercase tracking-wider">Tags</label>
