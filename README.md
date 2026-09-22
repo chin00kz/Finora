@@ -59,8 +59,8 @@ The everyday surface is disciplined, distraction-free, and lightning-fast. Deep 
 ```text
 ┌─────────────────────────────────────────────────────────────────────────┐
 │                           LAYER 1: THE SURFACE                          │
-│  • Available Balance Glance            • Quick-Add Habitual Chips (1-tap)│
-│  • Spending Velocity & Pace Indicator  • Keyboard Shortcuts (N / Escape) │
+│  • Available Balance Glance                   • Fast Transaction Capture│
+│  • Adaptive Glance Colors              • Keyboard Shortcuts (N / Escape) │
 │  • Safe-to-Spend Liquidity Forecast    • Global Animated Undo Toast      │
 └────────────────────────────────────┬────────────────────────────────────┘
                                      │
@@ -74,13 +74,13 @@ The everyday surface is disciplined, distraction-free, and lightning-fast. Deep 
 ┌────────────────────────────────────▼────────────────────────────────────┐
 │                    LAYER 3: LOCAL-FIRST DATA ENGINE                     │
 │  Dexie.js (IndexedDB) ──────── SyncEngine ──────── Supabase Cloud       │
-│  • Sub-millisecond reads/writes  • Two-way sync    • Auth & Security     │
-│  • 100% Offline autonomy         • Delta queue     • Cloud Backup        │
+│  • Fast local reads/writes         • Two-way sync    • Auth & Security     │
+│  • Core Offline autonomy           • Delta queue     • Cloud Backup        │
 │  • Zero mock data pollution      • Race-free undo  • Conflict resolution │
 └─────────────────────────────────────────────────────────────────────────┘
 ```
 
-1. **Local-First is Sovereign**: All read and write operations hit the local IndexedDB database first. Finora is 100% functional without an active internet connection.
+1. **Local-First is Sovereign**: All read and write operations hit the local IndexedDB database first. Core finance functionality remains fully usable offline; cloud authentication and synchronization require connectivity.
 2. **Universal Ergonomics**: Wide desktop screens are treated with intentional centering and proportional breathing room—never filled with synthetic filler cards. Mobile screens feature a thumb-friendly bottom bar with strict slot controls.
 3. **Budget-Neutral Integrity**: Transactions generated from debt settlements, internal transfers, and reimbursements never distort real-world budget consumption or category spend.
 4. **Zero Mock Pollution**: New guest sessions start clean. No dummy tags, fake accounts, or seeded transactions pollute your personal ledger.
@@ -90,8 +90,10 @@ The everyday surface is disciplined, distraction-free, and lightning-fast. Deep 
 ##  System Features
 
 ### 1. Minimalist Home Dashboard & Ergonomics
-- **Glance Metrics**: View your **Available Balance**, **Spent This Period**, and dynamic **Daily Spending Pace** in under three seconds.
-- **Dynamic Pacing Indicator**: Gauges whether your current spending velocity is sustainable over the remaining days of your budget cycle.
+- **Available Balance Context**: Immediate view of total available funds and active account count.
+- **Monthly Budget Focus**: Primary budget status card with remaining amount, spent amount, percentage consumed, days remaining, and adaptive progress coloring.
+- **Recent Activity**: Three latest transactions with amount-aware visual emphasis.
+- **Upcoming Payments**: Surfaces recurring payments due within the next 24 hours.
 - **Customizable Mobile Navigation (Strict 4 to 6 Slots)**: Enforces an ergonomic bottom bar on mobile screens. Rearrange primary tabs with ↑ / ↓ controls and tuck secondary tools under the **Explore More** drawer.
 - **Desktop Sidebar Navigation**: Clean persistent sidebar with status indicators, theme toggles, and sync state.
 
@@ -104,10 +106,11 @@ The everyday surface is disciplined, distraction-free, and lightning-fast. Deep 
   - *Evening* (4:00 PM – 9:00 PM)
   - *Night* (9:00 PM – 5:00 AM)
 - **Account & Category Memory**: Remembers the last-used account and category per canonical note. If an account was deleted, displays an amber ` Pick Acc` badge and redirects to the form to avoid silent misbooking.
-- **Quick-Add Favorite Chips (`QuickAddChips.tsx`)**: Tappable pills embedded at the top of the transaction modal and optionally on the Home Dashboard.
+- **Quick-Add Favorite Chips (`QuickAddChips.tsx`)**: Tappable pills embedded at the top of the transaction modal.
 - **Smart Amount Memory & Instant Select**: Typing a description automatically fills the last logged price and highlights the numeric field (`amountInputRef.select()`), allowing instant overwrite with a single tap.
 - **Inline "Log Again Today" Repeat Action**: One-click repeat button (`RotateCcw`) on every row in the Activity table and mobile card view.
 - **Global Animated Undo Toast (`GlobalUndoToast.tsx`)**: 6-second radial countdown toast. Reverses account balance changes, removes the Dexie transaction, and cancels in-flight pending sync entries to prevent ghost creations on Supabase.
+- **Backdated Transaction Entry**: Optional date and time controls under More Options let forgotten purchases be recorded at their actual occurrence time, preserving correct Activity chronology and period-based calculations.
 
 ### 3. Safe-to-Spend Cashflow Forecast
 *A forward-looking liquidity engine that answers "How much can I spend right now without risking an upcoming bill?"*
@@ -164,28 +167,18 @@ The everyday surface is disciplined, distraction-free, and lightning-fast. Deep 
 - **Deposit & Withdrawal Workflows**: Log transfers in or out of goals with immediate balance synchronization.
 
 ### 10. Data Portability, Full JSON Backup & CSV Engine
-- **Complete JSON Snapshot Backup**: One-click export (`exportFullBackupJSON`) and restore (`restoreFullBackupJSON`) covering all 18 Dexie tables with automated schema validation.
 - **Complete JSON Snapshot Backup**: One-click export (`exportFullBackupJSON`) and restore (`restoreFullBackupJSON`) covering all 20 Dexie tables with automated schema validation.
 - **CSV Import with Smart Matching**: Auto-maps column headers, deduplicates existing rows, and dynamically creates missing accounts and categories.
 - **Itemized CSV & Formatted PDF Reports**: Download itemized transaction spreadsheets or printer-friendly PDF financial summaries.
 
 ### 11. Local-First Engine & Cloud Sync Engine
-- **Dexie.js IndexedDB Store**: Real-time reactivity via `useLiveQuery` with sub-millisecond local latency.
-- **Realtime Supabase Sync**: Production-grade two-way synchronization using WebSockets for instant (<300ms) cross-device updates.
+- **Dexie.js IndexedDB Store**: Real-time reactivity via `useLiveQuery` with fast local reads/writes.
+- **Realtime Supabase Sync**: Realtime cross-device synchronization using Supabase Realtime WebSockets.
 - **Robust Reconciliation**: Set-difference deletion reconciliation and timestamp-based (`updated_at`) upserts to prevent race conditions and ensure data consistency.
 - **Offline Resiliency**: Queues offline creations/updates (`finora-dirty`) and deletions (`finora-deleted`) in `localStorage` to be drained safely once connectivity is restored.
 - **Cloud Duplicate Resolver**: Dedicated tool in Settings to clean up remote duplicate IDs and align cloud state with local storage.
 
 ### 12. Standalone PDF Statement Reader (`/statements`)
-*A client-side credit card PDF statement interpreter designed for Commercial Bank of Ceylon statements.*
-- **Strict Standalone Boundary**: Completely decoupled from manual entries (`Activity`), accounts (`Accounts`), and `Credit & Float Tools`. Statement data is never auto-imported or cross-referenced against your regular ledger to prevent double-counting or overwriting manually maintained figures.
-- **100% In-Browser Privacy**: Raw PDF bytes and extracted text are parsed purely in the client browser using `pdfjs-dist`. Zero network requests are made with statement data.
-- **Header Summary Card**: Displays Total Outstanding, Minimum Payment Due, Payment Due Date, Credit Limit, and countdown to due date.
-- **Reconciliation Strip**: Evaluates printed statement math ($Opening + Purchases - Payments = Closing$) and flags any discrepancy.
-- **0% Installment Plan Detection**: Scans transaction descriptions for installment patterns (e.g. `FLEXIPLAN ... N of M`) and shows monthly payment amounts, completion percentage, and estimated remaining liability.
-- **Grouped Categorized Breakdown**: Categorizes statement spending into grouped sums (Supermarkets, Dining, Transport, Utilities, etc.) with expandable itemized transactions.
-- **Payments Received List**: Dedicated section listing all `CR`-flagged credits and payments logged this cycle.
-- **Local History**: Parsed statements are saved in local Dexie storage so past statements remain browsable without re-uploading.
 *A client-side credit card PDF statement interpreter engineered specifically for Commercial Bank of Ceylon (Combank) monthly statements.*
 - **Strict Standalone Boundary**: Completely decoupled from manual entries (`Activity`), accounts (`Accounts`), and `Credit & Float Tools`. Statement data is isolated in dedicated Dexie tables (`statementCards`, `parsedStatements`) and is never auto-imported or cross-referenced against your regular ledger, preventing double-counting or balance distortion.
 - **100% In-Browser Privacy**: Raw PDF bytes and extracted text layers are parsed purely client-side using `pdfjs-dist` and bundled Web Workers (`pdf.worker.min.mjs`). Zero network requests are made with statement data.
@@ -263,12 +256,12 @@ Finora/
 │   │   ├── TransactionEditSheet.tsx# Transaction detail & edit drawer
 │   │   ├── ExportReportModal.tsx   # CSV & PDF export dialog
 │   │   ├── ImportDataModal.tsx     # Smart CSV importer with auto-map
-│   │   ├── MobileNavCustomizer.tsx # 4-6 slot bottom bar organizer
+│   │   ├── CustomizeNavModal.tsx     # 4-6 slot bottom bar organizer
 │   │   └── ...
 │   ├── db/                         # Database schema & migrations
 │   │   └── db.ts                   # Dexie.js database & TypeScript models
 │   ├── pages/                      # Application views
-│   │   ├── Dashboard.tsx           # Home glance overview & quick chips
+│   │   ├── Dashboard.tsx           # Budget-focused Home overview & recent activity
 │   │   ├── Accounts.tsx            # Account balances & management
 │   │   ├── Activity.tsx            # Transaction history & inline repeat
 │   │   ├── Analytics.tsx           # Charts, trends, and digest access
@@ -365,7 +358,12 @@ Finora/
 
 ---
 
-##  License & Authors
+## License & Authors
+
+Finora is licensed under the MIT License.
 
 Created and maintained by [chin00kz](https://github.com/chin00kz).
+
+### Bug Fixes & Contributions
+- **RomeshG** - Bug fixes and synchronization engine contributions.
 
