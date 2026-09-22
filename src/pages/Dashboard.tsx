@@ -30,21 +30,21 @@ import MaskedAmount from '../components/MaskedAmount';
 
 /**
  * Resolves a restrained, professional Lucide icon for a transaction row.
- * Emojis are eliminated. Most icons are neutral zinc, reserving emerald for income.
+ * Emojis are eliminated. Most icons are neutral, reserving emerald for income.
  */
 function getTransactionIcon(txn: Transaction, categories: Category[]) {
   if (txn.type === 'income') {
     return {
       Icon: ArrowDownLeft,
-      iconClass: 'text-emerald-400',
+      iconClass: 'text-emerald-500',
       containerClass: 'bg-emerald-500/10 border border-emerald-500/20',
     };
   }
   if (txn.type === 'transfer') {
     return {
       Icon: ArrowLeftRight,
-      iconClass: 'text-zinc-400',
-      containerClass: 'bg-zinc-800/80 border border-zinc-700/40',
+      iconClass: 'text-muted-foreground',
+      containerClass: 'bg-muted border border-border',
     };
   }
 
@@ -74,8 +74,8 @@ function getTransactionIcon(txn: Transaction, categories: Category[]) {
 
   return {
     Icon,
-    iconClass: 'text-zinc-300',
-    containerClass: 'bg-zinc-800/70 border border-zinc-700/40',
+    iconClass: 'text-muted-foreground',
+    containerClass: 'bg-muted border border-border',
   };
 }
 
@@ -171,10 +171,10 @@ export default function Dashboard() {
   return (
     <div className="w-full max-w-md md:max-w-xl lg:max-w-2xl mx-auto px-5 pt-7 sm:pt-8 md:pt-10 pb-36">
       {/* ── CARD 1: Available Money (What do I have?) ───────────────────────── */}
-      <section className="bg-[#111113] border border-white/[0.04] rounded-xl p-5 shadow-none">
+      <section className="bg-card border border-border rounded-xl p-5 shadow-none">
         {/* Available row with quiet utility actions [shield] [eye] */}
         <div className="flex items-center justify-between">
-          <span className="text-[13px] font-medium text-zinc-400">Available</span>
+          <span className="text-[13px] font-medium text-muted-foreground">Available</span>
 
           <div className="flex items-center gap-1 -mr-1">
             {/* Safe-to-Spend Status Shield Icon */}
@@ -182,7 +182,7 @@ export default function Dashboard() {
               <button
                 type="button"
                 onClick={() => setShowSafeBreakdownModal(true)}
-                className={`p-1.5 flex items-center justify-center rounded-lg transition-colors hover:bg-white/[0.04] ${
+                className={`p-1.5 flex items-center justify-center rounded-lg transition-colors hover:bg-muted ${
                   safeToSpendBreakdown.isNegative
                     ? 'text-amber-500'
                     : 'text-emerald-500'
@@ -197,7 +197,7 @@ export default function Dashboard() {
             <button
               type="button"
               onClick={toggleMask}
-              className="p-1.5 flex items-center justify-center rounded-lg text-zinc-400 hover:text-zinc-200 transition-colors"
+              className="p-1.5 flex items-center justify-center rounded-lg text-muted-foreground hover:text-foreground transition-colors"
               title={isMasked ? 'Reveal figures' : 'Mask figures'}
             >
               {isMasked ? <EyeOff size={18} /> : <Eye size={18} />}
@@ -207,8 +207,8 @@ export default function Dashboard() {
 
         {/* Hero Balance: dominant 48-52px, baseline aligned */}
         <div className="flex items-baseline gap-2.5 mt-4">
-          <span className="text-[13px] sm:text-[14px] font-normal text-zinc-400 select-none">LKR</span>
-          <span className="text-5xl sm:text-[52px] font-normal tracking-tight text-zinc-50 tabular-nums leading-none">
+          <span className="text-[13px] sm:text-[14px] font-normal text-muted-foreground select-none">LKR</span>
+          <span className="text-5xl sm:text-[52px] font-normal tracking-tight text-foreground tabular-nums leading-none">
             <MaskedAmount amount={totalBalance} />
           </span>
         </div>
@@ -217,12 +217,12 @@ export default function Dashboard() {
         <button
           type="button"
           onClick={() => navigate('/accounts')}
-          className="mt-3 text-[13px] text-zinc-400 hover:text-zinc-200 transition-colors flex items-center gap-1 cursor-pointer group"
+          className="mt-3 text-[13px] text-muted-foreground hover:text-foreground transition-colors flex items-center gap-1 cursor-pointer group"
         >
           <span>
             {activeAccountsCount} {activeAccountsCount === 1 ? 'account' : 'accounts'}
           </span>
-          <span className="text-zinc-500 group-hover:text-zinc-300 transition-colors">›</span>
+          <span className="text-muted-foreground group-hover:text-muted-foreground transition-colors">›</span>
         </button>
       </section>
 
@@ -234,29 +234,29 @@ export default function Dashboard() {
           className="w-full text-left active:scale-[0.99] transition-transform block focus:outline-none"
         >
           {activeBudget ? (
-            <div className="bg-[#111113] border border-white/[0.04] rounded-xl p-5 shadow-none">
+            <div className="bg-card border border-border rounded-xl p-5 shadow-none">
               {/* Context Label (THIS MONTH or BUDGET) */}
-              <p className="text-[11px] font-semibold text-zinc-400 uppercase tracking-wider mb-3">
+              <p className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wider mb-3">
                 {budgetContextLabel}
               </p>
 
               {/* Glance Remaining Amount & Total: around 30-34px */}
               <div className="flex items-baseline justify-between mb-3.5 flex-wrap gap-2">
                 <div className="flex items-baseline gap-2">
-                  <span className="text-[30px] sm:text-[32px] font-normal text-zinc-50 tracking-tight tabular-nums leading-none">
+                  <span className="text-[30px] sm:text-[32px] font-normal text-foreground tracking-tight tabular-nums leading-none">
                     LKR <MaskedAmount amount={budgetStatus.remaining} />
                   </span>
-                  <span className="text-sm font-normal text-zinc-400">
+                  <span className="text-sm font-normal text-muted-foreground">
                     {budgetStatus.isOverspent ? 'over budget' : 'left'}
                   </span>
                 </div>
-                <span className="text-[13px] text-zinc-400 tabular-nums">
+                <span className="text-[13px] text-muted-foreground tabular-nums">
                   of LKR <MaskedAmount amount={activeBudget.amount} />
                 </span>
               </div>
 
               {/* Intelligent Progress / Health Bar (clean solid bar, smooth rounded ends, strongest colored element) */}
-              <div className="h-[5px] w-full bg-zinc-800/80 rounded-full overflow-hidden mb-2.5">
+              <div className="h-[5px] w-full bg-muted rounded-full overflow-hidden mb-2.5">
                 <div
                   className={`h-full rounded-full transition-all duration-500 ${budgetStatus.barColor}`}
                   style={{ width: `${budgetStatus.percent}%` }}
@@ -264,7 +264,7 @@ export default function Dashboard() {
               </div>
 
               {/* Metrics Line: Spent on left, days left on right, pace warning if needed */}
-              <div className="flex items-center justify-between text-xs text-zinc-400 tabular-nums">
+              <div className="flex items-center justify-between text-xs text-muted-foreground tabular-nums">
                 <span>
                   LKR <MaskedAmount amount={spentThisPeriod} /> spent
                 </span>
@@ -279,9 +279,9 @@ export default function Dashboard() {
               </div>
             </div>
           ) : (
-            <div className="bg-[#111113] border border-white/[0.04] rounded-xl p-5 shadow-none flex items-center justify-between text-zinc-400 hover:text-zinc-200 transition-colors">
+            <div className="bg-card border border-border rounded-xl p-5 shadow-none flex items-center justify-between text-muted-foreground hover:text-foreground transition-colors">
               <span className="text-sm font-medium">No active budget · Tap to set up</span>
-              <ChevronRight size={18} className="text-zinc-500" />
+              <ChevronRight size={18} className="text-muted-foreground" />
             </div>
           )}
         </button>
@@ -291,19 +291,19 @@ export default function Dashboard() {
       <section className="mt-7 sm:mt-8">
         {/* Header: RECENT on left, See all › on right */}
         <div className="flex items-center justify-between mb-3.5">
-          <h2 className="text-[11px] font-semibold text-zinc-400 uppercase tracking-wider">Recent</h2>
+          <h2 className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wider">Recent</h2>
           <button
             type="button"
             onClick={() => navigate('/activity')}
-            className="text-xs text-zinc-400 hover:text-zinc-200 transition-colors flex items-center gap-0.5"
+            className="text-xs text-muted-foreground hover:text-foreground transition-colors flex items-center gap-0.5"
           >
             <span>See all</span>
-            <span className="text-zinc-500">›</span>
+            <span className="text-muted-foreground">›</span>
           </button>
         </div>
 
         {/* Clean unboxed rows with subtle dividers */}
-        <div className="divide-y divide-zinc-800/40">
+        <div className="divide-y divide-border">
           {recentTransactions.map(txn => {
             const iconData = getTransactionIcon(txn, categories);
             const isIncome = txn.type === 'income';
@@ -313,24 +313,24 @@ export default function Dashboard() {
             return (
               <div key={txn.id} className="py-3 sm:py-3.5 flex items-center justify-between">
                 <div className="flex items-center min-w-0 pr-4">
-                  <div className="w-8 h-8 rounded-lg bg-zinc-800/50 border border-zinc-800/30 flex items-center justify-center mr-3 shrink-0 text-zinc-400">
-                    <iconData.Icon size={15} className={isIncome ? 'text-emerald-400' : 'text-zinc-400'} />
+                  <div className="w-8 h-8 rounded-lg bg-muted border border-border flex items-center justify-center mr-3 shrink-0 text-muted-foreground">
+                    <iconData.Icon size={15} className={isIncome ? 'text-emerald-500' : 'text-muted-foreground'} />
                   </div>
                   <div className="min-w-0">
-                    <p className="font-medium text-zinc-100 text-sm leading-tight truncate">
+                    <p className="font-medium text-foreground text-sm leading-tight truncate">
                       {txn.notes || (isExpense ? 'Expense' : isIncome ? 'Income' : 'Transfer')}
                     </p>
-                    <p className="text-xs text-zinc-400 mt-0.5">
+                    <p className="text-xs text-muted-foreground mt-0.5">
                       {dateLabel}
                       {txn.excludeFromBudget && (
-                        <span className="ml-2 text-[10px] text-amber-400/90 font-medium">
+                        <span className="ml-2 text-[10px] text-amber-500 font-medium">
                           Out of budget
                         </span>
                       )}
                     </p>
                   </div>
                 </div>
-                <span className={`font-medium text-sm tabular-nums whitespace-nowrap ${isIncome ? 'text-emerald-400' : 'text-zinc-50'}`}>
+                <span className={`font-medium text-sm tabular-nums whitespace-nowrap ${isIncome ? 'text-emerald-500' : 'text-foreground'}`}>
                   {isExpense ? '−' : isIncome ? '+' : ''}LKR <MaskedAmount amount={txn.amount} />
                 </span>
               </div>
@@ -338,7 +338,7 @@ export default function Dashboard() {
           })}
 
           {recentTransactions.length === 0 && (
-            <p className="text-zinc-500 text-xs py-4">No recent activity.</p>
+            <p className="text-muted-foreground text-xs py-4">No recent activity.</p>
           )}
         </div>
       </section>
