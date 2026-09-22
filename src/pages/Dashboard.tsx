@@ -1,7 +1,7 @@
 import { useState, useMemo } from 'react';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { db, type Transaction, type Category } from '../db/db';
-import { differenceInDays, isToday, isYesterday, format } from 'date-fns';
+import { differenceInDays, isToday, isYesterday, format, isSameDay } from 'date-fns';
 import { useNavigate } from 'react-router-dom';
 import {
   ChevronRight,
@@ -168,6 +168,14 @@ export default function Dashboard() {
     return 'Budget';
   }, [activeBudget]);
 
+  const now = Date.now();
+  const next24h = now + 24 * 60 * 60 * 1000;
+  const recurringRules = recurring || [];
+  const upcomingPayments = recurringRules
+    .filter(r => r.active && r.nextDueDate >= now && r.nextDueDate <= next24h)
+    .sort((a, b) => a.nextDueDate - b.nextDueDate)
+    .slice(0, 3);
+
   return (
     <div className="w-full max-w-md md:max-w-xl lg:max-w-2xl mx-auto px-5 pt-7 sm:pt-8 md:pt-10 pb-36">
       {/* ── CARD 1: Available Money (What do I have?) ───────────────────────── */}
@@ -263,17 +271,15 @@ export default function Dashboard() {
                 />
               </div>
 
-              {/* Metrics Line: Spent on left, days left on right, pace warning if needed */}
+              {/* Metrics Line: Spent on left, percentage, days left on right */}
               <div className="flex items-center justify-between text-xs text-muted-foreground tabular-nums">
                 <span>
                   LKR <MaskedAmount amount={spentThisPeriod} /> spent
                 </span>
 
-                {budgetStatus.paceWarning && (
-                  <span className={`font-medium ${budgetStatus.textColor}`}>
-                    {budgetStatus.paceWarning}
-                  </span>
-                )}
+                <span className="font-medium">
+                  {Math.round(budgetStatus.actualPercent)}% spent
+                </span>
 
                 <span>{daysLeft}d left</span>
               </div>
@@ -311,7 +317,12 @@ export default function Dashboard() {
             const dateLabel = formatTransactionDate(txn.date);
 
             return (
-              <div key={txn.id} className="py-3 sm:py-3.5 flex items-center justify-between">
+              <button
+                key={txn.id}
+                type="button"
+                onClick={() => navigate('/activity', { state: { selectedTransactionId: txn.id } })}
+                className="w-full py-3 sm:py-3.5 flex items-center justify-between text-left active:opacity-70 transition-opacity focus:outline-none"
+              >
                 <div className="flex items-center min-w-0 pr-4">
                   <div className="w-8 h-8 rounded-lg bg-muted border border-border flex items-center justify-center mr-3 shrink-0 text-muted-foreground">
                     <iconData.Icon size={15} className={isIncome ? 'text-emerald-500' : 'text-muted-foreground'} />
@@ -333,7 +344,7 @@ export default function Dashboard() {
                 <span className={`font-medium text-sm tabular-nums whitespace-nowrap ${isIncome ? 'text-emerald-500' : 'text-foreground'}`}>
                   {isExpense ? '−' : isIncome ? '+' : ''}LKR <MaskedAmount amount={txn.amount} />
                 </span>
-              </div>
+              </button>
             );
           })}
 
@@ -343,7 +354,62 @@ export default function Dashboard() {
         </div>
       </section>
 
-      {/* ── Safe to Spend Breakdown Modal (Opens upon tapping Shield icon) ── */}
+      {/* 🚀 UPCOMING PAYMENTS (Only if within 24h) */}
+      {upcomingPayments.length > 0 && (
+        <section className="mt-7 sm:mt-8">
+          <div className="flex items-center justify-between mb-3.5">
+            <h2 className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wider">Upcoming</h2>
+            <button
+              type="button"
+              onClick={() => navigate('/recurring')}
+              className="text-xs text-muted-foreground hover:text-foreground transition-colors flex items-center gap-0.5"
+            >
+              <span>See all</span>
+              <span className="text-muted-foreground">›</span>
+            </button>
+          </div>
+
+          <div className="divide-y divide-border">
+            {upcomingPayments.map(r => {
+              const iconData = getTransactionIcon({ type: r.type, categoryId: r.categoryId, notes: r.name } as Transaction, categories);
+              const isIncome = r.type === 'income';
+              const isExpense = r.type === 'expense';
+              
+              const isTodayObj = isSameDay(r.nextDueDate, now);
+              const isTomorrowObj = isSameDay(r.nextDueDate, next24h);
+              const dateLabel = isTodayObj ? 'Today' : isTomorrowObj ? 'Tomorrow' : format(r.nextDueDate, 'MMM d');
+
+              return (
+                <button
+                  key={r.id}
+                  type="button"
+                  onClick={() => navigate('/recurring', { state: { selectedRecurringId: r.id } })}
+                  className="w-full py-3 sm:py-3.5 flex items-center justify-between text-left active:opacity-70 transition-opacity focus:outline-none"
+                >
+                  <div className="flex items-center min-w-0 pr-4">
+                    <div className="w-8 h-8 rounded-lg bg-muted border border-border flex items-center justify-center mr-3 shrink-0 text-muted-foreground">
+                      <iconData.Icon size={15} className={isIncome ? 'text-emerald-500' : 'text-muted-foreground'} />
+                    </div>
+                    <div className="min-w-0">
+                      <p className="font-medium text-foreground text-sm leading-tight truncate">
+                        {r.name || (isExpense ? 'Recurring Expense' : 'Recurring Income')}
+                      </p>
+                      <p className="text-xs text-muted-foreground mt-0.5">
+                        {dateLabel}
+                      </p>
+                    </div>
+                  </div>
+                  <span className={`font-medium text-sm tabular-nums whitespace-nowrap ${isIncome ? 'text-emerald-500' : 'text-foreground'}`}>
+                    {isExpense ? '−' : isIncome ? '+' : ''}LKR <MaskedAmount amount={r.amount} />
+                  </span>
+                </button>
+              );
+            })}
+          </div>
+        </section>
+      )}
+
+      {/* 🛡️ Safe to Spend Breakdown Modal (Opens upon tapping Shield icon) 🛡️ */}
       {showSafeBreakdownModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70 backdrop-blur-sm animate-in fade-in duration-150">
           <div className="relative w-full max-w-md bg-card border border-border rounded-2xl p-5 shadow-2xl max-h-[90vh] overflow-y-auto space-y-4">

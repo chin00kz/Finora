@@ -62,6 +62,17 @@ export default function Activity() {
   const [filterMaxAmount, setFilterMaxAmount] = useState('');
   const [selectedTxn, setSelectedTxn] = useState<Transaction | null>(null);
 
+  useEffect(() => {
+    if (location.state?.selectedTransactionId && transactions.length > 0) {
+      const txn = transactions.find(t => t.id === location.state.selectedTransactionId);
+      if (txn) {
+        setSelectedTxn(txn);
+        // Clear the state so it doesn't re-open on navigation back
+        window.history.replaceState({}, document.title);
+      }
+    }
+  }, [location.state?.selectedTransactionId, transactions]);
+
   const { oneTapLogMode } = usePrivacyStore();
   const { setAddTransactionModalOpen, setPrefillData, showUndoToast } = useUIStore();
   const [isRepeating, setIsRepeating] = useState(false);

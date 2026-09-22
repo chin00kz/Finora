@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import { useLocation } from 'react-router-dom';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { db } from '../db/db';
 import type { RecurringTransaction, RecurringFrequency } from '../db/db';
@@ -28,10 +29,23 @@ export default function Recurring() {
   const [categoryId, setCategoryId] = useState('');
   const [dueDateStr, setDueDateStr] = useState(format(new Date(), 'yyyy-MM-dd'));
 
+  const location = useLocation();
+
   // Run engine on screen visit to make sure upcoming bills are up to date
   useEffect(() => {
     processDueRecurringTransactions();
   }, []);
+
+  useEffect(() => {
+    if (location.state?.selectedRecurringId && recurringRules.length > 0) {
+      const rule = recurringRules.find(r => r.id === location.state.selectedRecurringId);
+      if (rule && !isModalOpen) {
+        openEditModal(rule);
+        // Clear state
+        window.history.replaceState({}, document.title);
+      }
+    }
+  }, [location.state?.selectedRecurringId, recurringRules]);
 
   const openAddModal = () => {
     setEditingRule(null);
