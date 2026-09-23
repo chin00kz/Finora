@@ -83,6 +83,7 @@ export interface Budget {
 export interface Person {
   id: string;
   name: string;
+  connection_id?: string;
   updatedAt?: number;
 }
 
@@ -337,6 +338,8 @@ const db = new Dexie('FinoraDB') as Dexie & {
   // PDF Statement Reader (local-only, standalone)
   statementCards: EntityTable<StatementCard, 'id'>;
   parsedStatements: EntityTable<ParsedStatement, 'id'>;
+    cacheProfiles: EntityTable<CacheProfile, 'id'>;
+    cacheConnections: EntityTable<CacheConnection, 'id'>;
 };
 
 
@@ -414,4 +417,33 @@ db.version(8).stores({
   parsedStatements: 'id, cardId, statementPeriod, billingDate, dueDate, updatedAt',
 });
 
+
+
+// v9 - Network Connections & Profile Caching
+export interface CacheProfile {
+  id: string; // auth.users UUID
+  username: string;
+  display_name: string;
+  updatedAt?: number;
+}
+
+export interface CacheConnection {
+  id: string;
+  user_a: string;
+  user_b: string;
+  status: 'pending' | 'accepted' | 'declined' | 'blocked';
+  action_user_id: string;
+  blocked_by_user_id?: string;
+  created_at: number;
+  updatedAt?: number;
+}
+
+db.version(9).stores({
+  cacheProfiles: 'id, username, updatedAt',
+  cacheConnections: 'id, user_a, user_b, status, updatedAt',
+  people: 'id, connection_id, updatedAt'
+});
+
 export { db };
+
+

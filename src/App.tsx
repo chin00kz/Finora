@@ -36,6 +36,7 @@ import Accounts from './pages/Accounts';
 import Activity from './pages/Activity';
 import Debts from './pages/Debts';
 import Settings from './pages/Settings';
+import Connections from './pages/Connections';
 import BudgetDetail from './pages/BudgetDetail';
 import Analytics from './pages/Analytics';
 import Recurring from './pages/Recurring';
@@ -106,7 +107,8 @@ function DesktopSidebar({ syncStatus }: { syncStatus: 'idle' | 'syncing' | 'erro
     { to: '/recurring', label: 'Recurring', icon: Repeat },
     { to: '/debts', label: 'IOUs & Debts', icon: Users },
     { to: '/statements', label: 'Statement Reader', icon: FileText },
-    { to: '/settings', label: 'Settings', icon: SettingsIcon },
+    { to: '/connections', label: 'Friends & Connections', icon: Users },
+      { to: '/settings', label: 'Settings', icon: SettingsIcon },
   ];
 
   return (
@@ -240,6 +242,8 @@ function getNavIcon(id: NavItemId) {
       return PieChart;
     case 'statement-reader':
       return FileText;
+    case 'connections':
+      return Users;
     case 'settings':
       return SettingsIcon;
     default:
@@ -498,7 +502,8 @@ function MainAppShell() {
             <Route path="/goals" element={<Goals />} />
             <Route path="/recurring" element={<Recurring />} />
             <Route path="/debts" element={<Debts />} />
-            <Route path="/settings" element={<Settings />} />
+            <Route path="/connections" element={<Connections />} />
+              <Route path="/settings" element={<Settings />} />
             <Route path="/budget" element={<BudgetDetail />} />
             <Route path="/float-tools" element={<FloatTools />} />
             <Route path="/statements" element={<StatementReader />} />
@@ -587,3 +592,4 @@ function App() {
 }
 
 export default App;
+

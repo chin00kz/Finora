@@ -15,6 +15,7 @@ import { exportFullBackupJSON, restoreFullBackupJSON } from '../utils/jsonBackup
 import Logo from '../components/Logo';
 import { createId } from '../utils/createId';
 import { useConfirm } from '../components/ConfirmDialog';
+import FinoraProfileWidget from '../components/FinoraProfileWidget';
 
 export default function Settings() {
   const { confirmDialog, requestConfirm } = useConfirm();
@@ -198,6 +199,8 @@ export default function Settings() {
           <h3 className="font-medium text-foreground">Account & Cloud Sync</h3>
           <p className="text-xs text-muted-foreground mt-1">Automatic two-way cloud backup across devices.</p>
         </div>
+
+          <FinoraProfileWidget />
         {user ? (
           <div className="p-5 space-y-4">
             <div>
@@ -978,4 +981,6 @@ export default function Settings() {
     </div>
   );
 }
+
+
 

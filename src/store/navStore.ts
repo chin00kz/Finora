@@ -12,7 +12,8 @@ export type NavItemId =
   | 'float-tools'
   | 'budgets'
   | 'statement-reader'
-  | 'settings';
+  | 'settings'
+  | 'connections';
 
 export interface NavItemConfig {
   id: NavItemId;
@@ -31,6 +32,7 @@ export const ALL_NAV_ITEMS: NavItemConfig[] = [
   { id: 'float-tools',      label: 'Float Tools',     to: '/float-tools' },
   { id: 'budgets',          label: 'Budgets',         to: '/budget' },
   { id: 'statement-reader', label: 'Statements',      to: '/statements' },
+  { id: 'connections',      label: 'Friends & Connections', to: '/connections' },
   { id: 'settings',         label: 'Settings',        to: '/settings' },
 ];
 
@@ -117,4 +119,5 @@ export const useNavStore = create<NavState>()(
     }
   )
 );
+
 
