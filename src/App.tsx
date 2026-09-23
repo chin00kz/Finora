@@ -493,7 +493,7 @@ function MainAppShell() {
   const isLegacyUserMissingProfile = profileState === 'PROFILE_MISSING' && user && new Date(user.created_at).getTime() < IDENTITY_ROLLOUT_CUTOFF;
   const { hasDismissedProfileIntroV1 } = useUIStore();
 
-  if (isNewAccount) return <OnboardingFlow onComplete={() => window.location.reload()} />;
+  
 
   // Global Keyboard Shortcuts (N for new transaction)
   useEffect(() => {
@@ -514,6 +514,8 @@ function MainAppShell() {
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [setAddTransactionModalOpen]);
+
+  if (isNewAccount) return <OnboardingFlow onComplete={() => window.location.reload()} />;
 
   return (
     <div className="min-h-[100dvh] bg-background text-foreground flex flex-col md:flex-row">
@@ -630,6 +632,10 @@ function App() {
 }
 
 export default App;
+
+
+
+
 
 
 
