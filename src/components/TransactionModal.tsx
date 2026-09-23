@@ -25,13 +25,17 @@ export default function TransactionModal() {
 
   const amountInputRef = useRef<HTMLInputElement>(null);
 
-  // Prevent body scroll when modal is open
+  // Prevent body scroll ONLY while modal is actually visible.
+  // The component stays mounted when closed (returns null), so we must
+  // gate on isAddTransactionModalOpen — not just component mount.
   useEffect(() => {
+    if (!isAddTransactionModalOpen) return;
+    const prev = document.body.style.overflow;
     document.body.style.overflow = 'hidden';
     return () => {
-      document.body.style.overflow = '';
+      document.body.style.overflow = prev;
     };
-  }, []);
+  }, [isAddTransactionModalOpen]);
 
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [amount, setAmount] = useState('');
