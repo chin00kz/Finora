@@ -341,4 +341,4 @@ Finora is licensed under the MIT License.
 Created and maintained by [chin00kz](https://github.com/chin00kz).
 
 ### Bug Fixes & Contributions
-- **RomeshG** - Bug fixes and synchronization engine contributions.
+- **@RomeshG** - Bug fixes and synchronization engine contributions.
