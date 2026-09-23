@@ -1,4 +1,6 @@
 import { useEffect, useState } from 'react';
+import { db } from './db/db';
+import { IDENTITY_ROLLOUT_CUTOFF } from './config';
 import { BrowserRouter, Routes, Route, Link, useLocation } from 'react-router-dom';
 import {
   Home,
@@ -25,6 +27,8 @@ import { usePrivacyStore } from './store/privacyStore';
 import { purgeMockData, deduplicateCategories } from './utils/initDb';
 import { processDueRecurringTransactions } from './utils/recurringEngine';
 import { useUIStore } from './store/uiStore';
+import OnboardingFlow from './components/OnboardingFlow';
+import WhatsNewModal from './components/WhatsNewModal';
 import { useThemeStore } from './store/themeStore';
 import { useAuthStore } from './store/authStore';
 import { useNavStore, ALL_NAV_ITEMS } from './store/navStore';
@@ -453,10 +457,43 @@ function MobileBottomNav({ syncStatus }: { syncStatus: 'idle' | 'syncing' | 'err
 
 // ── Main App Shell (Full Application) ───────────────────────────────────────
 function MainAppShell() {
+  const { user } = useAuthStore();
+  const [profileState, setProfileState] = useState<'LOADING' | 'PROFILE_EXISTS' | 'PROFILE_MISSING'>('LOADING');
+
+  useEffect(() => {
+    if (!user) {
+      setProfileState('LOADING');
+      return;
+    }
+    db.cacheProfiles.get(user.id).then(cached => {
+      if (cached) {
+        setProfileState('PROFILE_EXISTS');
+      } else {
+        supabase.from('profiles').select('*').eq('id', user.id).single()
+          .then(({ data, error }) => {
+            if (error && error.code === 'PGRST116') {
+               setProfileState('PROFILE_MISSING');
+            } else if (data) {
+               db.cacheProfiles.put(data);
+               setProfileState('PROFILE_EXISTS');
+            } else {
+               // Fallback, don't trap user if network fails weirdly
+               setProfileState('LOADING');
+            }
+          });
+      }
+    });
+  }, [user]);
   const { syncStatus } = useSync();
   const location = useLocation();
   const { setAddTransactionModalOpen } = useUIStore();
   const hideNav = location.pathname === '/auth' || location.pathname === '/reset-password';
+
+  const isNewAccount = profileState === 'PROFILE_MISSING' && user && new Date(user.created_at).getTime() >= IDENTITY_ROLLOUT_CUTOFF;
+  const isLegacyUserMissingProfile = profileState === 'PROFILE_MISSING' && user && new Date(user.created_at).getTime() < IDENTITY_ROLLOUT_CUTOFF;
+  const { hasDismissedProfileIntroV1 } = useUIStore();
+
+  if (isNewAccount) return <OnboardingFlow onComplete={() => window.location.reload()} />;
 
   // Global Keyboard Shortcuts (N for new transaction)
   useEffect(() => {
@@ -522,6 +559,7 @@ function MainAppShell() {
       {!hideNav && <BudgetModal />}
       {!hideNav && <CustomizeNavModal />}
       <GlobalUndoToast />
+      {isLegacyUserMissingProfile && !hasDismissedProfileIntroV1 && <WhatsNewModal onSetup={() => window.location.href='/settings'} />}
     </div>
   );
 }
@@ -592,4 +630,8 @@ function App() {
 }
 
 export default App;
+
+
+
+
 

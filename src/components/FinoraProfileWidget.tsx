@@ -52,16 +52,27 @@ export default function FinoraProfileWidget() {
     }
     
     try {
-      const { error } = await supabase.from('profiles').insert({
+      const { error } = await supabase.rpc('create_profile', {
+        p_username: username,
+        p_display_name: displayName
+      });
+      /*
         id: user.id,
         username,
         display_name: displayName,
         created_at: Date.now()
-      });
+      });*/
       if (error) throw error;
       await loadProfile();
     } catch (e: any) {
-      setSetupError(e.message || 'Failed to create profile. Username might be taken.');
+      let msg = 'Failed to create profile.';
+      if (e.message?.includes('username_taken')) msg = 'Username is already taken.';
+      else if (e.message?.includes('profile_exists')) msg = 'Your Finora profile already exists.';
+      else if (e.message?.includes('display_name_invalid')) msg = 'Display name cannot be empty or exceed 50 characters.';
+      else if (e.message?.includes('username_reserved')) msg = 'This username is reserved and cannot be used.';
+      else if (e.message?.includes('username_invalid_format')) msg = 'Username contains invalid characters.';
+      else if (e.message?.includes('username_invalid_length')) msg = 'Username must be 3-24 characters long.';
+      setSetupError(msg);
     }
   };
 
@@ -90,4 +101,7 @@ export default function FinoraProfileWidget() {
     </div>
   );
 }
+
+
+
 
