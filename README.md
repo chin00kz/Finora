@@ -1,14 +1,11 @@
-# Finora
+﻿<div align="center">
+  <h1>Finora</h1>
+  <p>A fast, local-first personal finance tracker built for the realities of modern cashflow.</p>
 
-<div align="center">
-
-**A modern, local-first personal finance and budget management platform.**
-
-*Extremely simple on the surface. Extremely powerful underneath.*
-
-[![React 19](https://img.shields.io/badge/React-19.x-61DAFB?logo=react&logoColor=black)](https://react.dev/)
-[![TypeScript](https://img.shields.io/badge/TypeScript-5.x-3178C6?logo=typescript&logoColor=white)](https://www.typescriptlang.org/)
-[![Tailwind CSS v4](https://img.shields.io/badge/Tailwind_CSS-v4-06B6D4?logo=tailwindcss&logoColor=white)](https://tailwindcss.com/)
+[![React](https://img.shields.io/badge/React-19-61DAFB?logo=react&logoColor=black)](https://react.dev/)
+[![TypeScript](https://img.shields.io/badge/TypeScript-5-3178C6?logo=typescript&logoColor=white)](https://www.typescriptlang.org/)
+[![Vite](https://img.shields.io/badge/Vite-8-646CFF?logo=vite&logoColor=white)](https://vitejs.dev/)
+[![Tailwind CSS](https://img.shields.io/badge/Tailwind-4-38B2AC?logo=tailwind-css&logoColor=white)](https://tailwindcss.com/)
 [![Dexie.js](https://img.shields.io/badge/IndexedDB-Dexie.js-blue)](https://dexie.com/)
 [![Supabase](https://img.shields.io/badge/Cloud-Supabase-3ECF8E?logo=supabase&logoColor=white)](https://supabase.com/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
@@ -19,34 +16,34 @@
 
 ## 📖 Table of Contents
 
-- [ Why Finora?](#-why-finora)
-- [ Architectural Philosophy](#️-architectural-philosophy)
-- [ System Features](#-system-features)
-  - [1. Minimalist Home Dashboard & Ergonomics](#1-minimalist-home-dashboard--ergonomics)
-  - [2. Fast-Entry Transaction Suite (Habitual Shortcuts)](#2-fast-entry-transaction-suite-habitual-shortcuts)
-  - [3. Safe-to-Spend Cashflow Forecast](#3-safe-to-spend-cashflow-forecast)
-  - [4. Privacy Masking Mode (Incognito)](#4-privacy-masking-mode-incognito)
-  - [5. Monthly Digest & Financial Review](#5-monthly-digest--financial-review)
-  - [6. IOUs & Debts (Manual Entry + Multi-Step Settlement)](#6-ious--debts-manual-entry--multi-step-settlement)
-  - [7. Credit Card & Float Management (`/float-tools`)](#7-credit-card--float-management-float-tools)
-  - [8. Recurring Transactions Engine](#8-recurring-transactions-engine)
-  - [9. Savings Goals & Allocations](#9-savings-goals--allocations)
-  - [10. Data Portability, Full JSON Backup & CSV Engine](#10-data-portability-full-json-backup--csv-engine)
-  - [11. Local-First Engine & Cloud Sync Engine](#11-local-first-engine--cloud-sync-engine)
-  - [12. Standalone PDF Statement Reader (`/statements`)](#12-standalone-pdf-statement-reader-statements)
-- [ Database Schema & Entities](#️-database-schema--entities)
-- [ Tech Stack](#️-tech-stack)
-- [ Project Structure](#-project-structure)
-- [ Getting Started](#-getting-started)
-- [⌨ Keyboard Shortcuts](#️-keyboard-shortcuts)
-- [ License & Authors](#-license--authors)
+- [🤔 Why Finora?](#-why-finora)
+- [🚀 Coming Soon](#-coming-soon)
+- [🏗️ Architectural Philosophy](#-architectural-philosophy)
+- [✨ System Features](#-system-features)
+  - [1. Minimalist Dashboard & Ergonomics](#1-minimalist-dashboard--ergonomics)
+  - [2. Safe-to-Spend Cashflow Forecast](#2-safe-to-spend-cashflow-forecast)
+  - [3. Privacy Masking Mode (Incognito)](#3-privacy-masking-mode-incognito)
+  - [4. Monthly Digest & Financial Review](#4-monthly-digest--financial-review)
+  - [5. IOUs & Debts (Manual Entry + Multi-Step Settlement)](#5-ious--debts-manual-entry--multi-step-settlement)
+  - [6. Credit Card & Float Management (`/float-tools`)](#6-credit-card--float-management-float-tools)
+  - [7. Recurring Transactions Engine](#7-recurring-transactions-engine)
+  - [8. Savings Goals & Allocations](#8-savings-goals--allocations)
+  - [9. Data Portability & JSON Backup](#9-data-portability--json-backup)
+  - [10. Local-First Engine & Cloud Sync](#10-local-first-engine--cloud-sync)
+  - [11. PDF Statement Reader (`/statements`)](#11-pdf-statement-reader-statements)
+- [🗄️ Database Schema & Entities](#-database-schema--entities)
+- [💻 Tech Stack](#-tech-stack)
+- [📁 Project Structure](#-project-structure)
+- [🚀 Getting Started](#-getting-started)
+- [⌨️ Keyboard Shortcuts](#-keyboard-shortcuts)
+- [📄 License & Authors](#-license--authors)
 
 ---
 
-##  Why Finora?
+## 🤔 Why Finora?
 
 Personal finance software typically suffers from one of two extremes:
-1. **The Toy App**: Visually clean, but falls apart when handling multiple accounts, credit float cycles, shared split bills, irregular habitual spending, or debt settlements.
+1. **The Toy App**: Visually clean, but falls apart when handling multiple accounts, credit float cycles, shared split bills, or debt settlements.
 2. **The Cluttered Spreadsheet**: Exposes every graph, table, form field, and button simultaneously on the home screen, turning quick expense logging into an overwhelming chore.
 
 **Finora solves this with progressive disclosure:**
@@ -54,164 +51,143 @@ The everyday surface is disciplined, distraction-free, and lightning-fast. Deep 
 
 ---
 
-##  Architectural Philosophy
+## 🚀 Coming Soon
+
+Finora is becoming more than a personal finance tracker.
+
+### Shared IOUs
+
+Shared IOUs will let you create an IOU with another Finora user instead of maintaining two separate records.
+
+- Send an IOU request to a connected friend
+- Accept or decline incoming IOUs
+- Keep both sides synchronized from one shared record
+- Record payment requests and confirmations
+- Track the remaining balance automatically
+- Keep shared history visible to both participants
+
+Shared IOUs are designed around mutual confirmation — creating an IOU does not silently add a debt to someone else's account.
+
+### Friends & Connections
+
+The foundation for shared finance is already available.
+
+Finora users can create a unique username, find other users, send connection requests, and manage accepted connections while keeping existing local People and IOUs separate.
+
+Existing local IOUs remain private and are never automatically converted into shared IOUs.
+
+---
+
+## 🏗️ Architectural Philosophy
 
 ```text
-┌─────────────────────────────────────────────────────────────────────────┐
-│                           LAYER 1: THE SURFACE                          │
-│  • Available Balance Glance                   • Fast Transaction Capture│
-│  • Adaptive Glance Colors              • Keyboard Shortcuts (N / Escape) │
-│  • Safe-to-Spend Liquidity Forecast    • Global Animated Undo Toast      │
-└────────────────────────────────────┬────────────────────────────────────┘
+┌────────────────────────────────────────────────────────────────────────────────────────┐
+│                           LAYER 1: THE SURFACE                                         │
+│  • Available Balance Glance                   • Fast Transaction Capture               │
+│  • Adaptive Glance Colors                     • Keyboard Shortcuts (N / Escape)        │
+│  • Safe-to-Spend Liquidity Forecast           • Global Animated Undo Toast             │
+└────────────────────────────────────────────────────────────────────────────────────────┘
                                      │
-┌────────────────────────────────────▼────────────────────────────────────┐
-│                         LAYER 2: DEEP TOOLS                             │
-│  • Credit & Float Management Module    • IOUs & Multi-Step Settlements   │
-│  • Recurring Schedule & Catch-Up       • Monthly Retrospective Digests   │
-│  • Savings Goals with Visual Rings     • CSV / PDF / JSON Data Port      │
-└────────────────────────────────────┬────────────────────────────────────┘
+┌────────────────────────────────────────────────────────────────────────────────────────┐
+│                         LAYER 2: DEEP TOOLS                                            │
+│  • Credit & Float Management Module           • IOUs & Multi-Step Settlements          │
+│  • Recurring Schedule & Catch-Up              • Monthly Retrospective Digests          │
+│  • Savings Goals with Visual Rings            • CSV / PDF / JSON Data Port             │
+└────────────────────────────────────────────────────────────────────────────────────────┘
                                      │
-┌────────────────────────────────────▼────────────────────────────────────┐
-│                    LAYER 3: LOCAL-FIRST DATA ENGINE                     │
-│  Dexie.js (IndexedDB) ──────── SyncEngine ──────── Supabase Cloud       │
-│  • Fast local reads/writes         • Two-way sync    • Auth & Security     │
-│  • Core Offline autonomy           • Delta queue     • Cloud Backup        │
-│  • Zero mock data pollution      • Race-free undo  • Conflict resolution │
-└─────────────────────────────────────────────────────────────────────────┘
+┌────────────────────────────────────────────────────────────────────────────────────────┐
+│                    LAYER 3: LOCAL-FIRST DATA ENGINE                                    │
+│  Dexie.js (IndexedDB) ──────── SyncEngine ──────── Supabase Cloud                      │
+│  • Fast local reads/writes         • Two-way sync    • Auth & Security                 │
+│  • Seamless Offline operations     • Delta queue     • Cloud Backup                    │
+│  • Zero mock data pollution        • Race-free undo  • Conflict resolution             │
+└────────────────────────────────────────────────────────────────────────────────────────┘
 ```
 
-1. **Local-First is Sovereign**: All read and write operations hit the local IndexedDB database first. Core finance functionality remains fully usable offline; cloud authentication and synchronization require connectivity.
+1. **Local-First Speed**: All read and write operations hit the local IndexedDB database first for maximum performance. Core finance functionality remains usable offline, seamlessly syncing changes when connectivity is restored.
 2. **Universal Ergonomics**: Wide desktop screens are treated with intentional centering and proportional breathing room—never filled with synthetic filler cards. Mobile screens feature a thumb-friendly bottom bar with strict slot controls.
 3. **Budget-Neutral Integrity**: Transactions generated from debt settlements, internal transfers, and reimbursements never distort real-world budget consumption or category spend.
 4. **Zero Mock Pollution**: New guest sessions start clean. No dummy tags, fake accounts, or seeded transactions pollute your personal ledger.
 
 ---
 
-##  System Features
+## ✨ System Features
 
-### 1. Minimalist Home Dashboard & Ergonomics
+### 1. Minimalist Dashboard & Ergonomics
 - **Available Balance Context**: Immediate view of total available funds and active account count.
 - **Monthly Budget Focus**: Primary budget status card with remaining amount, spent amount, percentage consumed, days remaining, and adaptive progress coloring.
-- **Recent Activity**: Three latest transactions with amount-aware visual emphasis.
 - **Upcoming Payments**: Surfaces recurring payments due within the next 24 hours.
-- **Customizable Mobile Navigation (Strict 4 to 6 Slots)**: Enforces an ergonomic bottom bar on mobile screens. Rearrange primary tabs with ↑ / ↓ controls and tuck secondary tools under the **Explore More** drawer.
+- **Customizable Mobile Navigation (Strict 4 to 6 Slots)**: Enforces an ergonomic bottom bar on mobile screens. Rearrange primary tabs with up/down controls and tuck secondary tools under the **Explore More** drawer.
 - **Desktop Sidebar Navigation**: Clean persistent sidebar with status indicators, theme toggles, and sync state.
 
-### 2. Fast-Entry Transaction Suite (Habitual Shortcuts)
-*Designed to eliminate data-entry friction for frequent everyday purchases (e.g. coffee, lunch, transit) that do not fit rigid recurring schedules.*
-- **Habitual Pattern Engine (`quickLogEngine.ts`)**: Scans transactions over a rolling 45-day window to compute recurring habitual items.
-- **Contextual Time-of-Day Boost**: Dynamically prioritizes items matching the current time bucket with up to a +35% score multiplier:
-  - *Morning* (5:00 AM – 11:00 AM)
-  - *Midday* (11:00 AM – 4:00 PM)
-  - *Evening* (4:00 PM – 9:00 PM)
-  - *Night* (9:00 PM – 5:00 AM)
-- **Account & Category Memory**: Remembers the last-used account and category per canonical note. If an account was deleted, displays an amber ` Pick Acc` badge and redirects to the form to avoid silent misbooking.
-- **Quick-Add Favorite Chips (`QuickAddChips.tsx`)**: Tappable pills embedded at the top of the transaction modal.
-- **Smart Amount Memory & Instant Select**: Typing a description automatically fills the last logged price and highlights the numeric field (`amountInputRef.select()`), allowing instant overwrite with a single tap.
-- **Inline "Log Again Today" Repeat Action**: One-click repeat button (`RotateCcw`) on every row in the Activity table and mobile card view.
-- **Global Animated Undo Toast (`GlobalUndoToast.tsx`)**: 6-second radial countdown toast. Reverses account balance changes, removes the Dexie transaction, and cancels in-flight pending sync entries to prevent ghost creations on Supabase.
-- **Backdated Transaction Entry**: Optional date and time controls under More Options let forgotten purchases be recorded at their actual occurrence time, preserving correct Activity chronology and period-based calculations.
+### 2. Safe-to-Spend Cashflow Forecast
+- **Forward-Looking Liquidity**: Subtracts pending recurring transactions (rent, subscriptions) and unpaid statement balances from current cash to reveal true disposable liquidity.
+- **Credit-Aware**: Knows when a credit card statement is due and sets aside cash automatically to prevent false confidence.
+- **Money Market Exclusion**: Supports designating savings accounts as "Money Market," removing them from the liquid Safe-to-Spend pool while still tracking their balance.
 
-### 3. Safe-to-Spend Cashflow Forecast
-*A forward-looking liquidity engine that answers "How much can I spend right now without risking an upcoming bill?"*
-- **Liquidity Formula**:
-  $$\text{Safe-to-Spend} = \text{Liquid Cash} - \text{Net Pending Card Bills} - \text{Upcoming Recurring} + \text{Net Reimbursements}$$
-- **Liquid Cash Aggregation**: Sums checking, savings, and cash accounts, plus money market accounts (MMAs).
-- **MMA Rate Threshold Protection**: Displays inline warnings if withdrawing cash would breach an MMA's `minimumBalanceForRate` floor.
-- **Card-Offset Deduplication**: Routes reimbursement entries with `isCardRelated: true` directly to card bill offsets to prevent double-counting.
-- **Configurable Horizon**: Toggle upcoming recurring lookahead between 7, 14, or 30 days.
-- **Collapsible Breakdown**: Interactive drawer revealing exact line-item contributions to the final liquidity figure.
+### 3. Privacy Masking Mode (Incognito)
+- **Global Obfuscation**: Toggle the 'eye' icon in the navigation to instantly mask all sensitive numbers across the entire application (Dashboards, Accounts, Transactions).
+- **Graceful Degradation**: Charts are hidden or blurred, preventing shoulder-surfing in public environments.
 
-### 4. Privacy Masking Mode (Incognito)
-- **Global Masking Switch**: One-click toggle in the header (Desktop & Mobile) and Settings.
-- **Full App Obfuscation**: Masks every balance, transaction amount, forecast metric, and chip price with `•••••`.
-- **Persistent State**: Masking preference stays active across browser reloads.
+### 4. Monthly Digest & Financial Review
+- **Retrospective Analysis**: At the end of a month (or anytime via Analytics), view a comprehensive breakdown of income, expenses, and net delta.
+- **Top Spikes Identification**: Automatically bubbles up the highest 3 expenditures of the month to catch lifestyle creep.
+- **Category Deep Dive**: Visualizes spend distribution across categories using an interactive pie chart.
 
-### 5. Monthly Digest & Financial Review
-- **Retrospective Analysis**: Accessible from Analytics and Settings (`MonthlyDigestModal.tsx`).
-- **Net Cashflow & Savings Rate**: Complete breakdown of total income, total expenses, net savings, and savings percentage.
-- **Top Categories & Spikes**: Highlights spending concentrations and flags categories that surged >20% compared to your 3-month rolling average.
-- **Installment Completion Cross-Referencing**: Identifies if a category spike was caused by completing an installment plan tenure.
-- **Behavioral Takeaways**: Dynamically generates 3 actionable, human-readable observations regarding your spending habits.
+### 5. IOUs & Debts (Manual Entry + Multi-Step Settlement)
+- **Unified Entity**: Track exactly who owes what, and who you owe.
+- **Partial Settlements**: Log multiple partial repayments against a single debt until it hits zero.
+- **Budget Neutrality**: Settlements generate offset transactions that bypass expense charts so a repaid dinner bill doesn't artificially inflate your reported monthly spending.
 
-### 6. IOUs & Debts (Manual Entry + Multi-Step Settlement)
-- **Two Inflow Sources**:
-  1. *Shared Expense Split*: Auto-generated when splitting a logged expense.
-  2. *Manual Debt Entry*: Direct entry for loans, borrowed cash, or debts paid by others on your behalf (`theyOweMe` vs `iOweThem`).
-- **Multi-Step Partial & Full Settlement**: Settle debts incrementally over time.
-- **Flexible Settlement Methods**:
-  - `account`: Creates a budget-neutral `debt_settlement` transaction linking real cash or bank accounts.
-  - `exclude`: Settles in-kind (favors, reciprocal bills, direct cash) without touching account balances.
-- **Full Audit History & Rollback**: Each debt records an immutable settlement history with one-tap settlement reversal and balance restoration.
+### 6. Credit Card & Float Management (`/float-tools`)
+*A specialized suite for users maximizing credit card float without carrying interest.*
+- **Float Gap Engine**: Tracks the "Float Gap"—the delta between outstanding credit card liabilities and your actual cash reserves. 
+- **0% Installment Planner**: Maps multi-month installment plans against card limits to forecast utilization.
+- **Reimbursement Ledgers**: Correlates corporate expenses or shared purchases placed on your card with the specific counterparty who owes you, ensuring your personal budget remains isolated.
 
-### 7. Credit Card & Float Management (`/float-tools`)
-*A power-user suite designed for interest arbitrage and credit card management.*
-- **Multi-Card Exposure**: Monitor utilized balances, credit limits, cycle closing dates, and payment deadlines.
-- **Cash Offset Source Linking**: Model external recurring cash inflows (e.g. rental shares, retainers) earmarked to cover card balances.
-- **Float Gap Delta Engine**: Calculates cycle-by-cycle deltas (Cash Received - Total Bill) and renders cumulative SVG trend charts.
-- **Payment Intent Stress Tests**:
-  - `payInFullIntent: true` — Generates alerts if projected liquid cash cannot cover the due balance.
-  - `payInFullIntent: false` — Calculates compounding APR carrying costs.
-- **0% Installment Plan Tracker**: Track active tenures, monthly deductions, and remaining commitment balances.
-- **Honest Yield vs. APR Comparator**: Computes the net gain/loss of holding cash in MMAs or Fixed Deposits against card interest.
-- **Reimbursement Ledgers**: Multi-counterparty running ledgers tracking who owes you for specific card expenses.
+### 7. Recurring Transactions Engine
+- **Flexible Frequencies**: Supports daily, weekly, monthly, and yearly recurrences.
+- **Look-Ahead Queue**: Visualizes the upcoming 30 days of scheduled transactions.
+- **Overdue Catch-Up**: Automatically detects past-due items and prompts for manual approval to ensure no skipped payments silently distort the ledger.
 
-### 8. Recurring Transactions Engine
-- **Flexible Cadences**: Supports Daily, Weekly, Monthly, and Yearly schedules with automatic next-due calculation.
-- **Launch Catch-Up**: Scans and executes all due recurring transactions as soon as the app is launched.
-- **Template Controls**: Pause, resume, trigger on-demand execution, or edit templates.
+### 8. Savings Goals & Allocations
+- **Visual Envelopes**: Create named savings targets (e.g., "Emergency Fund", "New Laptop").
+- **Fund Allocation**: Move virtual money into goals without needing separate physical bank accounts.
+- **Progress Tracking**: Circular SVG progress rings visualize completion percentages.
 
-### 9. Savings Goals & Allocations
-- **Visual Target Rings**: Monitor progress percentage, target amounts, and projected completion dates.
-- **Account Linking**: Associate savings goals with specific bank or vault accounts.
-- **Deposit & Withdrawal Workflows**: Log transfers in or out of goals with immediate balance synchronization.
+### 9. Data Portability & JSON Backup
+- **Lock-in Free**: Export the entire database as a single structured JSON file.
+- **Safe Restoration**: Wipe and restore state from JSON snapshots for bulletproof disaster recovery or device migration.
+- **Universal CSV Engine**: Import historical records from any bank with an intelligent column mapper, or export flat-file CSVs for spreadsheet analysis.
 
-### 10. Data Portability, Full JSON Backup & CSV Engine
-- **Complete JSON Snapshot Backup**: One-click export (`exportFullBackupJSON`) and restore (`restoreFullBackupJSON`) covering all 20 Dexie tables with automated schema validation.
-- **CSV Import with Smart Matching**: Auto-maps column headers, deduplicates existing rows, and dynamically creates missing accounts and categories.
-- **Itemized CSV & Formatted PDF Reports**: Download itemized transaction spreadsheets or printer-friendly PDF financial summaries.
+### 10. Local-First Engine & Cloud Sync
+- **Instant Response**: Built on `Dexie.js`, providing zero-latency interactions unaffected by network conditions.
+- **Supabase Realtime Sync**: A custom sync engine merges delta changes across devices.
+- **Pull-on-Focus**: Automatically fetches upstream cloud changes when the app regains focus or reconnects to the network, preventing stale state on mobile.
 
-### 11. Local-First Engine & Cloud Sync Engine
-- **Dexie.js IndexedDB Store**: Real-time reactivity via `useLiveQuery` with fast local reads/writes.
-- **Realtime Supabase Sync**: Realtime cross-device synchronization using Supabase Realtime WebSockets.
-- **Robust Reconciliation**: Set-difference deletion reconciliation and timestamp-based (`updated_at`) upserts to prevent race conditions and ensure data consistency.
-- **Offline Resiliency**: Queues offline creations/updates (`finora-dirty`) and deletions (`finora-deleted`) in `localStorage` to be drained safely once connectivity is restored.
-- **Cloud Duplicate Resolver**: Dedicated tool in Settings to clean up remote duplicate IDs and align cloud state with local storage.
-
-### 12. Standalone PDF Statement Reader (`/statements`)
-*A client-side credit card PDF statement interpreter engineered specifically for Commercial Bank of Ceylon (Combank) monthly statements.*
-- **Strict Standalone Boundary**: Completely decoupled from manual entries (`Activity`), accounts (`Accounts`), and `Credit & Float Tools`. Statement data is isolated in dedicated Dexie tables (`statementCards`, `parsedStatements`) and is never auto-imported or cross-referenced against your regular ledger, preventing double-counting or balance distortion.
-- **100% In-Browser Privacy**: Raw PDF bytes and extracted text layers are parsed purely client-side using `pdfjs-dist` and bundled Web Workers (`pdf.worker.min.mjs`). Zero network requests are made with statement data.
-- **Two-Column Coordinate Layout Preservation**: Solves multi-column PDF overlap quirks. Separates left-side transaction table rows ($x < 460\text{ pt}$) from right-side summary blocks ($x \ge 460\text{ pt}$), preventing line collisions between purchase descriptions and printed summary numbers.
-- **Zero-Friction Card & Metadata Auto-Detection**: Drop a statement PDF without pre-configuring card names. Finora automatically inspects the document to detect the cardholder name (e.g. `CHANUKA DILSHAN`), masked card number (e.g. `4378 4002 **** 6135`), and card tier (e.g. `Visa Platinum`). It either links to an existing card profile matching the last 4 digits (`6135`) or auto-creates `Combank Visa Platinum - 6135`.
-- **Max Rewards Points & Dual APR**: Extracts `MAX REWARDS TOTAL POINTS BALANCE` (e.g. `687 Max Rewards`) and detects both annual APR (`28% p.a.`) and monthly interest rates (`2.33% / mo`).
-- **Date Expansion Engine**: Expands `DD/MM` transaction rows into full `DD/MM/YYYY` dates using statement billing context, and normalizes 2-digit years (`05/09/26` → `05/09/2026`).
-- **3-Digit Installment Plan Tracker**: Scans for `FLEXIPLAN` tenures with up to 3-digit installment counts (e.g. `003 of 012`, `009 of 024`). Distinct plans sharing identical category labels are keyed individually by term and amount so concurrent plans never collapse. Renders progress bars, cycle payments, and remaining liability.
-- **Reconciliation Strip**: Evaluates printed statement math ($\text{Opening} + \text{Purchases} - \text{Payments} = \text{Closing}$) and renders a green `✓ Balanced Statement` badge or flags discrepancies.
-- **Grouped Categorized Spending Breakdown**: Categorizes statement debits into clean grouped sums (Supermarkets & Groceries, Food & Dining, Transport & Fuel, Utilities, Shopping, Installments, etc.) without overwhelming charts, with full real-time search.
-- **Payments Received Ledger**: Dedicated section isolating all `CR`-flagged credits and settlements received this cycle with full payment dates and amounts.
-- **Back-Page Fine-Print Filter**: Automatically skips terms and conditions pages (e.g. Page 5 with explanatory payment instructions and interest calculation examples) so illustrative numbers never corrupt real billing figures.
+### 11. PDF Statement Reader (`/statements`)
+- **Client-Side Parsing**: Upload PDF statements and extract transactions and payment plans instantly.
+- **Privacy-First**: Files are processed locally via PDF.js worker; no financial documents are uploaded to any server.
 
 ---
 
-##  Database Schema & Entities
+## 🗄️ Database Schema & Entities
 
-Finora uses a 20-table local schema managed by Dexie.js (`FinoraDB`):
-
-| Table | Primary Role | Synced to Cloud |
-|---|---|:---:|
-| `accounts` | Liquid accounts, credit cards, bank accounts, cash wallets | Yes |
-| `transactions` | Expenses, incomes, transfers, and budget-neutral debt settlements | Yes |
-| `categories` | Spending and earning categories with icons and hex colors | Yes |
-| `tags` | Flexible multi-tag categorization | Yes |
-| `budgets` | Periodic budget allocations and spending caps | Yes |
-| `people` | Counterparties for shared bills and debts | Yes |
-| `debts` | Auto-generated splits and manual IOUs with settlement logs | Yes |
-| `recurring` | Scheduled recurring expense and income templates | Yes |
-| `goals` | Target savings goals with funding amounts | Yes |
-| `creditCards` | Credit limits, APR rates, grace periods, payment intent | Yes |
-| `cashOffsetSources`| Earmarked monthly cash inflows linked to cards | Yes |
-| `fixedDeposits` | FD principal amounts, interest rates, maturities | Yes |
+| Table | Purpose | Sync |
+|:---|:---|:---:|
+| `profiles` | Cloud identities with usernames and display names | Cloud |
+| `connections` | Friends and connections tracking mutual requests | Cloud |
+| `accounts` | Source of truth for liquidity and balances | Yes |
+| `categories` | Spending classifications (e.g. Food, Transport) | Yes |
+| `tags` | Orthogonal cross-category labels (e.g. #vacation) | Yes |
+| `transactions` | Single entry ledger tracking inflows/outflows | Yes |
+| `budgets` | Monthly spending caps by category | Yes |
+| `savingsGoals` | Virtual envelopes tracking target amounts | Yes |
+| `recurringTransactions`| Rules engine for auto-generating future transactions | Yes |
+| `people` | Counterparties for debts and reimbursements | Yes |
+| `debts` | Tracked IOUs with partial settlement histories | Yes |
+| `creditCards` | Credit limits, statement dates, and due dates | Yes |
+| `cashOffsetSources` | Liquid accounts designated to back credit float | Yes |
 | `moneyMarketAccounts` | MMA balances, rate tiers, minimum balance requirements | Yes |
 | `installmentPlans` | 0% installment tenures, monthly payments, remaining terms | Yes |
 | `cardPromos` | Minimum spend thresholds, cashback caps, expiry windows | Yes |
@@ -223,7 +199,7 @@ Finora uses a 20-table local schema managed by Dexie.js (`FinoraDB`):
 
 ---
 
-##  Tech Stack
+## 💻 Tech Stack
 
 ```text
 Frontend Framework:       React 19 (SPA)
@@ -248,7 +224,6 @@ Finora/
 ├── src/
 │   ├── components/                 # Reusable UI components
 │   │   ├── GlobalUndoToast.tsx     # 6s animated fast-entry undo toast
-│   │   ├── QuickAddChips.tsx       # Habitual shortcut pills
 │   │   ├── SafeToSpendCard.tsx     # Forward-looking liquidity forecast
 │   │   ├── MonthlyDigestModal.tsx  # Retrospective financial review
 │   │   ├── MaskedAmount.tsx        # Privacy obfuscation wrapper
@@ -256,12 +231,12 @@ Finora/
 │   │   ├── TransactionEditSheet.tsx# Transaction detail & edit drawer
 │   │   ├── ExportReportModal.tsx   # CSV & PDF export dialog
 │   │   ├── ImportDataModal.tsx     # Smart CSV importer with auto-map
-│   │   ├── CustomizeNavModal.tsx     # 4-6 slot bottom bar organizer
+│   │   ├── CustomizeNavModal.tsx   # 4-6 slot bottom bar organizer
 │   │   └── ...
 │   ├── db/                         # Database schema & migrations
 │   │   └── db.ts                   # Dexie.js database & TypeScript models
 │   ├── pages/                      # Application views
-│   │   ├── Dashboard.tsx           # Budget-focused Home overview & recent activity
+│   │   ├── Dashboard.tsx           # Budget-focused Home overview
 │   │   ├── Accounts.tsx            # Account balances & management
 │   │   ├── Activity.tsx            # Transaction history & inline repeat
 │   │   ├── Analytics.tsx           # Charts, trends, and digest access
@@ -270,21 +245,21 @@ Finora/
 │   │   ├── Goals.tsx               # Savings goals & progress rings
 │   │   ├── FloatTools.tsx          # Credit & Float power tools module
 │   │   ├── StatementReader.tsx     # Client-side PDF credit card statement reader
+│   │   ├── Connections.tsx         # Identity and connections manager
 │   │   └── Settings.tsx            # Preferences, sync, tags & backups
 │   ├── lib/                        # Client libraries & setup
-│   │   └── supabase.ts             # Supabase client initialization & env guard
+│   │   └── supabase.ts             # Supabase client initialization
 │   ├── store/                      # Zustand state management
 │   │   ├── authStore.ts            # User auth & sync timestamp state
 │   │   ├── navStore.ts             # Mobile navigation slot preferences
-│   │   ├── privacyStore.ts         # Masking, safe-to-spend & fast-entry
+│   │   ├── privacyStore.ts         # Masking, safe-to-spend
 │   │   ├── themeStore.ts           # Light, Dark, System theme mode
 │   │   └── uiStore.ts              # Modal states, prefill, undo toast
 │   ├── sync/                       # Synchronization engine
-│   │   └── syncEngine.ts           # Record-level dirty queue, updatedAt merge, pull-on-focus
+│   │   └── syncEngine.ts           # Record-level dirty queue, merge, pull-on-focus
 │   ├── utils/                      # Core calculation & business engines
 │   │   ├── createId.ts             # Monotonic prefix ID generator
 │   │   ├── formatters.ts           # Currency and compact money utilities
-│   │   ├── quickLogEngine.ts       # Habitual frequency & time-of-day scoring
 │   │   ├── safeToSpendEngine.ts    # Liquidity forecast formula & MMA checks
 │   │   ├── monthlyDigestEngine.ts  # Retrospectives, spike checks & insights
 │   │   ├── statementParser.ts      # PDF text extraction & Combank layout parser
@@ -293,13 +268,14 @@ Finora/
 │   └── main.tsx                    # React application bootstrap
 ├── .env.example                    # Template environment variables
 ├── supabase-schema.sql             # Cloud database schema, RLS policies & auth trigger
+├── supabase-schema-phase1.sql      # Identity and Connections schema
 ├── tailwind.config.js              # Tailwind styling configuration
 └── vite.config.ts                  # Vite build tool configuration
 ```
 
 ---
 
-##  Getting Started
+## 🚀 Getting Started
 
 ### Prerequisites
 - [Node.js](https://nodejs.org/) (version 18 or newer recommended)
@@ -319,7 +295,7 @@ Finora/
    ```
 
 3. **Configure Environment Variables (Optional):**
-   Finora is completely functional offline as a guest without any external service. If you wish to connect Supabase cloud sync, copy the example environment file and fill in your Supabase credentials:
+   Finora heavily utilizes a local-first architecture for performance, though cloud sync and identities power the connected experience. If you wish to connect Supabase cloud sync, copy the example environment file and fill in your Supabase credentials:
    ```bash
    cp .env.example .env.local
    ```
@@ -330,7 +306,7 @@ Finora/
    ```
    > **Note:** `.env` and `.env.local` files are ignored by git to protect credentials. Never commit production keys to a public repository. 
    
-   > **Supabase Setup:** You **must** execute `supabase-schema.sql` in your Supabase SQL Editor to provision the tables, enable Row Level Security (RLS), attach the signup domain trigger, and configure the `supabase_realtime` publication for instant cross-device sync.
+   > **Supabase Setup:** You **must** execute `supabase-schema.sql` and `supabase-schema-phase1.sql` in your Supabase SQL Editor to provision the tables, enable Row Level Security (RLS), attach the signup domain trigger, and configure the `supabase_realtime` publication for instant cross-device sync.
 
    > **Deployment Tip (Vercel):** When deploying to Vercel, ensure your `VITE_` environment variables are set as **Plaintext/Config**, not as Secrets, otherwise they will be blocked at build time.
 
@@ -347,7 +323,7 @@ Finora/
 
 ---
 
-##  Keyboard Shortcuts
+## ⌨️ Keyboard Shortcuts
 
 | Shortcut | Action | Scope |
 |:---:|---|---|
@@ -358,7 +334,7 @@ Finora/
 
 ---
 
-## License & Authors
+## 📄 License & Authors
 
 Finora is licensed under the MIT License.
 
@@ -366,4 +342,3 @@ Created and maintained by [chin00kz](https://github.com/chin00kz).
 
 ### Bug Fixes & Contributions
 - **RomeshG** - Bug fixes and synchronization engine contributions.
-
