@@ -390,7 +390,7 @@ function MobileBottomNav({ syncStatus }: { syncStatus: 'idle' | 'syncing' | 'err
       )}
 
       {/* Mobile Fixed Bottom Nav */}
-      <nav className="md:hidden fixed bottom-0 left-0 right-0 w-full max-w-md mx-auto bg-background/95 backdrop-blur-md border-t border-border pb-safe z-40">
+      <nav className="md:hidden fixed bottom-0 left-0 right-0 w-full bg-background backdrop-blur-md border-t border-border pb-safe z-40">
         <div className="flex justify-around items-center h-16 px-1">
           {frontItemIds.map(id => {
             const item = ALL_NAV_ITEMS.find(i => i.id === id);
