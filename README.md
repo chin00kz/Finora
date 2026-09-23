@@ -14,12 +14,12 @@
 
 ---
 
-## 📖 Table of Contents
+## Table of Contents
 
-- [🤔 Why Finora?](#-why-finora)
-- [🚀 Coming Soon](#-coming-soon)
-- [🏗️ Architectural Philosophy](#-architectural-philosophy)
-- [✨ System Features](#-system-features)
+- [Why Finora?](#why-finora)
+- [Coming Soon](#coming-soon)
+- [Architectural Philosophy](#architectural-philosophy)
+- [System Features](#system-features)
   - [1. Minimalist Dashboard & Ergonomics](#1-minimalist-dashboard--ergonomics)
   - [2. Safe-to-Spend Cashflow Forecast](#2-safe-to-spend-cashflow-forecast)
   - [3. Privacy Masking Mode (Incognito)](#3-privacy-masking-mode-incognito)
@@ -31,16 +31,16 @@
   - [9. Data Portability & JSON Backup](#9-data-portability--json-backup)
   - [10. Local-First Engine & Cloud Sync](#10-local-first-engine--cloud-sync)
   - [11. PDF Statement Reader (`/statements`)](#11-pdf-statement-reader-statements)
-- [🗄️ Database Schema & Entities](#-database-schema--entities)
-- [💻 Tech Stack](#-tech-stack)
-- [📁 Project Structure](#-project-structure)
-- [🚀 Getting Started](#-getting-started)
-- [⌨️ Keyboard Shortcuts](#-keyboard-shortcuts)
-- [📄 License & Authors](#-license--authors)
+- [Database Schema & Entities](#database-schema--entities)
+- [Tech Stack](#tech-stack)
+- [Project Structure](#project-structure)
+- [Getting Started](#getting-started)
+- [Keyboard Shortcuts](#keyboard-shortcuts)
+- [License & Authors](#license--authors)
 
 ---
 
-## 🤔 Why Finora?
+## Why Finora?
 
 Personal finance software typically suffers from one of two extremes:
 1. **The Toy App**: Visually clean, but falls apart when handling multiple accounts, credit float cycles, shared split bills, or debt settlements.
@@ -51,9 +51,9 @@ The everyday surface is disciplined, distraction-free, and lightning-fast. Deep 
 
 ---
 
-## 🚀 Coming Soon
+## Coming Soon
 
-Finora is becoming more than a personal finance tracker.
+Finora is expanding to support shared financial tracking.
 
 ### Shared IOUs
 
@@ -78,7 +78,7 @@ Existing local IOUs remain private and are never automatically converted into sh
 
 ---
 
-## 🏗️ Architectural Philosophy
+## Architectural Philosophy
 
 ```text
 ┌────────────────────────────────────────────────────────────────────────────────────────┐
@@ -111,7 +111,7 @@ Existing local IOUs remain private and are never automatically converted into sh
 
 ---
 
-## ✨ System Features
+## System Features
 
 ### 1. Minimalist Dashboard & Ergonomics
 - **Available Balance Context**: Immediate view of total available funds and active account count.
@@ -171,7 +171,7 @@ Existing local IOUs remain private and are never automatically converted into sh
 
 ---
 
-## 🗄️ Database Schema & Entities
+## Database Schema & Entities
 
 | Table | Purpose | Sync |
 |:---|:---|:---:|
@@ -199,7 +199,7 @@ Existing local IOUs remain private and are never automatically converted into sh
 
 ---
 
-## 💻 Tech Stack
+## Tech Stack
 
 ```text
 Frontend Framework:       React 19 (SPA)
@@ -217,7 +217,7 @@ PDF Processing:           pdfjs-dist (client-side worker & layout extractor)
 
 ---
 
-## 📁 Project Structure
+## Project Structure
 
 ```text
 Finora/
@@ -275,7 +275,7 @@ Finora/
 
 ---
 
-## 🚀 Getting Started
+## Getting Started
 
 ### Prerequisites
 - [Node.js](https://nodejs.org/) (version 18 or newer recommended)
@@ -323,7 +323,7 @@ Finora/
 
 ---
 
-## ⌨️ Keyboard Shortcuts
+## Keyboard Shortcuts
 
 | Shortcut | Action | Scope |
 |:---:|---|---|
@@ -334,7 +334,7 @@ Finora/
 
 ---
 
-## 📄 License & Authors
+## License & Authors
 
 Finora is licensed under the MIT License.
 
