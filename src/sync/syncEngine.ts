@@ -159,14 +159,20 @@ function clearDeletedIds(table: TableName, ids: string[]): void {
   localStorage.setItem(DELETED_KEY, JSON.stringify(map));
 }
 
-function isTableMissingError(errMsg?: string): boolean {
-  if (!errMsg) return false;
-  return (
-    errMsg.includes('schema cache') ||
-    errMsg.includes('does not exist') ||
-    errMsg.includes('42P01') ||
-    errMsg.includes('PGRST204')
-  );
+function isTableMissingError(err: any): boolean {
+  if (!err) return false;
+
+  const code = typeof err === 'object' && err !== null ? err.code : undefined;
+  const msg = typeof err === 'object' && err !== null ? (err.message || String(err)) : String(err);
+
+  // Exact Postgres code for missing table/relation (undefined_table)
+  if (code === '42P01') return true;
+  if (msg.includes('42P01')) return true;
+
+  // Strict textual matching ensuring it ONLY identifies missing tables, not columns/types/functions
+  if (msg.startsWith('relation "') && msg.includes('does not exist')) return true;
+
+  return false;
 }
 
 // ── camelCase ↔ snake_case mappers ──────────────────────────────────────────
@@ -927,7 +933,7 @@ export async function pushTable(
 
     const { error } = await supabase.from(table).upsert(rows.map(stripUndefinedFields), { onConflict: 'id' });
     if (error) {
-      if (isTableMissingError(error.message)) return { success: true, skipped: true };
+      if (isTableMissingError(error)) return { success: true, skipped: true };
       console.warn(`[sync] pushTable failed for ${table}:`, error.message);
       return { success: false, error: `${table}: ${error.message}` };
     }
@@ -935,7 +941,7 @@ export async function pushTable(
     return { success: true };
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
-    if (isTableMissingError(msg)) return { success: true, skipped: true };
+    if (isTableMissingError(err)) return { success: true, skipped: true };
     console.warn(`[sync] pushTable exception for ${table}:`, msg);
     return { success: false, error: `${table}: ${msg}` };
   }
@@ -972,7 +978,7 @@ export async function pushDirtyRecords(userId: string): Promise<void> {
         }
         const { error } = await supabase.from(table).upsert(rows.map(stripUndefinedFields), { onConflict: 'id' });
         if (error) {
-          if (isTableMissingError(error.message)) {
+          if (isTableMissingError(error)) {
             clearDirtyIds(table, ids);
             return;
           }
@@ -1001,7 +1007,7 @@ export async function pullTable(
   try {
     const { data, error } = await supabase.from(table).select('*').eq('user_id', userId);
     if (error) {
-      if (isTableMissingError(error.message)) return { success: true, skipped: true };
+      if (isTableMissingError(error)) return { success: true, skipped: true };
       console.warn(`[sync] pullTable failed for ${table}:`, error.message);
       return { success: false, error: `${table}: ${error.message}` };
     }
@@ -1009,7 +1015,7 @@ export async function pullTable(
     return { success: true };
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
-    if (isTableMissingError(msg)) return { success: true, skipped: true };
+    if (isTableMissingError(err)) return { success: true, skipped: true };
     console.warn(`[sync] pullTable exception for ${table}:`, msg);
     return { success: false, error: `${table}: ${msg}` };
   }
@@ -1180,7 +1186,7 @@ export async function purgeAndRepushCloud(
   try {
     for (const table of ALL_TABLES) {
       const { error } = await supabase.from(table).delete().eq('user_id', userId);
-      if (error && !isTableMissingError(error.message)) {
+      if (error && !isTableMissingError(error)) {
         console.warn(`[sync] Purge failed for ${table}:`, error.message);
         return { success: false, error: `Purge ${table}: ${error.message}` };
       }
