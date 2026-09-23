@@ -10,17 +10,33 @@ export function useVisualViewport() {
   useEffect(() => {
     if (!window.visualViewport) return;
 
+    let ticking = false;
+
     const onResize = () => {
-      const vv = window.visualViewport;
-      if (!vv) return;
-      
-      const isKeyboardOpen = vv.height < window.innerHeight * 0.8;
-      
-      setViewport({
-        height: vv.height,
-        offsetTop: vv.offsetTop,
-        isKeyboardOpen
-      });
+      if (!ticking) {
+        window.requestAnimationFrame(() => {
+          const vv = window.visualViewport;
+          if (vv) {
+            setViewport(prev => {
+              const isKeyboardOpen = vv.height < window.innerHeight * 0.8;
+              if (
+                Math.abs(prev.height - vv.height) < 1 &&
+                Math.abs(prev.offsetTop - vv.offsetTop) < 1 &&
+                prev.isKeyboardOpen === isKeyboardOpen
+              ) {
+                return prev;
+              }
+              return {
+                height: vv.height,
+                offsetTop: vv.offsetTop,
+                isKeyboardOpen
+              };
+            });
+          }
+          ticking = false;
+        });
+        ticking = true;
+      }
     };
 
     onResize();

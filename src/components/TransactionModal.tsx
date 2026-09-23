@@ -33,18 +33,6 @@ export default function TransactionModal() {
     };
   }, []);
 
-  // Ensure focused input stays centered when viewport resizes (keyboard opens)
-  useEffect(() => {
-    if (!isKeyboardOpen) return;
-    const activeEl = document.activeElement;
-    if (activeEl && (activeEl.tagName === 'INPUT' || activeEl.tagName === 'TEXTAREA')) {
-      const timer = setTimeout(() => {
-        activeEl.scrollIntoView({ behavior: 'smooth', block: 'center' });
-      }, 150);
-      return () => clearTimeout(timer);
-    }
-  }, [vvHeight, isKeyboardOpen]);
-
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [amount, setAmount] = useState('');
   const [type, setType] = useState<TransactionType>('expense');
@@ -376,29 +364,6 @@ export default function TransactionModal() {
   };
 
   if (!isAddTransactionModalOpen) return null;
-
-  const renderFooter = (isInScrollArea: boolean) => (
-    <div
-      className={`p-5 border-t border-border bg-card ${isInScrollArea ? 'mt-auto shrink-0' : ''}`}
-      style={!isInScrollArea ? { paddingBottom: 'calc(1.25rem + env(safe-area-inset-bottom, 0px))' } : {}}
-    >
-      <button
-        type="submit"
-        form="tx-form"
-        disabled={isSubmitting || accounts.length === 0 || !amount || isNaN(Number(amount)) || Number(amount) <= 0 || !accountId}
-        className="w-full py-4 bg-accent text-accent-foreground rounded-xl font-medium text-lg active:scale-[0.98] transition-transform disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
-      >
-        {isSubmitting ? (
-          <>
-            <span className="w-5 h-5 border-2 border-accent-foreground/30 border-t-accent-foreground rounded-full animate-spin" />
-            <span>Saving…</span>
-          </>
-        ) : (
-          <span>Save Transaction</span>
-        )}
-      </button>
-    </div>
-  );
 
   return (
     <div className="fixed inset-0 z-50 bg-black/40 backdrop-blur-sm animate-in fade-in duration-200">
@@ -844,13 +809,28 @@ export default function TransactionModal() {
             )}
           </form>
 
-          {/* If keyboard is open, put the footer at the bottom of the scrollable area */}
-          {isKeyboardOpen && renderFooter(true)}
+          {/* Footer stays permanently inside the scroll area, pushed to the bottom by the flex-1 form */}
+          <div
+            className="p-5 border-t border-border bg-card mt-auto shrink-0"
+            style={{ paddingBottom: 'calc(1.25rem + env(safe-area-inset-bottom, 0px))' }}
+          >
+            <button
+              type="submit"
+              form="tx-form"
+              disabled={isSubmitting || accounts.length === 0 || !amount || isNaN(Number(amount)) || Number(amount) <= 0 || !accountId}
+              className="w-full py-4 bg-accent text-accent-foreground rounded-xl font-medium text-lg active:scale-[0.98] transition-transform disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+            >
+              {isSubmitting ? (
+                <>
+                  <span className="w-5 h-5 border-2 border-accent-foreground/30 border-t-accent-foreground rounded-full animate-spin" />
+                  <span>Saving…</span>
+                </>
+              ) : (
+                <span>Save Transaction</span>
+              )}
+            </button>
+          </div>
         </div>
-
-        {/* If keyboard is closed, keep it pinned at the bottom of the modal */}
-        {!isKeyboardOpen && renderFooter(false)}
-
       </div>
     </div>
   </div>
