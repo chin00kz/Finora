@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { db } from './db/db';
 import { IDENTITY_ROLLOUT_CUTOFF } from './config';
-import { BrowserRouter, Routes, Route, Link, useLocation } from 'react-router-dom';
+import { BrowserRouter, Routes, Route, Link, useLocation, useNavigate } from 'react-router-dom';
 import {
   Home,
   List,
@@ -461,16 +461,20 @@ function MainAppShell() {
   const [profileState, setProfileState] = useState<'LOADING' | 'PROFILE_EXISTS' | 'PROFILE_MISSING'>('LOADING');
 
   useEffect(() => {
+    let isCancelled = false;
+    
     if (!user) {
       setProfileState('LOADING');
       return;
     }
     db.cacheProfiles.get(user.id).then(cached => {
+      if (isCancelled) return;
       if (cached) {
         setProfileState('PROFILE_EXISTS');
       } else {
         supabase.from('profiles').select('*').eq('id', user.id).single()
           .then(({ data, error }) => {
+            if (isCancelled) return;
             if (error && error.code === 'PGRST116') {
                setProfileState('PROFILE_MISSING');
             } else if (data) {
@@ -483,15 +487,21 @@ function MainAppShell() {
           });
       }
     });
+    return () => { isCancelled = true; };
   }, [user]);
   const { syncStatus } = useSync();
   const location = useLocation();
+  const navigate = useNavigate();
   const { setAddTransactionModalOpen } = useUIStore();
   const hideNav = location.pathname === '/auth' || location.pathname === '/reset-password';
 
   const isNewAccount = profileState === 'PROFILE_MISSING' && user && new Date(user.created_at).getTime() >= IDENTITY_ROLLOUT_CUTOFF;
   const isLegacyUserMissingProfile = profileState === 'PROFILE_MISSING' && user && new Date(user.created_at).getTime() < IDENTITY_ROLLOUT_CUTOFF;
-  const { hasDismissedProfileIntroV1 } = useUIStore();
+  const { hasDismissedProfileIntroV1, loadDismissedProfileIntroV1, setDismissedProfileIntroV1 } = useUIStore();
+
+  useEffect(() => {
+    if (user) loadDismissedProfileIntroV1(user.id);
+  }, [user, loadDismissedProfileIntroV1]);
 
   
 
@@ -561,7 +571,7 @@ function MainAppShell() {
       {!hideNav && <BudgetModal />}
       {!hideNav && <CustomizeNavModal />}
       <GlobalUndoToast />
-      {isLegacyUserMissingProfile && !hasDismissedProfileIntroV1 && <WhatsNewModal onSetup={() => window.location.href='/settings'} />}
+      {isLegacyUserMissingProfile && !hasDismissedProfileIntroV1 && <WhatsNewModal onSetup={() => { if(user) setDismissedProfileIntroV1(user.id); navigate('/settings'); }} onDismiss={() => { if(user) setDismissedProfileIntroV1(user.id); }} />}
     </div>
   );
 }
@@ -632,6 +642,10 @@ function App() {
 }
 
 export default App;
+
+
+
+
 
 
 

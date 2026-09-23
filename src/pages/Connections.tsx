@@ -64,6 +64,8 @@ export default function Connections() {
           if (row.status === 'declined') return;
           conns.push({
             id: row.connection_id,
+            // NOTE: This is a read model normalization. Locally, user_a is always the current user.
+            // It does not preserve canonical database ordering.
             user_a: user.id,
             user_b: row.other_user_id,
             status: row.status,
@@ -300,4 +302,5 @@ export default function Connections() {
     </div>
   );
 }
+
 

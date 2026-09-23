@@ -1,7 +1,4 @@
-import { useUIStore } from '../store/uiStore';
-
-export default function WhatsNewModal({ onSetup }: { onSetup: () => void }) {
-  const { setDismissedProfileIntroV1 } = useUIStore();
+export default function WhatsNewModal({ onSetup, onDismiss }: { onSetup: () => void, onDismiss: () => void }) {
 
   return (
     <div className="fixed inset-0 z-50 bg-background/80 backdrop-blur-sm flex items-center justify-center p-4 animate-in fade-in duration-200">
@@ -23,7 +20,7 @@ export default function WhatsNewModal({ onSetup }: { onSetup: () => void }) {
             Set up profile
           </button>
           <button 
-            onClick={setDismissedProfileIntroV1}
+            onClick={onDismiss}
             className="w-full py-2.5 bg-secondary text-secondary-foreground rounded-xl text-sm font-medium"
           >
             Maybe later

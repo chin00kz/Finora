@@ -1,3 +1,4 @@
+import { useUIStore } from './uiStore';
 import { create } from 'zustand';
 import { supabase } from '../lib/supabase';
 import { db } from '../db/db';
@@ -73,7 +74,10 @@ export const useAuthStore = create<AuthState>((set, get) => ({
     localStorage.removeItem('finora-dirty');
     set({ user: null, session: null, lastSyncedAt: null });
     await Promise.all(ALL_TABLES.map(t => DEXIE_TABLES[t]?.()));
-  },
+    await db.cacheProfiles.clear();
+    await db.cacheConnections.clear();
+      useUIStore.getState().resetProfileIntroState();
+    },
 
 
   sendPasswordReset: async (email) => {
@@ -97,10 +101,17 @@ export const useAuthStore = create<AuthState>((set, get) => ({
       }
       await supabase.auth.signOut();
       set({ user: null, session: null });
-      return null;
-    } catch (err) {
+      await db.cacheProfiles.clear();
+      await db.cacheConnections.clear();
+        useUIStore.getState().resetProfileIntroState();
+        return null;
+      } catch (err) {
       return err instanceof Error ? err.message : 'Unknown error';
     }
   },
 }));
+
+
+
+
 

@@ -22,7 +22,9 @@ export interface TransactionPrefill {
 
 interface UIState {
   hasDismissedProfileIntroV1: boolean;
-  setDismissedProfileIntroV1: () => void;
+  loadDismissedProfileIntroV1: (userId: string) => void;
+  setDismissedProfileIntroV1: (userId: string) => void;
+  resetProfileIntroState: () => void;
   isAddTransactionModalOpen: boolean;
   setAddTransactionModalOpen: (isOpen: boolean) => void;
   isBudgetModalOpen: boolean;
@@ -37,8 +39,15 @@ interface UIState {
 }
 
 export const useUIStore = create<UIState>((set) => ({
-  hasDismissedProfileIntroV1: localStorage.getItem('profile_intro_dismissed_v1') === 'true',
-  setDismissedProfileIntroV1: () => { localStorage.setItem('profile_intro_dismissed_v1', 'true'); set({ hasDismissedProfileIntroV1: true }); },
+  hasDismissedProfileIntroV1: false,
+  loadDismissedProfileIntroV1: (userId) => {
+    set({ hasDismissedProfileIntroV1: localStorage.getItem(`profile_intro_dismissed_v1:${userId}`) === 'true' });
+  },
+  setDismissedProfileIntroV1: (userId) => {
+    localStorage.setItem(`profile_intro_dismissed_v1:${userId}`, 'true');
+    set({ hasDismissedProfileIntroV1: true });
+  },
+  resetProfileIntroState: () => set({ hasDismissedProfileIntroV1: false }),
 
   isAddTransactionModalOpen: false,
   setAddTransactionModalOpen: (isOpen) =>
@@ -57,5 +66,9 @@ export const useUIStore = create<UIState>((set) => ({
   prefillData: null,
   setPrefillData: (prefillData) => set({ prefillData }),
 }));
+
+
+
+
 
 
