@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+﻿import { useState, useEffect } from 'react';
 import { useAuthStore } from '../store/authStore';
 import { supabase } from '../lib/supabase';
 import { Search, Check, X, Clock, ArrowLeft } from 'lucide-react';
@@ -6,6 +6,7 @@ import { db } from '../db/db';
 import type { CacheProfile, CacheConnection, Person } from '../db/db';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { Link } from 'react-router-dom';
+import { triggerSync } from '../sync/syncEngine';
 
 export default function Connections() {
   const { user } = useAuthStore();
@@ -277,13 +278,18 @@ export default function Connections() {
                     <select 
                       className="w-full bg-background text-sm text-foreground border border-border/50 rounded-lg px-3 py-2 outline-none focus:ring-1 focus:ring-primary"
                       value={people.find((p: Person) => p.connection_id === conn.id)?.id || ''}
-                      onChange={async (e) => {
+                                            onChange={async (e) => {
                         const personId = e.target.value;
+                        const now = Date.now();
                         if (!personId) {
                           const linkedPerson = people.find((p: Person) => p.connection_id === conn.id);
-                          if (linkedPerson) await db.people.update(linkedPerson.id, { connection_id: undefined });
+                          if (linkedPerson) {
+                            await db.people.update(linkedPerson.id, { connection_id: undefined, updatedAt: now });
+                            triggerSync('people', linkedPerson.id);
+                          }
                         } else {
-                          await db.people.update(personId, { connection_id: conn.id });
+                          await db.people.update(personId, { connection_id: conn.id, updatedAt: now });
+                          triggerSync('people', personId);
                         }
                       }}
                     >
@@ -302,5 +308,4 @@ export default function Connections() {
     </div>
   );
 }
-
 

@@ -164,6 +164,7 @@ CREATE TABLE IF NOT EXISTS public.people (
   id TEXT PRIMARY KEY,
   user_id UUID REFERENCES auth.users(id) ON DELETE CASCADE NOT NULL,
   name TEXT NOT NULL,
+  connection_id TEXT,
   updated_at BIGINT NOT NULL
 );
 ALTER TABLE public.people ENABLE ROW LEVEL SECURITY;
@@ -375,6 +376,7 @@ ALTER PUBLICATION supabase_realtime ADD TABLE public.categories;
 ALTER PUBLICATION supabase_realtime ADD TABLE public.savings_goals;
 ALTER PUBLICATION supabase_realtime ADD TABLE public.recurring_transactions;
 ALTER PUBLICATION supabase_realtime ADD TABLE public.debts;
+ALTER PUBLICATION supabase_realtime ADD TABLE public.people;
 
 ALTER TABLE public.accounts REPLICA IDENTITY DEFAULT;
 ALTER TABLE public.transactions REPLICA IDENTITY DEFAULT;

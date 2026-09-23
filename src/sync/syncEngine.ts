@@ -386,6 +386,7 @@ function toSupabasePerson(userId: string, p: Person) {
     id: p.id,
     user_id: userId,
     name: p.name,
+    connection_id: p.connection_id ?? null,
     updated_at: p.updatedAt ?? 0,
   };
 }
@@ -394,6 +395,7 @@ function fromSupabasePerson(row: Record<string, unknown>): Person {
   return {
     id: String(row.id),
     name: String(row.name),
+    connection_id: row.connection_id ? String(row.connection_id) : undefined,
     updatedAt: Number(row.updated_at) || 0,
   };
 }
