@@ -10,6 +10,7 @@ import { triggerSync } from '../sync/syncEngine';
 import { createId } from '../utils/createId';
 import { formatMoney } from '../utils/formatters';
 import QuickAddChips from './QuickAddChips';
+import { useVisualViewport } from '../hooks/useVisualViewport';
 
 export default function TransactionModal() {
   const navigate = useNavigate();
@@ -20,19 +21,41 @@ export default function TransactionModal() {
     setPrefillData,
   } = useUIStore();
 
+  const { height: vvHeight, offsetTop, isKeyboardOpen } = useVisualViewport();
+
   const amountInputRef = useRef<HTMLInputElement>(null);
-  
+
+  // Prevent body scroll when modal is open
+  useEffect(() => {
+    document.body.style.overflow = 'hidden';
+    return () => {
+      document.body.style.overflow = '';
+    };
+  }, []);
+
+  // Ensure focused input stays centered when viewport resizes (keyboard opens)
+  useEffect(() => {
+    if (!isKeyboardOpen) return;
+    const activeEl = document.activeElement;
+    if (activeEl && (activeEl.tagName === 'INPUT' || activeEl.tagName === 'TEXTAREA')) {
+      const timer = setTimeout(() => {
+        activeEl.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      }, 150);
+      return () => clearTimeout(timer);
+    }
+  }, [vvHeight, isKeyboardOpen]);
+
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [amount, setAmount] = useState('');
   const [type, setType] = useState<TransactionType>('expense');
   const [categoryId, setCategoryId] = useState('');
   const [accountId, setAccountId] = useState('');
-  
+
   const [showAdvanced, setShowAdvanced] = useState(false);
   const [notes, setNotes] = useState('');
   const [selectedTags, setSelectedTags] = useState<string[]>([]);
   const [tagInput, setTagInput] = useState('');
-  
+
   const [toAccountId, setToAccountId] = useState(''); // For transfers
   const [isShared, setIsShared] = useState(false);
   const [personalAmount, setPersonalAmount] = useState(''); // For shared expenses
@@ -55,7 +78,7 @@ export default function TransactionModal() {
   const tags = useLiveQuery(() => db.tags.toArray()) || [];
   const people = useLiveQuery(() => db.people.toArray()) || [];
   const allTransactions = useLiveQuery(() => db.transactions.toArray()) || [];
-  
+
   const [autoFillIndicator, setAutoFillIndicator] = useState<string | null>(null);
 
   // Build merchant memory mapping: lowercased note -> most recent transaction details
@@ -354,21 +377,53 @@ export default function TransactionModal() {
 
   if (!isAddTransactionModalOpen) return null;
 
-  return (
-    <div className="fixed inset-0 z-50 flex flex-col justify-end bg-black/40 backdrop-blur-sm animate-in fade-in duration-200">
-      <div className="bg-card w-full max-w-md mx-auto rounded-t-3xl shadow-xl flex flex-col h-[85vh] animate-in slide-in-from-bottom-full duration-300">
-        
-        {/* Header */}
-        <div className="flex justify-between items-center p-5 border-b border-border">
-          <h2 className="text-xl font-medium text-foreground">New Transaction</h2>
-          <button onClick={() => setAddTransactionModalOpen(false)} className="p-2 bg-muted rounded-full text-muted-foreground active:scale-95">
-            <X size={20} />
-          </button>
-        </div>
+  const renderFooter = (isInScrollArea: boolean) => (
+    <div
+      className={`p-5 border-t border-border bg-card ${isInScrollArea ? 'mt-auto shrink-0' : ''}`}
+      style={!isInScrollArea ? { paddingBottom: 'calc(1.25rem + env(safe-area-inset-bottom, 0px))' } : {}}
+    >
+      <button
+        type="submit"
+        form="tx-form"
+        disabled={isSubmitting || accounts.length === 0 || !amount || isNaN(Number(amount)) || Number(amount) <= 0 || !accountId}
+        className="w-full py-4 bg-accent text-accent-foreground rounded-xl font-medium text-lg active:scale-[0.98] transition-transform disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+      >
+        {isSubmitting ? (
+          <>
+            <span className="w-5 h-5 border-2 border-accent-foreground/30 border-t-accent-foreground rounded-full animate-spin" />
+            <span>Saving…</span>
+          </>
+        ) : (
+          <span>Save Transaction</span>
+        )}
+      </button>
+    </div>
+  );
 
-        {/* Form Content - Scrollable */}
-        <div className="flex-1 overflow-y-auto">
-          <form id="tx-form" onSubmit={handleSubmit} className="p-6 space-y-6">
+  return (
+    <div className="fixed inset-0 z-50 bg-black/40 backdrop-blur-sm animate-in fade-in duration-200">
+      <div
+        className="absolute w-full flex flex-col justify-end pointer-events-none"
+        style={{
+          height: vvHeight ? `${vvHeight}px` : '100%',
+          top: offsetTop ? `${offsetTop}px` : 0,
+        }}
+      >
+        <div
+          className="pointer-events-auto bg-card w-full max-w-md mx-auto rounded-t-3xl shadow-xl flex flex-col max-h-full animate-in slide-in-from-bottom-full duration-300"
+          style={{ height: isKeyboardOpen ? '100%' : '85vh' }}
+        >
+          {/* Header */}
+          <div className="flex justify-between items-center p-5 border-b border-border shrink-0">
+            <h2 className="text-xl font-medium text-foreground">New Transaction</h2>
+            <button onClick={() => setAddTransactionModalOpen(false)} className="p-2 bg-muted rounded-full text-muted-foreground active:scale-95">
+              <X size={20} />
+            </button>
+          </div>
+
+          {/* Form Content - Scrollable */}
+          <div className="flex-1 overflow-y-auto flex flex-col">
+            <form id="tx-form" onSubmit={handleSubmit} className="p-6 space-y-6">
 
             {/* Zero-accounts prompt */}
             {accounts.length === 0 && (
@@ -528,8 +583,8 @@ export default function TransactionModal() {
               <label className="block text-xs font-medium text-muted-foreground mb-2 uppercase tracking-wider">
                 {type === 'transfer' ? 'From Account' : 'Account'}
               </label>
-              <select 
-                value={accountId} 
+              <select
+                value={accountId}
                 onChange={e => setAccountId(e.target.value)}
                 className="w-full p-4 bg-background border border-border rounded-xl font-medium text-foreground outline-none focus:border-foreground"
               >
@@ -541,8 +596,8 @@ export default function TransactionModal() {
             {type === 'transfer' && (
               <div className="animate-in fade-in slide-in-from-top-2">
                 <label className="block text-xs font-medium text-muted-foreground mb-2 uppercase tracking-wider">To Account</label>
-                <select 
-                  value={toAccountId} 
+                <select
+                  value={toAccountId}
                   onChange={e => setToAccountId(e.target.value)}
                   className="w-full p-4 bg-background border border-border rounded-xl font-medium text-foreground outline-none focus:border-foreground"
                 >
@@ -635,8 +690,8 @@ export default function TransactionModal() {
 
             {/* Advanced Toggle */}
             <div className="pt-2">
-              <button 
-                type="button" 
+              <button
+                type="button"
                 onClick={() => setShowAdvanced(!showAdvanced)}
                 className="flex items-center justify-center w-full py-3 text-sm font-medium text-muted-foreground hover:text-foreground transition-colors"
               >
@@ -652,13 +707,13 @@ export default function TransactionModal() {
                 <div>
                   <label className="block text-xs font-medium text-muted-foreground mb-2 uppercase tracking-wider">Date & Time</label>
                   <div className="flex gap-3">
-                    <input 
+                    <input
                       type="date"
                       value={txnDate}
                       onChange={e => setTxnDate(e.target.value)}
                       className="flex-1 bg-background border border-border rounded-xl px-4 py-3 text-sm focus:outline-none focus:border-foreground"
                     />
-                    <input 
+                    <input
                       type="time"
                       value={txnTime}
                       onChange={e => setTxnTime(e.target.value)}
@@ -722,9 +777,9 @@ export default function TransactionModal() {
                   <>
                     <div className="bg-amber-500/10 p-5 rounded-xl border border-amber-500/20">
                       <label className="flex items-start cursor-pointer">
-                        <input 
-                          type="checkbox" 
-                          checked={excludeFromBudget} 
+                        <input
+                          type="checkbox"
+                          checked={excludeFromBudget}
                           onChange={e => setExcludeFromBudget(e.target.checked)}
                           className="w-5 h-5 mt-0.5 rounded border-border text-amber-500 focus:ring-amber-500"
                         />
@@ -739,15 +794,15 @@ export default function TransactionModal() {
 
                     <div className="bg-blue-500/10 p-5 rounded-xl border border-blue-500/20">
                       <label className="flex items-center mb-4">
-                        <input 
-                          type="checkbox" 
-                          checked={isShared} 
+                        <input
+                          type="checkbox"
+                          checked={isShared}
                           onChange={e => setIsShared(e.target.checked)}
                           className="w-5 h-5 rounded border-border text-blue-500 focus:ring-blue-500"
                         />
                         <span className="ml-3 font-medium text-foreground">Shared Expense (Split)</span>
                       </label>
-                      
+
                       {isShared && (
                         <div className="pl-8 space-y-3 animate-in fade-in slide-in-from-top-2">
                           <div>
@@ -788,28 +843,16 @@ export default function TransactionModal() {
               </div>
             )}
           </form>
+
+          {/* If keyboard is open, put the footer at the bottom of the scrollable area */}
+          {isKeyboardOpen && renderFooter(true)}
         </div>
 
-        {/* Footer */}
-        <div className="p-5 border-t border-border bg-card">
-          <button 
-            type="submit" 
-            form="tx-form"
-            disabled={isSubmitting || accounts.length === 0 || !amount || isNaN(Number(amount)) || Number(amount) <= 0 || !accountId}
-            className="w-full py-4 bg-accent text-accent-foreground rounded-xl font-medium text-lg active:scale-[0.98] transition-transform disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
-          >
-            {isSubmitting ? (
-              <>
-                <span className="w-5 h-5 border-2 border-accent-foreground/30 border-t-accent-foreground rounded-full animate-spin" />
-                <span>Saving…</span>
-              </>
-            ) : (
-              <span>Save Transaction</span>
-            )}
-          </button>
-        </div>
+        {/* If keyboard is closed, keep it pinned at the bottom of the modal */}
+        {!isKeyboardOpen && renderFooter(false)}
 
       </div>
     </div>
+  </div>
   );
 }
