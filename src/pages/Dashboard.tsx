@@ -96,6 +96,7 @@ export default function Dashboard() {
     glanceBudget,
     glanceTransactions,
     glanceUpcoming,
+    safeToSpendForecastDays,
   } = usePrivacyStore();
 
   const [showSafeBreakdownModal, setShowSafeBreakdownModal] = useState(false);
@@ -103,7 +104,8 @@ export default function Dashboard() {
   const accounts = useLiveQuery(() => db.accounts.toArray()) || [];
   const budgets = useLiveQuery(() => db.budgets.toArray()) || [];
   const activeBudget = budgets.find(b => b.status === 'active');
-  const transactions = useLiveQuery(() => db.transactions.toArray()) || [];
+  const transactionsRaw = useLiveQuery(() => db.transactions.toArray());
+  const transactions = transactionsRaw || [];
   const categories = useLiveQuery(() => db.categories.toArray()) || [];
 
   // Data for safe-to-spend calculation
@@ -135,9 +137,9 @@ export default function Dashboard() {
       recurring,
       ledgers,
       entries,
-      forecastDays: 14,
+      forecastDays: safeToSpendForecastDays,
     });
-  }, [accounts, mmas, cards, offsets, recurring, ledgers, entries]);
+  }, [accounts, mmas, cards, offsets, recurring, ledgers, entries, safeToSpendForecastDays]);
 
   // ── Budget pace with centralized getBudgetStatus ────────────────────────────
   let spentThisPeriod = 0;

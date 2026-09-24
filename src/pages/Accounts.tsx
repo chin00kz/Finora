@@ -141,7 +141,7 @@ export default function Accounts() {
 
       {isModalOpen && (
         <div className="fixed inset-0 z-50 flex flex-col justify-end bg-black/40 backdrop-blur-sm animate-in fade-in duration-200">
-          <div className="bg-card w-full max-w-md mx-auto rounded-t-3xl shadow-xl flex flex-col animate-in slide-in-from-bottom-full duration-300">
+          <div className="bg-card w-full max-w-md mx-auto rounded-t-3xl shadow-xl flex flex-col max-h-[90vh] animate-in slide-in-from-bottom-full duration-300">
             <div className="flex justify-between items-center p-5 border-b border-border">
               <h2 className="text-xl font-medium text-foreground">{editingId ? 'Edit Account' : 'New Account'}</h2>
               <button onClick={() => setIsModalOpen(false)} className="p-2 bg-muted rounded-full text-muted-foreground active:scale-95">
@@ -149,7 +149,7 @@ export default function Accounts() {
               </button>
             </div>
 
-            <form onSubmit={handleSave} className="p-6 space-y-5">
+            <form onSubmit={handleSave} className="p-6 space-y-5 flex-1 overflow-y-auto">
               <div>
                 <label className="block text-xs font-medium text-muted-foreground mb-2 uppercase tracking-wider">Name</label>
                 <input

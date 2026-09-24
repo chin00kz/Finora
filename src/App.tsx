@@ -272,7 +272,8 @@ function MobileBottomNav({ syncStatus }: { syncStatus: 'idle' | 'syncing' | 'err
       {/* Floating Quick Add FAB on Mobile - Mathematically centered to viewport */}
       <button
         onClick={() => setAddTransactionModalOpen(true)}
-        className="md:hidden fixed bottom-20 left-1/2 -translate-x-1/2 z-40 pointer-events-auto w-14 h-14 rounded-full bg-foreground text-background shadow-xl hover:opacity-90 active:scale-95 transition-transform flex items-center justify-center"
+        style={{ bottom: 'calc(env(safe-area-inset-bottom) + 5rem)' }}
+          className="md:hidden fixed left-1/2 -translate-x-1/2 z-40 pointer-events-auto w-14 h-14 rounded-full bg-foreground text-background shadow-xl hover:opacity-90 active:scale-95 transition-transform flex items-center justify-center"
         title="Add transaction"
       >
         <Plus size={24} strokeWidth={2.25} />
@@ -285,7 +286,8 @@ function MobileBottomNav({ syncStatus }: { syncStatus: 'idle' | 'syncing' | 'err
           onClick={() => setIsMoreOpen(false)}
         >
           <div
-            className="bg-card border border-border rounded-2xl p-4 shadow-xl space-y-2 mb-20 max-w-md mx-auto w-full animate-in slide-in-from-bottom-4 duration-200"
+            className="bg-card border border-border rounded-2xl p-4 shadow-xl space-y-2 max-w-md mx-auto w-full animate-in slide-in-from-bottom-4 duration-200"
+              style={{ marginBottom: 'calc(env(safe-area-inset-bottom) + 5rem)' }}
             onClick={e => e.stopPropagation()}
           >
             <div className="flex items-center justify-between pb-2 border-b border-border">

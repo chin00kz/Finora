@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { db } from '../db/db';
 import { X, Download, Printer, FileSpreadsheet } from 'lucide-react';
@@ -24,9 +24,16 @@ export default function ExportReportModal({ isOpen, onClose, defaultPeriod = 'cu
   const [selectedPeriod, setSelectedPeriod] = useState<string>(defaultPeriod);
   const [formatType, setFormatType] = useState<'csv' | 'pdf'>('csv');
 
-  // Early-return after all hooks. Because we return null when closed,
-  // React will remount the component each time it opens, automatically
-  // resetting selectedPeriod to the current defaultPeriod.
+  // Track previous open state to only reset on closed -> open transition
+  const wasOpen = React.useRef(isOpen);
+  useEffect(() => {
+    if (isOpen && !wasOpen.current) {
+      setSelectedPeriod(defaultPeriod);
+    }
+    wasOpen.current = isOpen;
+  }, [isOpen, defaultPeriod]);
+
+  // Early-return after all hooks.
   if (!isOpen) return null;
 
   const handleExport = () => {

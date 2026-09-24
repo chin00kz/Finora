@@ -8,35 +8,50 @@ export default function FinoraProfileWidget() {
   const { user } = useAuthStore();
   const [profile, setProfile] = useState<CacheProfile | null>(null);
   const [loading, setLoading] = useState(true);
-  
+  const [networkError, setNetworkError] = useState(false);
+
   const [username, setUsername] = useState('');
   const [displayName, setDisplayName] = useState('');
   const [setupError, setSetupError] = useState('');
-  
+
   useEffect(() => {
     if (user) {
-      loadProfile();
+      setLoading(true);
+      setNetworkError(false);
+      setProfile(null);
+      loadProfile(user.id);
     }
   }, [user]);
 
-  const loadProfile = async () => {
-    if (!user) return;
+  const loadProfile = async (uid: string) => {
+    let localProfile = null;
     try {
-      const { data, error } = await supabase.from('profiles').select('*').eq('id', user.id).single();
+      localProfile = await db.cacheProfiles.get(uid);
+      if (localProfile && user?.id === uid) {
+        setProfile(localProfile);
+      }
+
+      const { data, error } = await supabase.from('profiles').select('*').eq('id', uid).single();
+
+      if (user?.id !== uid) return; // Stale request protection
+
       if (error) {
         if (error.code === 'PGRST116') {
-          console.log('No profile exists yet.');
+          if (!localProfile) setProfile(null);
         } else {
           console.error('Error loading profile:', error);
+          if (!localProfile) setNetworkError(true);
         }
       } else if (data) {
         setProfile(data);
         await db.cacheProfiles.put(data);
+        setNetworkError(false);
       }
     } catch (e) {
       console.error('Exception in loadProfile:', e);
+      if (user?.id === uid && !localProfile) setNetworkError(true);
     }
-    setLoading(false);
+    if (user?.id === uid) setLoading(false);
   };
 
   const handleCreateProfile = async () => {
@@ -50,7 +65,7 @@ export default function FinoraProfileWidget() {
       setSetupError('Display name is required.');
       return;
     }
-    
+
     try {
       const { error } = await supabase.rpc('create_profile', {
         p_username: username,
@@ -63,7 +78,7 @@ export default function FinoraProfileWidget() {
         created_at: Date.now()
       });*/
       if (error) throw error;
-      await loadProfile();
+      await loadProfile(user.id);
     } catch (e: any) {
       let msg = 'Failed to create profile.';
       if (e.message?.includes('username_taken')) msg = 'Username is already taken.';
@@ -78,10 +93,20 @@ export default function FinoraProfileWidget() {
 
   if (!user || loading) return null;
 
+  if (networkError && !profile) {
+    return (
+      <div className="p-5 border-b border-border space-y-3">
+        <p className="text-xs text-muted-foreground uppercase font-medium tracking-wider">Finora Profile</p>
+        <p className="text-sm text-foreground">Could not connect to server. Try again later.</p>
+        <button onClick={() => { setNetworkError(false); setLoading(true); loadProfile(user.id); }} className="w-full py-2 bg-secondary text-secondary-foreground rounded-xl text-sm font-medium">Retry</button>
+      </div>
+    );
+  }
+
   return (
     <div className="p-5 border-b border-border space-y-3">
       <p className="text-xs text-muted-foreground uppercase font-medium tracking-wider">Finora Profile</p>
-      
+
       {!profile ? (
         <div className="space-y-3">
           <p className="text-sm text-foreground">Create a profile to connect with friends.</p>
