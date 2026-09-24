@@ -24,6 +24,7 @@ export default function TransactionModal() {
   const { height: vvHeight, offsetTop, isKeyboardOpen } = useVisualViewport();
 
   const amountInputRef = useRef<HTMLInputElement>(null);
+  const blurTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // Prevent body scroll ONLY while modal is actually visible.
   // The component stays mounted when closed (returns null), so we must
@@ -65,7 +66,8 @@ export default function TransactionModal() {
   const [newCatColor, setNewCatColor] = useState(PRESET_COLORS[0]);
   const [newCatError, setNewCatError] = useState('');
 
-  const accounts = useLiveQuery(() => db.accounts.toArray()) || [];
+  const accountsRaw = useLiveQuery(() => db.accounts.toArray());
+  const accounts = accountsRaw || [];
   const categories = useLiveQuery(() => db.categories.toArray()) || [];
   const tags = useLiveQuery(() => db.tags.toArray()) || [];
   const people = useLiveQuery(() => db.people.toArray()) || [];
@@ -194,6 +196,9 @@ export default function TransactionModal() {
   }, [isAddTransactionModalOpen, prefillData, tags, setPrefillData]);
 
   useEffect(() => {
+    if (!isAddTransactionModalOpen && blurTimeoutRef.current) {
+      clearTimeout(blurTimeoutRef.current);
+    }
     if (isAddTransactionModalOpen) {
       setTxnDate(format(Date.now(), 'yyyy-MM-dd'));
       setTxnTime(format(Date.now(), 'HH:mm'));
@@ -202,16 +207,24 @@ export default function TransactionModal() {
 
   const filteredCategories = categories.filter(c => c.type === (type === 'transfer' ? 'expense' : type));
 
-  // Set sensible defaults once data arrives — must be in useEffect, not during render
+  // Set sensible defaults once data arrives and reconcile stale selections
   useEffect(() => {
-    if (accounts.length > 0 && !accountId) setAccountId(accounts[0].id);
-  }, [accounts]);
+    if (accounts.length === 0) return;
+    if (!accountId || !accounts.some(a => a.id === accountId)) {
+      setAccountId(accounts[0].id);
+    }
+  }, [accounts, accountId]);
 
   useEffect(() => {
-    if (filteredCategories.length > 0 && !categoryId && type !== 'transfer') {
+    if (type === 'transfer') return;
+    if (filteredCategories.length === 0) {
+      if (categoryId !== '') setCategoryId('');
+      return;
+    }
+    if (!categoryId || !filteredCategories.some(c => c.id === categoryId)) {
       setCategoryId(filteredCategories[0].id);
     }
-  }, [filteredCategories.length, type]);
+  }, [filteredCategories, categoryId, type]);
 
   // Shared helper for creating a new category inline.
   // Called by both the Enter-key handler and the Save button (was duplicated twice).
@@ -235,6 +248,14 @@ export default function TransactionModal() {
     if (isSubmitting) return;
     if (accounts.length === 0 || !accountId) return;
     if (!amount || isNaN(Number(amount)) || Number(amount) <= 0) return;
+
+    // Strict submit-time validation for data integrity
+    if (type !== 'transfer') {
+      const validCategory = categories.find(c => c.id === categoryId);
+      if (!validCategory || validCategory.type !== type) {
+        return; // Reject invalid category state
+      }
+    }
 
     setIsSubmitting(true);
     const numAmount = Number(amount);
@@ -395,7 +416,7 @@ export default function TransactionModal() {
             <form id="tx-form" onSubmit={handleSubmit} className="p-6 space-y-6">
 
             {/* Zero-accounts prompt */}
-            {accounts.length === 0 && (
+            {accountsRaw !== undefined && accounts.length === 0 && (
               <div className="bg-amber-500/10 border border-amber-500/30 rounded-2xl p-4 flex items-start gap-3">
                 <AlertCircle size={18} className="text-amber-500 mt-0.5 shrink-0" />
                 <div className="flex-1 min-w-0">
@@ -495,7 +516,8 @@ export default function TransactionModal() {
                   onChange={e => setNotes(e.target.value)}
                   onFocus={() => setShowNoteSuggestions(true)}
                   onBlur={() => {
-                    setTimeout(() => {
+                    if (blurTimeoutRef.current) clearTimeout(blurTimeoutRef.current);
+                    blurTimeoutRef.current = setTimeout(() => {
                       setShowNoteSuggestions(false);
                       const key = notes.trim().toLowerCase();
                       if (key && merchantMemory.has(key)) {

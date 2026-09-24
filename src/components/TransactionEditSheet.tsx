@@ -457,18 +457,18 @@ export default function TransactionEditSheet({ transaction, onClose }: Props) {
           {/* Tags */}
           <div>
             <label className="block text-xs font-medium text-muted-foreground mb-2 uppercase tracking-wider">Date & Time</label>
-            <div className="flex gap-3">
+            <div className="flex flex-wrap gap-3">
               <input 
                 type="date"
                 value={txnDate}
                 onChange={e => setTxnDate(e.target.value)}
-                className="flex-1 bg-background border border-border rounded-xl px-4 py-3 text-sm focus:outline-none focus:border-foreground"
+                className="flex-1 min-w-[130px] bg-background border border-border rounded-xl px-4 py-3 text-sm focus:outline-none focus:border-foreground"
               />
               <input 
                 type="time"
                 value={txnTime}
                 onChange={e => setTxnTime(e.target.value)}
-                className="flex-1 bg-background border border-border rounded-xl px-4 py-3 text-sm focus:outline-none focus:border-foreground"
+                className="flex-1 min-w-[100px] bg-background border border-border rounded-xl px-4 py-3 text-sm focus:outline-none focus:border-foreground"
               />
             </div>
           </div>

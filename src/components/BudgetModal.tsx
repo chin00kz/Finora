@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { X } from 'lucide-react';
 import { db } from '../db/db';
 import { useUIStore } from '../store/uiStore';
@@ -7,17 +7,33 @@ import { triggerSync } from '../sync/syncEngine';
 
 export default function BudgetModal() {
   const { isBudgetModalOpen, setBudgetModalOpen } = useUIStore();
-  
+
   const [name, setName] = useState('');
   const [amount, setAmount] = useState('');
-  
-  // Format dates for input type="date"
-  const todayStr = new Date().toISOString().split('T')[0];
-  const [startDateStr, setStartDateStr] = useState(todayStr);
-  
-  const defaultEnd = new Date();
-  defaultEnd.setDate(defaultEnd.getDate() + 30);
-  const [endDateStr, setEndDateStr] = useState(defaultEnd.toISOString().split('T')[0]);
+
+  const getLocalFormattedDate = (date: Date) => {
+    const year = date.getFullYear();
+    const month = String(date.getMonth() + 1).padStart(2, '0');
+    const day = String(date.getDate()).padStart(2, '0');
+    return `${year}-${month}-${day}`;
+  };
+
+  const [startDateStr, setStartDateStr] = useState('');
+  const [endDateStr, setEndDateStr] = useState('');
+
+  useEffect(() => {
+    if (isBudgetModalOpen) {
+      const today = new Date();
+      setStartDateStr(getLocalFormattedDate(today));
+
+      const defaultEnd = new Date();
+      defaultEnd.setDate(defaultEnd.getDate() + 30);
+      setEndDateStr(getLocalFormattedDate(defaultEnd));
+
+      setName('');
+      setAmount('');
+    }
+  }, [isBudgetModalOpen]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -74,8 +90,8 @@ export default function BudgetModal() {
 
   return (
     <div className="fixed inset-0 z-50 flex flex-col justify-end bg-black/40 backdrop-blur-sm animate-in fade-in duration-200">
-      <div className="bg-card w-full max-w-md mx-auto rounded-t-3xl shadow-xl flex flex-col animate-in slide-in-from-bottom-full duration-300">
-        
+      <div className="bg-card w-full max-w-md mx-auto rounded-t-3xl shadow-xl flex flex-col max-h-[90vh] animate-in slide-in-from-bottom-full duration-300">
+
         {/* Header */}
         <div className="flex justify-between items-center p-5 border-b border-border">
           <h2 className="text-xl font-medium text-foreground">New Budget Period</h2>
@@ -87,7 +103,7 @@ export default function BudgetModal() {
         {/* Form Content */}
         <div className="flex-1 overflow-y-auto">
           <form id="budget-form" onSubmit={handleSubmit} className="p-6 space-y-6">
-            
+
             <div>
               <label className="block text-xs font-medium text-muted-foreground mb-2 uppercase tracking-wider">Budget Name</label>
               <input
@@ -139,7 +155,7 @@ export default function BudgetModal() {
                 />
               </div>
             </div>
-            
+
           </form>
         </div>
 

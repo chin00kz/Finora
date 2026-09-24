@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { useLocation } from 'react-router-dom';
+import { useLocation, useNavigate } from 'react-router-dom';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { db } from '../db/db';
 import type { RecurringTransaction, RecurringFrequency } from '../db/db';
@@ -13,6 +13,7 @@ import MaskedAmount from '../components/MaskedAmount';
 
 export default function Recurring() {
   const { confirmDialog, requestConfirm } = useConfirm();
+  const navigate = useNavigate();
   const recurringRules = useLiveQuery(() => db.recurringTransactions.toArray()) || [];
   const accounts = useLiveQuery(() => db.accounts.toArray()) || [];
   const categories = useLiveQuery(() => db.categories.toArray()) || [];
@@ -41,11 +42,13 @@ export default function Recurring() {
       const rule = recurringRules.find(r => r.id === location.state.selectedRecurringId);
       if (rule && !isModalOpen) {
         openEditModal(rule);
-        // Clear state
-        window.history.replaceState({}, document.title);
+        // Clear state using React Router
+        const newState = { ...location.state };
+        delete newState.selectedRecurringId;
+        navigate(location.pathname, { replace: true, state: newState });
       }
     }
-  }, [location.state?.selectedRecurringId, recurringRules]);
+  }, [location.state, recurringRules, location.pathname, navigate, isModalOpen]);
 
   const openAddModal = () => {
     setEditingRule(null);
@@ -358,7 +361,7 @@ export default function Recurring() {
       {/* ── Add / Edit Modal ──────────────────────────────────────────────── */}
       {isModalOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-background/80 backdrop-blur-sm animate-in fade-in duration-200">
-          <div className="bg-card border border-border w-full max-w-md rounded-2xl shadow-xl overflow-hidden animate-in zoom-in-95 duration-200">
+          <div className="bg-card border border-border w-full max-w-md rounded-2xl shadow-xl flex flex-col max-h-[90vh] animate-in zoom-in-95 duration-200">
             <div className="flex items-center justify-between p-5 border-b border-border">
               <h3 className="text-lg font-medium text-foreground">
                 {editingRule ? 'Edit Recurring Rule' : 'New Recurring Rule'}
@@ -371,7 +374,7 @@ export default function Recurring() {
               </button>
             </div>
 
-            <div className="p-5 space-y-4">
+            <div className="p-5 space-y-4 flex-1 overflow-y-auto">
               {/* Type Toggle */}
               <div className="flex bg-muted p-1 rounded-xl">
                 {(['expense', 'income'] as const).map(t => (

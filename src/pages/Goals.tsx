@@ -337,7 +337,7 @@ export default function Goals() {
       {/* ── Add / Edit Goal Modal ────────────────────────────────────────── */}
       {isModalOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-background/80 backdrop-blur-sm animate-in fade-in duration-200">
-          <div className="bg-card border border-border w-full max-w-md rounded-2xl shadow-xl overflow-hidden animate-in zoom-in-95 duration-200">
+          <div className="bg-card border border-border w-full max-w-md rounded-2xl shadow-xl flex flex-col max-h-[90vh] animate-in zoom-in-95 duration-200">
             <div className="flex items-center justify-between p-5 border-b border-border">
               <h3 className="text-lg font-medium text-foreground">
                 {editingGoal ? 'Edit Savings Goal' : 'New Savings Goal'}
@@ -350,7 +350,7 @@ export default function Goals() {
               </button>
             </div>
 
-            <div className="p-5 space-y-4">
+            <div className="p-5 space-y-4 flex-1 overflow-y-auto">
               {/* Name */}
               <div>
                 <label className="block text-xs font-medium text-muted-foreground uppercase tracking-wider mb-1.5">
@@ -478,7 +478,7 @@ export default function Goals() {
       {/* ── Adjust Funds Quick Modal ────────────────────────────────────── */}
       {adjustModalGoal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-background/80 backdrop-blur-sm animate-in fade-in duration-200">
-          <div className="bg-card border border-border w-full max-w-sm rounded-2xl shadow-xl overflow-hidden animate-in zoom-in-95 duration-200">
+          <div className="bg-card border border-border w-full max-w-sm rounded-2xl shadow-xl flex flex-col max-h-[90vh] animate-in zoom-in-95 duration-200">
             <div className="flex items-center justify-between p-4 border-b border-border">
               <h3 className="text-base font-medium text-foreground">
                 {adjustType === 'deposit' ? 'Add Funds' : 'Withdraw Funds'} &middot;{' '}
@@ -492,7 +492,7 @@ export default function Goals() {
               </button>
             </div>
 
-            <div className="p-4 space-y-3">
+            <div className="p-4 space-y-3 flex-1 overflow-y-auto">
               <p className="text-xs text-muted-foreground">
                 Current progress: {formatMoney(adjustModalGoal.currentAmount)} of{' '}
                 {formatMoney(adjustModalGoal.targetAmount)}

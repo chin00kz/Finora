@@ -16,7 +16,7 @@ import {
   UploadCloud,
   RotateCcw,
 } from 'lucide-react';
-import { useLocation } from 'react-router-dom';
+import { useLocation, useNavigate } from 'react-router-dom';
 import TransactionEditSheet from '../components/TransactionEditSheet';
 import ImportDataModal from '../components/ImportDataModal';
 import { triggerSync, deleteFromCloud } from '../sync/syncEngine';
@@ -31,6 +31,7 @@ import { useConfirm } from '../components/ConfirmDialog';
 export default function Activity() {
   const { confirmDialog, requestConfirm } = useConfirm();
   const location = useLocation();
+  const navigate = useNavigate();
   const initStart = location.state?.filterStartDate;
   const initEnd = location.state?.filterEndDate;
   const searchInputRef = useRef<HTMLInputElement>(null);
@@ -67,11 +68,13 @@ export default function Activity() {
       const txn = transactions.find(t => t.id === location.state.selectedTransactionId);
       if (txn) {
         setSelectedTxn(txn);
-        // Clear the state so it doesn't re-open on navigation back
-        window.history.replaceState({}, document.title);
+        // Clear the state so it doesn't re-open on navigation back, using React Router
+        const newState = { ...location.state };
+        delete newState.selectedTransactionId;
+        navigate(location.pathname, { replace: true, state: newState });
       }
     }
-  }, [location.state?.selectedTransactionId, transactions]);
+  }, [location.state, transactions, location.pathname, navigate]);
 
   const { oneTapLogMode } = usePrivacyStore();
   const { setAddTransactionModalOpen, setPrefillData, showUndoToast } = useUIStore();
