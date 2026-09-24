@@ -14,10 +14,13 @@ This document tracks temporary/current information, active phases, feature branc
   - 2C Create Shared IOU: complete
   - 2D Recipient handshake: complete
   - 2E UI: complete
-- **Phase 3 — Settlements:** **CURRENT**
+- **Phase 3 — Settlements:** COMPLETE
   - 3A Cloud Settlement Logic: complete (*Note: The unrelated-user settlement SELECT RLS test was skipped during automated testing because disposable signup hit Supabase free-tier auth limits. Other RLS rules were indirectly verified via permissions.*)
-  - 3B Settlement Read Cache: complete
-  - 3C UI (TBD)
+  - 3B Settlement read cache + balance derivation: complete
+  - 3C Debtor payment proposal: complete
+  - 3D Creditor Confirm/Reject: complete
+  - 3E Detail/history + settlement UX polish: complete
+  - *Real two-account E2E settlement test passed:* proposal, multiple pending claims, partial confirmation, rejection, restored proposal capacity, final confirmation, settled transition.
 - **Phase 4 � Notifications/shared UX**
 - **Phase 5 � Polish/advanced sharing**
 

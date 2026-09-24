@@ -78,8 +78,7 @@ A local Person may optionally link to a Connection (`connection_id`), but this i
 - Shared mutations require connectivity.
 - Do NOT create an offline Shared IOU mutation queue by routing shared state through generic dirty-record sync.
 
-## 5. Shared IOU Settlement Design (Planned)
-**DO NOT implement this until STATUS.md says it is the active phase.**
+## 5. Shared IOU Settlement Design
 - **Handshake:** Debtor says "I paid this" (pending settlement). Creditor confirms or rejects.
 - Only confirmed settlements reduce the remaining amount.
 - **Remaining amount is derived:** (original IOU amount) minus (confirmed settlements). It is **not** a freely editable field.

@@ -5,25 +5,25 @@ import { Plus, Search } from 'lucide-react';
 import AddDebtModal from '../components/AddDebtModal';
 import SettleDebtModal from '../components/SettleDebtModal';
 import ProposePaymentModal from '../components/ProposePaymentModal';
-import { canProposePayment, canReviewPayment } from '../utils/sharedIouSettlementEngine';
-import CreditorSettlementReview from '../components/CreditorSettlementReview';
+import { canProposePayment } from '../utils/sharedIouSettlementEngine';
+import SharedIouDetailModal from '../components/SharedIouDetailModal';
 import type { CacheSharedIouSettlement } from '../db/db';
 import { getDebtSettlementStatus, reconcileSharedExpenses } from '../utils/debtSettlementEngine';
 import { getSharedIouSettlementStatus } from '../utils/sharedIouSettlementEngine';
 import MaskedAmount from '../components/MaskedAmount';
+import { formatMoney } from '../utils/formatters';
 import { useAuthStore } from '../store/authStore';
 import { supabase } from '../lib/supabase';
 import { syncSharedIous, syncSharedIouSettlements } from '../sync/sharedIouSync';
 
 type FilterTab = 'all' | 'owed_to_me' | 'i_owe' | 'settled';
 
-interface UnifiedIou {
+export interface UnifiedIou {
   id: string;
   source: 'local' | 'shared';
   personName: string;
   username?: string;
   amount: number;
-  originalAmount: number;
   currency: string;
   direction: 'theyOweMe' | 'iOweThem';
   description?: string;
@@ -34,7 +34,9 @@ interface UnifiedIou {
   availableToPropose?: number;
   pendingTotal?: number;
   pendingSettlements?: CacheSharedIouSettlement[];
-}
+  allSettlements?: CacheSharedIouSettlement[];
+
+  originalAmount?: number;}
 
 export default function Debts() {
   const debts = useLiveQuery(() => db.debts.toArray()) || [];
@@ -48,6 +50,7 @@ export default function Debts() {
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
   const [selectedDebtForSettlement, setSelectedDebtForSettlement] = useState<Debt | null>(null);
   const [proposePaymentIou, setProposePaymentIou] = useState<UnifiedIou | null>(null);
+  const [selectedSharedIou, setSelectedSharedIou] = useState<UnifiedIou | null>(null);
 
   const [actioning, setActioning] = useState<{id: string, action: 'accepted' | 'declined'} | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
@@ -173,7 +176,8 @@ export default function Debts() {
             isShared: true,
             availableToPropose,
             pendingTotal,
-            pendingSettlements
+            pendingSettlements,
+            allSettlements: iouSettlements
           });
         }
       }
@@ -383,9 +387,11 @@ export default function Debts() {
                 onClick={() => {
                   if (iou.source === 'local' && !isPending) {
                     setSelectedDebtForSettlement(iou.rawDebt!);
+                  } else if (iou.source === 'shared') {
+                    setSelectedSharedIou(iou);
                   }
                 }}
-                className={`py-4 border-b border-border/40 last:border-0 flex flex-col gap-2 transition-colors ${iou.source === 'local' && !isPending ? 'cursor-pointer hover:bg-muted/10 -mx-3 px-3 sm:rounded-xl sm:mx-0 sm:px-2' : ''}`}
+                className={`py-4 border-b border-border/40 last:border-0 flex flex-col gap-2 transition-colors ${(iou.source === 'local' && !isPending) || iou.source === 'shared' ? 'cursor-pointer hover:bg-muted/10 -mx-3 px-3 sm:rounded-xl sm:mx-0 sm:px-2' : ''}`}
               >
                 <div className="flex items-start justify-between gap-4 w-full">
                   <div className="flex-1 min-w-0 pt-0.5">
@@ -412,7 +418,7 @@ export default function Debts() {
                   </p>
                   {iou.pendingTotal !== undefined && iou.pendingTotal > 0 && (
                     <p className="text-[11px] sm:text-xs text-amber-500 font-medium truncate mt-0.5">
-                      Payment pending · {iou.currency} {iou.pendingTotal.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                      Payment pending · {formatMoney(iou.pendingTotal, iou.currency)}
                     </p>
                   )}
                 </div>
@@ -432,13 +438,7 @@ export default function Debts() {
                 </div>
                 </div>
 
-                {iou.pendingSettlements && iou.pendingSettlements.length > 0 && canReviewPayment(iou.source, iou.status, iou.direction) && (
-                  <div className="w-full">
-                    {iou.pendingSettlements.map(s => (
-                      <CreditorSettlementReview key={s.id} settlement={s} currency={iou.currency} />
-                    ))}
-                  </div>
-                )}
+
               </div>
             );
           })}
@@ -485,6 +485,15 @@ export default function Debts() {
           currency={proposePaymentIou.currency}
         />
       )}
+
+      <SharedIouDetailModal
+        isOpen={!!selectedSharedIou}
+        onClose={() => setSelectedSharedIou(null)}
+        iou={selectedSharedIou}
+        onProposePayment={() => {
+          if (selectedSharedIou) setProposePaymentIou(selectedSharedIou);
+        }}
+      />
     </div>
   );
 }
