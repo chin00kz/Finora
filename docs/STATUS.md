@@ -4,22 +4,17 @@ This document tracks temporary/current information, active phases, feature branc
 
 ## Current Repository State
 - **`main` branch:** Contains the most recent UI reliability fixes.
-- **`feature/shared-ious` branch:** Contains the active Phase 2A backend SQL implementation and testing. Shared IOUs are being developed separately and must not be accidentally merged or modified from `main`.
+- **`feature/shared-ious` branch:** Phase 2 implementation complete and successfully merged into main.
 
 ## Phase Roadmap
 - **Phase 1 � Identity & Connections:** COMPLETE
-- **Phase 2 � Shared IOUs:** **CURRENT**
-  - **2A Cloud schema + security:**
-    - Implementation complete on feature branch.
-    - Production migration has been applied.
-    - Initial security/RLS/direct-insert/create/select tests passed.
-    - **Next backend verification:** Recipient acceptance of the intentionally preserved pending IOU.
-    - **After that:** Decline, cancel, invalid actor/state tests.
-  - 2B Local read cache
-  - 2C Create Shared IOU
-  - 2D Recipient handshake
-  - 2E UI
-- **Phase 3 � Settlements** *(Do NOT start settlements yet)*
+- **Phase 2 — Shared IOUs:** COMPLETE
+  - 2A Cloud schema + security: complete
+  - 2B Local read cache: complete
+  - 2C Create Shared IOU: complete
+  - 2D Recipient handshake: complete
+  - 2E UI: complete
+- **Phase 3 — Settlements:** **CURRENT**
 - **Phase 4 � Notifications/shared UX**
 - **Phase 5 � Polish/advanced sharing**
 
