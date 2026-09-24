@@ -44,8 +44,8 @@ export default function ProposePaymentModal({
     setError('');
 
     const numAmount = Number(amount);
-    if (!numAmount || isNaN(numAmount) || numAmount <= 0) {
-      setError('Please enter a valid amount greater than 0.');
+    if (amount.trim() === '' || !Number.isFinite(numAmount) || numAmount <= 0) {
+      setError('Please enter a valid finite amount greater than 0.');
       return;
     }
 
@@ -69,7 +69,7 @@ export default function ProposePaymentModal({
 
       // Success, just fire the sync and close the modal.
       // If sync fails, the proposal is still safely in the cloud, so we don't alert failure.
-      syncSharedIouSettlements();
+      syncSharedIouSettlements().catch(console.error);
       onClose();
     } catch (err: any) {
       setError(err.message || 'Network error.');
