@@ -30,3 +30,17 @@ export function getSharedIouSettlementStatus(iouAmount: number, settlements: Cac
     availableToPropose
   };
 }
+
+export function canProposePayment(
+  source: 'local' | 'shared',
+  status: 'active' | 'settled' | 'pending',
+  direction: 'theyOweMe' | 'iOweThem',
+  availableToPropose: number
+): boolean {
+  return (
+    source === 'shared' &&
+    status === 'active' &&
+    direction === 'iOweThem' &&
+    availableToPropose > 0
+  );
+}

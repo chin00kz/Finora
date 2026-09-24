@@ -4,6 +4,8 @@ import { db, type Debt } from '../db/db';
 import { Plus, Search } from 'lucide-react';
 import AddDebtModal from '../components/AddDebtModal';
 import SettleDebtModal from '../components/SettleDebtModal';
+import ProposePaymentModal from '../components/ProposePaymentModal';
+import { canProposePayment } from '../utils/sharedIouSettlementEngine';
 import { getDebtSettlementStatus, reconcileSharedExpenses } from '../utils/debtSettlementEngine';
 import { getSharedIouSettlementStatus } from '../utils/sharedIouSettlementEngine';
 import MaskedAmount from '../components/MaskedAmount';
@@ -27,6 +29,8 @@ interface UnifiedIou {
   date: number;
   isShared: boolean;
   rawDebt?: Debt;
+  availableToPropose?: number;
+  pendingTotal?: number;
 }
 
 export default function Debts() {
@@ -40,6 +44,7 @@ export default function Debts() {
   const [activeTab, setActiveTab] = useState<FilterTab>('all');
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
   const [selectedDebtForSettlement, setSelectedDebtForSettlement] = useState<Debt | null>(null);
+  const [proposePaymentIou, setProposePaymentIou] = useState<UnifiedIou | null>(null);
 
   const [actioning, setActioning] = useState<{id: string, action: 'accepted' | 'declined'} | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
@@ -146,7 +151,7 @@ export default function Debts() {
           const otherProf = cachedProfiles.find(p => p.id === otherId);
 
           const iouSettlements = cacheSharedIouSettlements.filter(s => s.shared_iou_id === iou.id);
-          const { remainingAmount } = getSharedIouSettlementStatus(iou.amount, iouSettlements);
+          const { remainingAmount, availableToPropose, pendingTotal } = getSharedIouSettlementStatus(iou.amount, iouSettlements);
 
           list.push({
             id: iou.id,
@@ -160,7 +165,9 @@ export default function Debts() {
             description: iou.description,
             status: (isSettled || (isAccepted && remainingAmount === 0)) ? 'settled' : (isAccepted ? 'active' : 'pending'),
             date: iou.created_at || 0,
-            isShared: true
+            isShared: true,
+            availableToPropose,
+            pendingTotal
           });
         }
       }
@@ -396,12 +403,25 @@ export default function Debts() {
                       </>
                     )}
                   </p>
+                  {iou.pendingTotal !== undefined && iou.pendingTotal > 0 && (
+                    <p className="text-[11px] sm:text-xs text-amber-500 font-medium truncate mt-0.5">
+                      Payment pending · {iou.currency} {iou.pendingTotal.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                    </p>
+                  )}
                 </div>
 
-                <div className="text-right shrink-0">
+                <div className="text-right shrink-0 flex flex-col items-end">
                   <p className={`text-xl sm:text-2xl font-medium tracking-tight ${amountColor}`}>
                     <MaskedAmount amount={iou.amount} prefix={`${iou.currency} `} />
                   </p>
+                  {canProposePayment(iou.source, iou.status, iou.direction, iou.availableToPropose || 0) && (
+                    <button
+                      onClick={(e) => { e.stopPropagation(); setProposePaymentIou(iou); }}
+                      className="mt-2 text-[11px] sm:text-xs font-medium text-accent-foreground/80 hover:text-accent-foreground border border-border/80 hover:border-accent/40 rounded-lg px-2.5 py-1.5 transition-colors"
+                    >
+                      I paid
+                    </button>
+                  )}
                 </div>
               </div>
             );
@@ -436,6 +456,19 @@ export default function Debts() {
         isOpen={Boolean(selectedDebtForSettlement)}
         onClose={() => setSelectedDebtForSettlement(null)}
       />
+
+      {proposePaymentIou && (
+        <ProposePaymentModal
+          isOpen={!!proposePaymentIou}
+          onClose={() => setProposePaymentIou(null)}
+          iouId={proposePaymentIou.id}
+          personName={proposePaymentIou.personName}
+          remainingAmount={proposePaymentIou.amount}
+          availableToPropose={proposePaymentIou.availableToPropose || 0}
+          pendingTotal={proposePaymentIou.pendingTotal || 0}
+          currency={proposePaymentIou.currency}
+        />
+      )}
     </div>
   );
 }
