@@ -50,7 +50,7 @@ export default function ProposePaymentModal({
     }
 
     if (numAmount > availableToPropose) {
-      setError(`Amount cannot exceed the available capacity of ${formatMoney(availableToPropose)}`);
+      setError(`Amount cannot exceed the available capacity of ${formatMoney(availableToPropose, currency)}`);
       return;
     }
 
@@ -64,6 +64,8 @@ export default function ProposePaymentModal({
       if (rpcError) {
         setError(rpcError.message || 'Payment proposal failed. Please ensure you are online.');
         setIsSubmitting(false);
+        // Trigger background reconciliation without closing the modal
+        syncSharedIouSettlements().catch(console.error);
         return;
       }
 
@@ -83,10 +85,10 @@ export default function ProposePaymentModal({
         <h2 className="text-xl font-medium text-foreground tracking-tight px-1">I paid {personName}</h2>
         <div className="bg-muted/30 p-3 rounded-lg text-sm space-y-1 text-center">
           <p className="text-muted-foreground">Remaining balance</p>
-          <p className="text-lg font-medium text-foreground">{currency} {formatMoney(remainingAmount)}</p>
+          <p className="text-lg font-medium text-foreground">{formatMoney(remainingAmount, currency)}</p>
           {pendingTotal > 0 && (
             <p className="text-xs text-amber-500 mt-1">
-              (Pending confirmation: {currency} {formatMoney(pendingTotal)})
+              (Pending confirmation: {formatMoney(pendingTotal, currency)})
             </p>
           )}
         </div>

@@ -13,7 +13,7 @@ import { getSharedIouSettlementStatus } from '../utils/sharedIouSettlementEngine
 import MaskedAmount from '../components/MaskedAmount';
 import { useAuthStore } from '../store/authStore';
 import { supabase } from '../lib/supabase';
-import { syncSharedIous } from '../sync/sharedIouSync';
+import { syncSharedIous, syncSharedIouSettlements } from '../sync/sharedIouSync';
 
 type FilterTab = 'all' | 'owed_to_me' | 'i_owe' | 'settled';
 
@@ -91,6 +91,7 @@ export default function Debts() {
   useEffect(() => {
     if (user) {
       syncSharedIous().catch(e => console.error("Initial shared IOU sync failed", e));
+      syncSharedIouSettlements().catch(e => console.error("Initial settlement sync failed", e));
     }
   }, [user]);
 
@@ -423,7 +424,7 @@ export default function Debts() {
                   {canProposePayment(iou.source, iou.status, iou.direction, iou.availableToPropose || 0) && (
                     <button
                       onClick={(e) => { e.stopPropagation(); setProposePaymentIou(iou); }}
-                      className="mt-2 text-[11px] sm:text-xs font-medium text-accent-foreground/80 hover:text-accent-foreground border border-border/80 hover:border-accent/40 rounded-lg px-2.5 py-1.5 transition-colors"
+                      className="mt-2 text-[11px] sm:text-xs font-medium text-foreground/90 hover:text-foreground border border-border hover:border-accent/50 rounded-lg px-2.5 py-1.5 transition-colors"
                     >
                       I paid
                     </button>

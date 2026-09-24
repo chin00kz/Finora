@@ -46,7 +46,7 @@ export default function CreditorSettlementReview({ settlement, currency }: Props
     <div className="bg-muted/10 border border-border/40 rounded-xl p-3 mt-1">
       <div className="flex items-center justify-between mb-2.5">
         <span className="text-sm font-medium text-foreground">
-          Payment claimed · {currency} {formatMoney(settlement.amount)}
+          Payment claimed · {formatMoney(settlement.amount, currency)}
         </span>
       </div>
       {error && <p className="text-xs text-red-500 mb-2">{error}</p>}
