@@ -13,7 +13,8 @@ export default function Connections() {
   const [profile, setProfile] = useState<CacheProfile | null>(null);
   const [loading, setLoading] = useState(true);
   const [expandedFriendId, setExpandedFriendId] = useState<string | null>(null);
-  
+  const [selectedPersonId, setSelectedPersonId] = useState<string | undefined>(undefined);
+
   // Search State
   const [searchQuery, setSearchQuery] = useState('');
   const [searchResult, setSearchResult] = useState<{ id: string, username: string, display_name: string } | null>(null);
@@ -56,11 +57,11 @@ export default function Connections() {
     try {
       const { data, error } = await supabase.rpc('get_my_connections');
       if (error) throw error;
-      
+
       if (data) {
         const conns: CacheConnection[] = [];
         const profs: CacheProfile[] = [];
-        
+
         data.forEach((row: any) => {
           if (row.status === 'declined') return;
           conns.push({
@@ -74,7 +75,7 @@ export default function Connections() {
             created_at: 0,
             updatedAt: Date.now()
           });
-          
+
           profs.push({
             id: row.other_user_id,
             username: row.other_username,
@@ -82,7 +83,7 @@ export default function Connections() {
             updatedAt: Date.now()
           });
         });
-        
+
         await db.cacheConnections.clear();
         if (conns.length > 0) await db.cacheConnections.bulkPut(conns);
         if (profs.length > 0) await db.cacheProfiles.bulkPut(profs);
@@ -96,7 +97,7 @@ export default function Connections() {
     setSearchError('');
     setSearchResult(null);
     if (!searchQuery.trim()) return;
-    
+
     try {
       const { data, error } = await supabase.rpc('get_profile_by_username', { search_username: searchQuery.trim().toLowerCase() });
       if (error) throw error;
@@ -137,7 +138,7 @@ export default function Connections() {
       <p className="text-center text-muted-foreground">Please sign in to use social features.</p>
     </div>
   );
-  
+
   if (loading) return null;
 
   if (!profile) {
@@ -163,7 +164,7 @@ export default function Connections() {
   const outgoingReqs = cachedConnections.filter(c => c.status === 'pending' && c.action_user_id === user.id);
   const friends = cachedConnections.filter(c => c.status === 'accepted');
   const searchResultConn = searchResult ? cachedConnections.find(c => c.user_b === searchResult.id || c.user_a === searchResult.id) : null;
-  
+
   return (
     <div className="flex-1 w-full max-w-md mx-auto relative pb-24 md:pb-8 pt-6 px-4 space-y-6">
       <div className="flex items-center gap-3">
@@ -177,9 +178,9 @@ export default function Connections() {
       <div className="space-y-3">
         <h4 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground px-1">Find People</h4>
         <div className="flex gap-2">
-          <input 
-            type="text" 
-            placeholder="Search by @username..." 
+          <input
+            type="text"
+            placeholder="Search by @username..."
             className="flex-1 bg-background border border-border/50 rounded-xl px-4 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-primary"
             value={searchQuery}
             onChange={e => setSearchQuery(e.target.value)}
@@ -253,51 +254,77 @@ export default function Connections() {
         <div className="space-y-3">
           <h4 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground px-1">Friends</h4>
           <div className="space-y-2">
-            {friends.map((conn: CacheConnection) => {
-              const otherProf = cachedProfiles.find((p: CacheProfile) => p.id === conn.user_b);
+            {friends.map((conn: CacheConnection) => {              const otherProf = cachedProfiles.find((p: CacheProfile) => p.id === conn.user_b);
               if (!otherProf) return null;
+              const linkedPerson = people.find((p: Person) => p.connection_id === conn.id);
               return (
                 <div key={conn.id} className="flex flex-col gap-3 p-3 rounded-xl bg-card border border-border/50">
                   <div className="flex items-center justify-between">
                     <div>
                       <p className="font-medium text-sm text-foreground">{otherProf.display_name}</p>
-                      <p className="text-xs text-muted-foreground">@{otherProf.username}</p>
+                      <p className="text-xs text-muted-foreground">
+                        @{otherProf.username}
+                        {linkedPerson && (
+                          <span className="opacity-70 ml-1">&bull; {linkedPerson.name} linked</span>
+                        )}
+                      </p>
                     </div>
                     <div className="flex items-center gap-2">
-                      <button 
-                        onClick={() => setExpandedFriendId(expandedFriendId === conn.id ? null : conn.id)}
+                      <button
+                        onClick={() => {
+                            setExpandedFriendId(expandedFriendId === conn.id ? null : conn.id);
+                            setSelectedPersonId(undefined);
+                          }}
                         className="text-[11px] px-2 py-1 bg-secondary text-secondary-foreground rounded font-medium hover:bg-secondary/80"
                       >
-                        {expandedFriendId === conn.id ? 'Close' : 'Link Person...'}
+                        {expandedFriendId === conn.id ? 'Close' : (linkedPerson ? 'Manage Link' : 'Link Person...')}
                       </button>
                       <span className="text-xs px-3 py-1 bg-green-500/10 text-green-500 rounded-md font-medium">Connected</span>
                     </div>
                   </div>
                   {expandedFriendId === conn.id && (<div className="pt-2 border-t border-border/50 animate-in slide-in-from-top-2 duration-200">
-                    <label className="block text-xs font-medium text-muted-foreground mb-1.5">Link local Person record (optional)</label>
-                    <select 
-                      className="w-full bg-background text-sm text-foreground border border-border/50 rounded-lg px-3 py-2 outline-none focus:ring-1 focus:ring-primary"
-                      value={people.find((p: Person) => p.connection_id === conn.id)?.id || ''}
-                                            onChange={async (e) => {
-                        const personId = e.target.value;
-                        const now = Date.now();
-                        if (!personId) {
-                          const linkedPerson = people.find((p: Person) => p.connection_id === conn.id);
-                          if (linkedPerson) {
-                            await db.people.update(linkedPerson.id, { connection_id: undefined, updatedAt: now });
-                            triggerSync('people', linkedPerson.id);
-                          }
-                        } else {
-                          await db.people.update(personId, { connection_id: conn.id, updatedAt: now });
-                          triggerSync('people', personId);
-                        }
-                      }}
-                    >
-                      <option value="">Match Person / Link existing person...</option>
-                      {people.map((p: Person) => (
-                        <option key={p.id} value={p.id}>{p.name}</option>
-                      ))}
-                    </select>
+                    <label className="block text-xs font-medium text-muted-foreground mb-1.5">Link local Person record (optional)</label>                      <div className="flex gap-2">
+                        <select
+                          className="flex-1 bg-background text-sm text-foreground border border-border/50 rounded-lg px-3 py-2 outline-none focus:ring-1 focus:ring-primary"
+                          value={selectedPersonId !== undefined ? selectedPersonId : (people.find((p: Person) => p.connection_id === conn.id)?.id || '')}
+                          onChange={(e) => setSelectedPersonId(e.target.value)}
+                        >
+                          <option value="">Match Person / Link existing person...</option>
+                          {people.map((p: Person) => (
+                            <option key={p.id} value={p.id}>{p.name}</option>
+                          ))}
+                        </select>
+                        {selectedPersonId !== undefined && selectedPersonId !== (people.find((p: Person) => p.connection_id === conn.id)?.id || '') && (
+                          <button
+                            onClick={async () => {
+                              try {
+                                const now = Date.now();
+                                const linkedPerson = people.find((p: Person) => p.connection_id === conn.id);
+
+                                if (!selectedPersonId) {
+                                  if (linkedPerson) {
+                                    await db.people.update(linkedPerson.id, { connection_id: null as any, updatedAt: now });
+                                    triggerSync('people', linkedPerson.id);
+                                  }
+                                } else {
+                                  if (linkedPerson && linkedPerson.id !== selectedPersonId) {
+                                    await db.people.update(linkedPerson.id, { connection_id: null as any, updatedAt: now });
+                                    triggerSync('people', linkedPerson.id);
+                                  }
+                                  await db.people.update(selectedPersonId, { connection_id: conn.id, updatedAt: now });
+                                  triggerSync('people', selectedPersonId);
+                                }
+                                setSelectedPersonId(undefined);
+                              } catch (err) {
+                                console.error("Failed to link person", err);
+                              }
+                            }}
+                            className="px-4 py-2 bg-primary text-primary-foreground text-sm font-medium rounded-lg"
+                          >
+                            Save
+                          </button>
+                        )}
+                      </div>
                   </div>)}
                 </div>
               );
