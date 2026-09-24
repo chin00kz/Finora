@@ -185,17 +185,12 @@ export default function AddDebtModal({ isOpen, onClose, defaultDirection = 'they
 
       await db.transaction('rw', [db.debts, db.people], async () => {
         if (!localPersonIdToUse) {
-          // Find if we should link to a connection (they picked a friend but unselected share)
-          let connectionIdToLink = undefined;
-          if (finalRecipient?.type === 'friend') {
-            const conn = cacheConnections.find(c => c.status === 'accepted' && (c.user_a === finalRecipient.id || c.user_b === finalRecipient.id));
-            if (conn) connectionIdToLink = conn.id;
-          }
-
+          // Note: Person ↔ Connection linking is strictly optional and explicit.
+          // Do NOT automatically link the connection_id here.
           await db.people.add({
             id: newPersonId,
             name: personName.trim(),
-            connection_id: connectionIdToLink,
+            connection_id: undefined,
             updatedAt: now,
           });
         }

@@ -78,6 +78,7 @@ export const useAuthStore = create<AuthState>((set, get) => ({
     await db.cacheConnections.clear();
       await db.cacheSharedIous.clear();
       await db.cacheSharedIouSettlements.clear();
+      await db.cacheNotifications.clear();
       useUIStore.getState().resetProfileIntroState();
     },
 
@@ -107,6 +108,7 @@ export const useAuthStore = create<AuthState>((set, get) => ({
       await db.cacheConnections.clear();
       await db.cacheSharedIous.clear();
       await db.cacheSharedIouSettlements.clear();
+      await db.cacheNotifications.clear();
         useUIStore.getState().resetProfileIntroState();
         return null;
       } catch (err) {

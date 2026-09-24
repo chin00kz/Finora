@@ -84,3 +84,13 @@ A local Person may optionally link to a Connection (`connection_id`), but this i
 - **Remaining amount is derived:** (original IOU amount) minus (confirmed settlements). It is **not** a freely editable field.
 - The backend confirmation RPC must lock the parent Shared IOU row to protect against concurrent over-settlement.
 - Do NOT automatically generate a local bank transaction from a shared settlement in V1.
+
+## Notification Architecture
+
+- **Cloud-Authoritative**: `public.notifications` is the single source of truth.
+- **Local Read Cache**: Fetched into Dexie `cacheNotifications` for offline viewing.
+- **Isolation**: No generic dirty sync. Not part of `ALL_TABLES`. Mutations require connectivity.
+- **Server-Side Event Creation**: Event producers (RPCs) create notifications to avoid client-side side effects.
+- **Deduplication**: Guaranteed via `event_key` unique constraint.
+- **Security**: Strictly scoped to recipient visibility via RLS.
+- **Internal Deep-Links**: Uses `entity_type` and `entity_id` mapped to safe internal routes, preventing arbitrary URL execution.

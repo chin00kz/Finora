@@ -342,6 +342,7 @@ const db = new Dexie('FinoraDB') as Dexie & {
     cacheConnections: EntityTable<CacheConnection, 'id'>;
     cacheSharedIous: EntityTable<CacheSharedIou, 'id'>;
     cacheSharedIouSettlements: EntityTable<CacheSharedIouSettlement, 'id'>;
+    cacheNotifications: EntityTable<CacheNotification, 'id'>;
 };
 
 
@@ -447,6 +448,21 @@ db.version(9).stores({
 });
 
 
+export interface CacheNotification {
+  id: string;
+  user_id: string;
+  actor_id?: string;
+  type: string;
+  title: string;
+  body: string;
+  entity_type?: string;
+  entity_id?: string;
+  route?: string;
+  event_key: string;
+  read_at?: number;
+  created_at: number;
+}
+
 export interface CacheSharedIouSettlement {
   id: string;
   shared_iou_id: string;
@@ -482,6 +498,11 @@ db.version(10).stores({
 
 db.version(11).stores({
   cacheSharedIouSettlements: "id, shared_iou_id, status"
+});
+
+
+db.version(12).stores({
+  cacheNotifications: "id, read_at, created_at"
 });
 
 export { db };

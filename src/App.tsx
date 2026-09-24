@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { db } from './db/db';
+import { useLiveQuery } from 'dexie-react-hooks';
 import { IDENTITY_ROLLOUT_CUTOFF } from './config';
 import { BrowserRouter, Routes, Route, Link, useLocation, useNavigate } from 'react-router-dom';
 import {
@@ -22,6 +23,7 @@ import {
   Eye,
   EyeOff,
   FileText,
+  Bell,
 } from 'lucide-react';
 import { usePrivacyStore } from './store/privacyStore';
 import { purgeMockData, deduplicateCategories } from './utils/initDb';
@@ -41,6 +43,7 @@ import Activity from './pages/Activity';
 import Debts from './pages/Debts';
 import Settings from './pages/Settings';
 import Connections from './pages/Connections';
+import Notifications from './pages/Notifications';
 import BudgetDetail from './pages/BudgetDetail';
 import Analytics from './pages/Analytics';
 import Recurring from './pages/Recurring';
@@ -95,6 +98,7 @@ function ThemeInitializer() {
 
 // ── Desktop Sidebar ──────────────────────────────────────────────────────────
 function DesktopSidebar({ syncStatus }: { syncStatus: 'idle' | 'syncing' | 'error' }) {
+  const unreadCount = useLiveQuery(() => db.cacheNotifications.filter(n => !n.read_at).count()) || 0;
   const location = useLocation();
   const isActive = (path: string) => location.pathname === path;
   const { setAddTransactionModalOpen } = useUIStore();
@@ -112,7 +116,8 @@ function DesktopSidebar({ syncStatus }: { syncStatus: 'idle' | 'syncing' | 'erro
     { to: '/debts', label: 'IOUs & Debts', icon: Users },
     { to: '/statements', label: 'Statement Reader', icon: FileText },
     { to: '/connections', label: 'Friends & Connections', icon: Users },
-      { to: '/settings', label: 'Settings', icon: SettingsIcon },
+    { to: '/notifications', label: 'Notifications', icon: Bell },
+    { to: '/settings', label: 'Settings', icon: SettingsIcon },
   ];
 
   return (
@@ -181,7 +186,14 @@ function DesktopSidebar({ syncStatus }: { syncStatus: 'idle' | 'syncing' | 'erro
                     : 'text-muted-foreground hover:text-foreground hover:bg-muted/60'
                 }`}
               >
-                <Icon size={18} />
+                <div className="relative">
+                  <Icon size={18} />
+                  {item.to === '/notifications' && unreadCount > 0 && (
+                    <span className="absolute -top-1 -right-1.5 min-w-[14px] h-[14px] flex items-center justify-center rounded-full bg-accent text-[8px] font-bold text-accent-foreground px-0.5 shadow-sm">
+                      {unreadCount > 9 ? '9+' : unreadCount}
+                    </span>
+                  )}
+                </div>
                 <span>{item.label}</span>
               </Link>
             );
@@ -248,6 +260,8 @@ function getNavIcon(id: NavItemId) {
       return FileText;
     case 'connections':
       return Users;
+    case 'notifications':
+      return Bell;
     case 'settings':
       return SettingsIcon;
     default:
@@ -257,6 +271,7 @@ function getNavIcon(id: NavItemId) {
 
 // ── Mobile Bottom Nav ────────────────────────────────────────────────────────
 function MobileBottomNav({ syncStatus }: { syncStatus: 'idle' | 'syncing' | 'error' }) {
+  const unreadCount = useLiveQuery(() => db.cacheNotifications.filter(n => !n.read_at).count()) || 0;
   const location = useLocation();
   const isActive = (path: string) => location.pathname === path;
   const { setAddTransactionModalOpen } = useUIStore();
@@ -344,6 +359,11 @@ function MobileBottomNav({ syncStatus }: { syncStatus: 'idle' | 'syncing' | 'err
                   >
                     <div className="relative mb-1">
                       <Icon size={20} />
+                      {id === 'notifications' && unreadCount > 0 && (
+                        <span className="absolute -top-1.5 -right-1.5 min-w-[14px] h-[14px] flex items-center justify-center rounded-full bg-accent text-[8px] font-bold text-accent-foreground px-0.5 shadow-sm">
+                          {unreadCount > 9 ? '9+' : unreadCount}
+                        </span>
+                      )}
                       {isSettings && syncStatus === 'syncing' && (
                         <span className="absolute -top-0.5 -right-0.5 w-2 h-2 rounded-full bg-accent animate-pulse" />
                       )}
@@ -410,6 +430,11 @@ function MobileBottomNav({ syncStatus }: { syncStatus: 'idle' | 'syncing' | 'err
               >
                 <div className="relative">
                   <Icon size={22} />
+                  {id === 'notifications' && unreadCount > 0 && (
+                    <span className="absolute -top-1.5 -right-1.5 min-w-[14px] h-[14px] flex items-center justify-center rounded-full bg-accent text-[8px] font-bold text-accent-foreground px-0.5 shadow-sm">
+                      {unreadCount > 9 ? '9+' : unreadCount}
+                    </span>
+                  )}
                   {isSettings && syncStatus === 'syncing' && (
                     <span className="absolute -top-0.5 -right-0.5 w-2 h-2 rounded-full bg-accent animate-pulse" />
                   )}
@@ -439,6 +464,11 @@ function MobileBottomNav({ syncStatus }: { syncStatus: 'idle' | 'syncing' | 'err
             >
               <div className="relative">
                 <MoreHorizontal size={22} />
+                {hiddenItemIds.includes('notifications') && unreadCount > 0 && (
+                  <span className="absolute -top-1.5 -right-1.5 min-w-[14px] h-[14px] flex items-center justify-center rounded-full bg-accent text-[8px] font-bold text-accent-foreground px-0.5 shadow-sm">
+                    {unreadCount > 9 ? '9+' : unreadCount}
+                  </span>
+                )}
                 {hiddenItemIds.includes('settings') && syncStatus === 'syncing' && (
                   <span className="absolute -top-0.5 -right-0.5 w-2 h-2 rounded-full bg-accent animate-pulse" />
                 )}
@@ -554,6 +584,7 @@ function MainAppShell() {
             <Route path="/recurring" element={<Recurring />} />
             <Route path="/debts" element={<Debts />} />
             <Route path="/connections" element={<Connections />} />
+            <Route path="/notifications" element={<Notifications />} />
               <Route path="/settings" element={<Settings />} />
             <Route path="/budget" element={<BudgetDetail />} />
             <Route path="/float-tools" element={<FloatTools />} />

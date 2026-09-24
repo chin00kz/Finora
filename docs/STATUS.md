@@ -21,7 +21,12 @@ This document tracks temporary/current information, active phases, feature branc
   - 3D Creditor Confirm/Reject: complete
   - 3E Detail/history + settlement UX polish: complete
   - *Real two-account E2E settlement test passed:* proposal, multiple pending claims, partial confirmation, rejection, restored proposal capacity, final confirmation, settled transition.
-- **Phase 4 � Notifications/shared UX**
+- **Phase 4 — Notifications & Shared UX: CURRENT**
+  - [x] 4A In-app notification foundation
+  - [ ] 4B Connection notifications
+  - [ ] 4C Shared IOU notifications
+  - [ ] 4D Settlement notifications
+  - [ ] 4E Shared UX polish / final E2E
 - **Phase 5 � Polish/advanced sharing**
 
 ## Known Unresolved/Intermittent Bugs

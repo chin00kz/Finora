@@ -13,7 +13,8 @@ export type NavItemId =
   | 'budgets'
   | 'statement-reader'
   | 'settings'
-  | 'connections';
+  | 'connections'
+  | 'notifications';
 
 export interface NavItemConfig {
   id: NavItemId;
@@ -33,6 +34,7 @@ export const ALL_NAV_ITEMS: NavItemConfig[] = [
   { id: 'budgets',          label: 'Budgets',         to: '/budget' },
   { id: 'statement-reader', label: 'Statements',      to: '/statements' },
   { id: 'connections',      label: 'Friends & Connections', to: '/connections' },
+  { id: 'notifications',    label: 'Notifications',   to: '/notifications' },
   { id: 'settings',         label: 'Settings',        to: '/settings' },
 ];
 
