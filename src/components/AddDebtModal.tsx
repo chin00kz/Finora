@@ -28,6 +28,7 @@ export default function AddDebtModal({ isOpen, onClose, defaultDirection = 'they
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState('');
   const [isSharedOptIn, setIsSharedOptIn] = useState(false);
+  const [isPersonDropdownOpen, setIsPersonDropdownOpen] = useState(false);
 
   const trimmedPerson = personName.trim();
   const existingPersonForSync = people.find(
@@ -215,41 +216,76 @@ export default function AddDebtModal({ isOpen, onClose, defaultDirection = 'they
             <label className="block text-xs font-medium text-muted-foreground mb-2 uppercase tracking-wider">
               Person
             </label>
-            <input
-              type="text"
-              required
-              list="people-list-options"
-              value={personName}
-              onChange={e => {
-                setPersonName(e.target.value);
-                if (error) setError('');
-              }}
-              placeholder="e.g. Alex, Maya"
-              className="w-full p-3.5 bg-background border border-border rounded-xl text-sm font-medium text-foreground outline-none focus:border-foreground"
-            />
-            <datalist id="people-list-options">
-              {people.map(p => (
-                <option key={p.id} value={p.name} />
-              ))}
-            </datalist>
+            <div className="relative">
+              <input
+                type="text"
+                required
+                value={personName}
+                onChange={e => {
+                  setPersonName(e.target.value);
+                  setIsPersonDropdownOpen(true);
+                  if (error) setError('');
+                }}
+                onFocus={() => setIsPersonDropdownOpen(true)}
+                onBlur={() => setTimeout(() => setIsPersonDropdownOpen(false), 200)}
+                placeholder="e.g. Alex, Maya"
+                className="w-full p-3.5 bg-background border border-border rounded-xl text-sm font-medium text-foreground outline-none focus:border-foreground"
+              />
+              {isPersonDropdownOpen && people.filter(p => p.name.toLowerCase().includes(personName.toLowerCase())).length > 0 && (
+                <ul className="absolute z-10 top-full left-0 right-0 mt-2 max-h-48 overflow-y-auto bg-card border border-border rounded-xl shadow-lg p-1">
+                  {people.filter(p => p.name.toLowerCase().includes(personName.toLowerCase())).map(p => {
+                    const conn = p.connection_id ? cacheConnections.find(c => c.id === p.connection_id && c.status === 'accepted') : null;
+                    let friendUsername = null;
+                    if (conn && user) {
+                      const friendId = conn.user_a === user.id ? conn.user_b : conn.user_a;
+                      const prof = cacheProfiles.find(pr => pr.id === friendId);
+                      if (prof) friendUsername = prof.username || prof.display_name;
+                    }
+
+                    return (
+                      <li
+                        key={p.id}
+                        onClick={() => {
+                          setPersonName(p.name);
+                          setIsPersonDropdownOpen(false);
+                        }}
+                        className="flex items-center justify-between px-3 py-2.5 rounded-lg hover:bg-muted/50 cursor-pointer"
+                      >
+                        <span className="text-sm font-medium text-foreground">{p.name}</span>
+                        {friendUsername && (
+                          <span className="text-xs text-muted-foreground">@{friendUsername} � Connected</span>
+                        )}
+                      </li>
+                    );
+                  })}
+                </ul>
+              )}
+            </div>
+            {!isPersonDropdownOpen && existingPersonForSync && targetFriendUsername && (
+              <p className="text-[11px] text-muted-foreground mt-2 ml-1">
+                @{targetFriendUsername} � Connected
+              </p>
+            )}
           </div>
 
           {canShare && (
-            <div className="flex items-center justify-between p-3.5 bg-accent/30 border border-accent/60 rounded-xl -mt-2 mb-2">
+            <div className="flex items-start gap-3 p-3.5 bg-background border border-border rounded-xl mt-1 mb-2">
+              <input
+                type="checkbox"
+                id="shareOptIn"
+                checked={isSharedOptIn}
+                onChange={(e) => setIsSharedOptIn(e.target.checked)}
+                disabled={isSubmitting}
+                className="mt-0.5 shrink-0 h-4 w-4 rounded border-border text-primary focus:ring-primary focus:ring-offset-background bg-background"
+              />
               <div>
-                <p className="text-sm font-medium text-foreground">Share with @{targetFriendUsername}</p>
-                <p className="text-xs text-muted-foreground mt-0.5">Sends an IOU request to this person.</p>
+                <label htmlFor="shareOptIn" className="text-sm font-medium text-foreground block cursor-pointer leading-tight">
+                  Send as shared IOU
+                </label>
+                <p className="text-xs text-muted-foreground mt-1">
+                  @{targetFriendUsername} will be asked to confirm.
+                </p>
               </div>
-              <label className="relative inline-flex items-center cursor-pointer shrink-0 ml-4">
-                <input
-                  type="checkbox"
-                  className="sr-only peer"
-                  checked={isSharedOptIn}
-                  onChange={(e) => setIsSharedOptIn(e.target.checked)}
-                  disabled={isSubmitting}
-                />
-                <div className="w-11 h-6 bg-muted peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-border after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-primary"></div>
-              </label>
             </div>
           )}
 
