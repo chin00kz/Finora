@@ -4,6 +4,7 @@ import { supabase } from '../lib/supabase';
 import { Search, Check, X, Clock, ArrowLeft } from 'lucide-react';
 import { db } from '../db/db';
 import type { CacheProfile, CacheConnection, Person } from '../db/db';
+import { syncConnections } from '../sync/connectionSync';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { Link } from 'react-router-dom';
 import { triggerSync } from '../sync/syncEngine';
@@ -54,43 +55,7 @@ export default function Connections() {
 
   const fetchConnections = async () => {
     if (!user) return;
-    try {
-      const { data, error } = await supabase.rpc('get_my_connections');
-      if (error) throw error;
-
-      if (data) {
-        const conns: CacheConnection[] = [];
-        const profs: CacheProfile[] = [];
-
-        data.forEach((row: any) => {
-          if (row.status === 'declined') return;
-          conns.push({
-            id: row.connection_id,
-            // NOTE: This is a read model normalization. Locally, user_a is always the current user.
-            // It does not preserve canonical database ordering.
-            user_a: user.id,
-            user_b: row.other_user_id,
-            status: row.status,
-            action_user_id: row.action_user_id,
-            created_at: 0,
-            updatedAt: Date.now()
-          });
-
-          profs.push({
-            id: row.other_user_id,
-            username: row.other_username,
-            display_name: row.other_display_name,
-            updatedAt: Date.now()
-          });
-        });
-
-        await db.cacheConnections.clear();
-        if (conns.length > 0) await db.cacheConnections.bulkPut(conns);
-        if (profs.length > 0) await db.cacheProfiles.bulkPut(profs);
-      }
-    } catch (e) {
-      console.warn("Failed to fetch connections", e);
-    }
+    await syncConnections(user.id);
   };
 
   const handleSearch = async () => {

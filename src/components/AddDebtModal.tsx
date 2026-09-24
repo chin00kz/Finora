@@ -1,4 +1,4 @@
-import { createId } from '../utils/createId';
+﻿import { createId } from '../utils/createId';
 import React, { useState, useEffect } from 'react';
 import { X, ArrowDownLeft, ArrowUpRight } from 'lucide-react';
 import { db, type DebtDirection } from '../db/db';
@@ -7,11 +7,20 @@ import { triggerSync } from '../sync/syncEngine';
 import { supabase } from '../lib/supabase';
 import { syncSharedIous } from '../sync/sharedIouSync';
 import { useAuthStore } from '../store/authStore';
+import { syncConnections } from '../sync/connectionSync';
 
 interface Props {
   isOpen: boolean;
   onClose: () => void;
   defaultDirection?: DebtDirection;
+}
+
+interface RecipientChoice {
+  type: 'friend' | 'local';
+  id: string; // profileId or personId
+  displayName: string;
+  username?: string;
+  localPersonId?: string;
 }
 
 export default function AddDebtModal({ isOpen, onClose, defaultDirection = 'theyOweMe' }: Props) {
@@ -22,6 +31,7 @@ export default function AddDebtModal({ isOpen, onClose, defaultDirection = 'they
 
   const [direction, setDirection] = useState<DebtDirection>(defaultDirection);
   const [personName, setPersonName] = useState('');
+  const [selectedRecipientId, setSelectedRecipientId] = useState<string | null>(null);
   const [amount, setAmount] = useState('');
   const [note, setNote] = useState('');
   const [date, setDate] = useState(() => new Date().toISOString().split('T')[0]);
@@ -30,28 +40,63 @@ export default function AddDebtModal({ isOpen, onClose, defaultDirection = 'they
   const [isSharedOptIn, setIsSharedOptIn] = useState(false);
   const [isPersonDropdownOpen, setIsPersonDropdownOpen] = useState(false);
 
-  const trimmedPerson = personName.trim();
-  const existingPersonForSync = people.find(
-    p => p.name.toLowerCase() === trimmedPerson.toLowerCase()
-  );
+  // Hydrate connections on open
+  useEffect(() => {
+    if (isOpen && user) {
+      syncConnections(user.id).catch(console.error);
+    }
+  }, [isOpen, user]);
 
-  let targetFriendId: string | null = null;
-  let targetFriendUsername: string | null = null;
+  // Compute available recipients
+  const availableRecipients: RecipientChoice[] = [];
+  const acceptedConns = cacheConnections.filter(c => c.status === 'accepted');
 
-  if (direction === 'theyOweMe' && existingPersonForSync?.connection_id && user) {
-    const conn = cacheConnections.find(
-      c => c.id === existingPersonForSync.connection_id && c.status === 'accepted'
-    );
-    if (conn) {
-      targetFriendId = conn.user_a === user.id ? conn.user_b : conn.user_a;
-      const friendProfile = cacheProfiles.find(p => p.id === targetFriendId);
-      if (friendProfile) {
-        targetFriendUsername = friendProfile.username || friendProfile.display_name;
-      }
+  acceptedConns.forEach(c => {
+    const friendId = c.user_a === user?.id ? c.user_b : c.user_a;
+    const prof = cacheProfiles.find(p => p.id === friendId);
+    if (prof) {
+      const linkedPerson = people.find(p => p.connection_id === c.id);
+      availableRecipients.push({
+        type: 'friend',
+        id: friendId,
+        displayName: prof.display_name || 'Unknown',
+        username: prof.username,
+        localPersonId: linkedPerson?.id
+      });
+    }
+  });
+
+  people.forEach(p => {
+    if (p.connection_id) {
+      const conn = cacheConnections.find(c => c.id === p.connection_id && c.status === 'accepted');
+      if (conn) return; // already added above
+    }
+    availableRecipients.push({
+      type: 'local',
+      id: p.id,
+      displayName: p.name,
+    });
+  });
+
+  const search = personName.trim().toLowerCase();
+  const filteredRecipients = availableRecipients.filter(r => {
+    if (!search) return true;
+    return r.displayName.toLowerCase().includes(search) || r.username?.toLowerCase().includes(search);
+  });
+
+  let finalRecipient: RecipientChoice | null = null;
+  if (selectedRecipientId) {
+    finalRecipient = availableRecipients.find(r => r.id === selectedRecipientId) || null;
+  } else if (search) {
+    const exactMatch = filteredRecipients.find(r => r.displayName.toLowerCase() === search || r.username?.toLowerCase() === search);
+    if (exactMatch) {
+      finalRecipient = exactMatch;
     }
   }
 
-  const canShare = !!(targetFriendId && targetFriendUsername);
+  const targetFriendId = finalRecipient?.type === 'friend' ? finalRecipient.id : null;
+  const targetFriendUsername = finalRecipient?.type === 'friend' ? finalRecipient.username : null;
+  const canShare = !!targetFriendId && direction === 'theyOweMe'; // Shared IOUs V1 only support "theyOweMe"
 
   useEffect(() => {
     if (!canShare) {
@@ -59,6 +104,17 @@ export default function AddDebtModal({ isOpen, onClose, defaultDirection = 'they
     }
   }, [canShare]);
 
+  const handleClose = () => {
+    setPersonName('');
+    setSelectedRecipientId(null);
+    setAmount('');
+    setNote('');
+    setError('');
+    setIsSharedOptIn(false);
+    setDirection(defaultDirection);
+    setIsPersonDropdownOpen(false);
+    onClose();
+  };
 
   if (!isOpen) return null;
 
@@ -66,7 +122,7 @@ export default function AddDebtModal({ isOpen, onClose, defaultDirection = 'they
     e.preventDefault();
     const numAmount = Number(amount);
 
-    if (!trimmedPerson) {
+    if (!personName.trim()) {
       setError('Please specify a person name.');
       return;
     }
@@ -107,18 +163,39 @@ export default function AddDebtModal({ isOpen, onClose, defaultDirection = 'they
       }
     }
 
+    // Local Debt Creation
     try {
       const now = Date.now();
       const selectedDate = date ? new Date(date).getTime() : now;
 
-      const newPersonId = existingPersonForSync?.id ?? createId('person');
+      // Find if we have a local person ID to use
+      let localPersonIdToUse: string | null = null;
+      if (finalRecipient?.type === 'local') {
+        localPersonIdToUse = finalRecipient.id;
+      } else if (finalRecipient?.type === 'friend' && finalRecipient.localPersonId) {
+        localPersonIdToUse = finalRecipient.localPersonId;
+      } else {
+        // We might just be typing a random name that doesn't exactly match
+        const existingByName = people.find(p => p.name.toLowerCase() === personName.trim().toLowerCase());
+        if (existingByName) localPersonIdToUse = existingByName.id;
+      }
+
+      const newPersonId = localPersonIdToUse ?? createId('person');
       const newDebtId = createId('debt');
 
       await db.transaction('rw', [db.debts, db.people], async () => {
-        if (!existingPersonForSync) {
+        if (!localPersonIdToUse) {
+          // Find if we should link to a connection (they picked a friend but unselected share)
+          let connectionIdToLink = undefined;
+          if (finalRecipient?.type === 'friend') {
+            const conn = cacheConnections.find(c => c.status === 'accepted' && (c.user_a === finalRecipient.id || c.user_b === finalRecipient.id));
+            if (conn) connectionIdToLink = conn.id;
+          }
+
           await db.people.add({
             id: newPersonId,
-            name: trimmedPerson,
+            name: personName.trim(),
+            connection_id: connectionIdToLink,
             updatedAt: now,
           });
         }
@@ -128,7 +205,7 @@ export default function AddDebtModal({ isOpen, onClose, defaultDirection = 'they
           source: 'manual',
           direction,
           personId: newPersonId,
-          personName: trimmedPerson,
+          personName: personName.trim(),
           amount: numAmount,
           note: note.trim() || undefined,
           date: selectedDate,
@@ -138,7 +215,7 @@ export default function AddDebtModal({ isOpen, onClose, defaultDirection = 'they
       });
 
       triggerSync('debts', newDebtId);
-      if (!existingPersonForSync) triggerSync('people', newPersonId);
+      if (!localPersonIdToUse) triggerSync('people', newPersonId);
       handleClose();
     } catch (err: any) {
       console.error('Failed to create manual debt', err);
@@ -146,17 +223,6 @@ export default function AddDebtModal({ isOpen, onClose, defaultDirection = 'they
     } finally {
       setIsSubmitting(false);
     }
-  };
-
-  const handleClose = () => {
-    setPersonName('');
-    setAmount('');
-    setNote('');
-    setDate(new Date().toISOString().split('T')[0]);
-    setError('');
-    setIsSharedOptIn(false);
-    setIsSubmitting(false);
-    onClose();
   };
 
   return (
@@ -178,12 +244,13 @@ export default function AddDebtModal({ isOpen, onClose, defaultDirection = 'they
 
         {/* Form Body */}
         <form id="add-debt-form" onSubmit={handleSubmit} className="p-6 space-y-5 overflow-y-auto flex-1">
-          {/* Direction toggle */}
+
+          {/* Direction Toggle */}
           <div>
             <label className="block text-xs font-medium text-muted-foreground mb-2 uppercase tracking-wider">
               Direction
             </label>
-            <div className="grid grid-cols-2 gap-2 p-1 bg-muted rounded-xl">
+            <div className="grid grid-cols-2 gap-2 p-1 bg-muted/50 rounded-xl">
               <button
                 type="button"
                 onClick={() => setDirection('theyOweMe')}
@@ -223,6 +290,7 @@ export default function AddDebtModal({ isOpen, onClose, defaultDirection = 'they
                 value={personName}
                 onChange={e => {
                   setPersonName(e.target.value);
+                  setSelectedRecipientId(null);
                   setIsPersonDropdownOpen(true);
                   if (error) setError('');
                 }}
@@ -231,39 +299,36 @@ export default function AddDebtModal({ isOpen, onClose, defaultDirection = 'they
                 placeholder="e.g. Alex, Maya"
                 className="w-full p-3.5 bg-background border border-border rounded-xl text-sm font-medium text-foreground outline-none focus:border-foreground"
               />
-              {isPersonDropdownOpen && people.filter(p => p.name.toLowerCase().includes(personName.toLowerCase())).length > 0 && (
+              {isPersonDropdownOpen && filteredRecipients.length > 0 && (
                 <ul className="absolute z-10 top-full left-0 right-0 mt-2 max-h-48 overflow-y-auto bg-card border border-border rounded-xl shadow-lg p-1">
-                  {people.filter(p => p.name.toLowerCase().includes(personName.toLowerCase())).map(p => {
-                    const conn = p.connection_id ? cacheConnections.find(c => c.id === p.connection_id && c.status === 'accepted') : null;
-                    let friendUsername = null;
-                    if (conn && user) {
-                      const friendId = conn.user_a === user.id ? conn.user_b : conn.user_a;
-                      const prof = cacheProfiles.find(pr => pr.id === friendId);
-                      if (prof) friendUsername = prof.username || prof.display_name;
-                    }
-
-                    return (
-                      <li
-                        key={p.id}
-                        onClick={() => {
-                          setPersonName(p.name);
-                          setIsPersonDropdownOpen(false);
-                        }}
-                        className="flex items-center justify-between px-3 py-2.5 rounded-lg hover:bg-muted/50 cursor-pointer"
-                      >
-                        <span className="text-sm font-medium text-foreground">{p.name}</span>
-                        {friendUsername && (
-                          <span className="text-xs text-muted-foreground">@{friendUsername} � Connected</span>
-                        )}
-                      </li>
-                    );
-                  })}
+                  {filteredRecipients.map(r => (
+                    <li
+                      key={r.id}
+                      onClick={() => {
+                        setPersonName(r.displayName);
+                        setSelectedRecipientId(r.id);
+                        setIsPersonDropdownOpen(false);
+                      }}
+                      className="flex flex-col px-3 py-2.5 rounded-lg hover:bg-muted/50 cursor-pointer"
+                    >
+                      <span className="text-sm font-medium text-foreground">{r.displayName}</span>
+                      {r.type === 'friend' ? (
+                        <span className="text-[11px] text-emerald-500 font-medium">
+                          @{r.username} · Finora friend
+                        </span>
+                      ) : (
+                        <span className="text-[11px] text-muted-foreground font-medium">
+                          Local person
+                        </span>
+                      )}
+                    </li>
+                  ))}
                 </ul>
               )}
             </div>
-            {!isPersonDropdownOpen && existingPersonForSync && targetFriendUsername && (
-              <p className="text-[11px] text-muted-foreground mt-2 ml-1">
-                @{targetFriendUsername} � Connected
+            {!isPersonDropdownOpen && finalRecipient?.type === 'friend' && targetFriendUsername && (
+              <p className="text-[11px] text-emerald-500 font-medium mt-2 ml-1">
+                @{targetFriendUsername} · Finora friend
               </p>
             )}
           </div>
@@ -362,7 +427,7 @@ export default function AddDebtModal({ isOpen, onClose, defaultDirection = 'they
             disabled={isSubmitting || !amount || !personName.trim()}
             className="flex-1 py-3.5 bg-accent text-accent-foreground rounded-xl text-sm font-medium shadow-sm active:scale-[0.98] transition-transform disabled:opacity-50"
           >
-            {isSubmitting ? 'Saving…' : 'Save Debt'}
+            {isSubmitting ? 'Saving...' : 'Save Debt'}
           </button>
         </div>
       </div>
