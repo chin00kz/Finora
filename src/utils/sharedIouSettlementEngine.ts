@@ -44,3 +44,15 @@ export function canProposePayment(
     availableToPropose > 0
   );
 }
+
+export function canReviewPayment(
+  source: 'local' | 'shared',
+  status: 'active' | 'settled' | 'pending',
+  direction: 'theyOweMe' | 'iOweThem'
+): boolean {
+  return (
+    source === 'shared' &&
+    status === 'active' &&
+    direction === 'theyOweMe'
+  );
+}

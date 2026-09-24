@@ -5,7 +5,9 @@ import { Plus, Search } from 'lucide-react';
 import AddDebtModal from '../components/AddDebtModal';
 import SettleDebtModal from '../components/SettleDebtModal';
 import ProposePaymentModal from '../components/ProposePaymentModal';
-import { canProposePayment } from '../utils/sharedIouSettlementEngine';
+import { canProposePayment, canReviewPayment } from '../utils/sharedIouSettlementEngine';
+import CreditorSettlementReview from '../components/CreditorSettlementReview';
+import type { CacheSharedIouSettlement } from '../db/db';
 import { getDebtSettlementStatus, reconcileSharedExpenses } from '../utils/debtSettlementEngine';
 import { getSharedIouSettlementStatus } from '../utils/sharedIouSettlementEngine';
 import MaskedAmount from '../components/MaskedAmount';
@@ -31,6 +33,7 @@ interface UnifiedIou {
   rawDebt?: Debt;
   availableToPropose?: number;
   pendingTotal?: number;
+  pendingSettlements?: CacheSharedIouSettlement[];
 }
 
 export default function Debts() {
@@ -152,6 +155,7 @@ export default function Debts() {
 
           const iouSettlements = cacheSharedIouSettlements.filter(s => s.shared_iou_id === iou.id);
           const { remainingAmount, availableToPropose, pendingTotal } = getSharedIouSettlementStatus(iou.amount, iouSettlements);
+          const pendingSettlements = iouSettlements.filter(s => s.status === 'pending');
 
           list.push({
             id: iou.id,
@@ -167,7 +171,8 @@ export default function Debts() {
             date: iou.created_at || 0,
             isShared: true,
             availableToPropose,
-            pendingTotal
+            pendingTotal,
+            pendingSettlements
           });
         }
       }
@@ -379,9 +384,10 @@ export default function Debts() {
                     setSelectedDebtForSettlement(iou.rawDebt!);
                   }
                 }}
-                className={`py-4 border-b border-border/40 last:border-0 flex items-start justify-between gap-4 transition-colors ${iou.source === 'local' && !isPending ? 'cursor-pointer hover:bg-muted/10 -mx-3 px-3 sm:rounded-xl sm:mx-0 sm:px-2' : ''}`}
+                className={`py-4 border-b border-border/40 last:border-0 flex flex-col gap-2 transition-colors ${iou.source === 'local' && !isPending ? 'cursor-pointer hover:bg-muted/10 -mx-3 px-3 sm:rounded-xl sm:mx-0 sm:px-2' : ''}`}
               >
-                <div className="flex-1 min-w-0 pt-0.5">
+                <div className="flex items-start justify-between gap-4 w-full">
+                  <div className="flex-1 min-w-0 pt-0.5">
                   <p className={`text-base font-medium truncate mb-0.5 ${isSettled ? 'text-muted-foreground line-through' : 'text-foreground'}`}>
                     {iou.personName}
                   </p>
@@ -423,6 +429,15 @@ export default function Debts() {
                     </button>
                   )}
                 </div>
+                </div>
+
+                {iou.pendingSettlements && iou.pendingSettlements.length > 0 && canReviewPayment(iou.source, iou.status, iou.direction) && (
+                  <div className="w-full">
+                    {iou.pendingSettlements.map(s => (
+                      <CreditorSettlementReview key={s.id} settlement={s} currency={iou.currency} />
+                    ))}
+                  </div>
+                )}
               </div>
             );
           })}
