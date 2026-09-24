@@ -456,7 +456,6 @@ export interface CacheSharedIouSettlement {
   created_at: number;
   confirmed_at?: number;
   confirmed_by?: string;
-  updatedAt?: number;
 }
 
 export interface CacheSharedIou {

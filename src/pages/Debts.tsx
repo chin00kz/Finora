@@ -19,6 +19,7 @@ interface UnifiedIou {
   personName: string;
   username?: string;
   amount: number;
+  originalAmount: number;
   currency: string;
   direction: 'theyOweMe' | 'iOweThem';
   description?: string;
@@ -123,8 +124,9 @@ export default function Debts() {
         id: d.id,
         source: 'local',
         personName: d.personName || 'Unknown',
-        amount: remainingAmount > 0 ? remainingAmount : d.amount,
-        currency: 'LKR',
+        amount: remainingAmount,
+          originalAmount: d.amount,
+          currency: 'LKR',
         direction: d.direction,
         description: d.note,
         status: isFullySettled ? 'settled' : 'active',
@@ -151,7 +153,8 @@ export default function Debts() {
             source: 'shared',
             personName: otherProf?.display_name || 'Unknown',
             username: otherProf?.username,
-            amount: remainingAmount > 0 ? remainingAmount : iou.amount,
+            amount: remainingAmount,
+            originalAmount: iou.amount,
             currency: iou.currency,
             direction: iou.creditor_id === user?.id ? 'theyOweMe' : 'iOweThem',
             description: iou.description,

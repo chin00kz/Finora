@@ -77,8 +77,7 @@ export async function syncSharedIouSettlements(): Promise<{ success: boolean; er
       status: row.status,
       created_at: Number(row.created_at),
       confirmed_at: row.confirmed_at ? Number(row.confirmed_at) : undefined,
-      confirmed_by: row.confirmed_by || undefined,
-      updatedAt: Date.now() // Standard Dexie tracking field
+      confirmed_by: row.confirmed_by || undefined
     }));
 
     await db.transaction('rw', db.cacheSharedIouSettlements, async () => {
