@@ -1,9 +1,12 @@
 import { createId } from '../utils/createId';
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { X, ArrowDownLeft, ArrowUpRight } from 'lucide-react';
 import { db, type DebtDirection } from '../db/db';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { triggerSync } from '../sync/syncEngine';
+import { supabase } from '../lib/supabase';
+import { syncSharedIous } from '../sync/sharedIouSync';
+import { useAuthStore } from '../store/authStore';
 
 interface Props {
   isOpen: boolean;
@@ -12,7 +15,10 @@ interface Props {
 }
 
 export default function AddDebtModal({ isOpen, onClose, defaultDirection = 'theyOweMe' }: Props) {
+  const user = useAuthStore(state => state.user);
   const people = useLiveQuery(() => db.people.toArray()) || [];
+  const cacheConnections = useLiveQuery(() => db.cacheConnections.toArray()) || [];
+  const cacheProfiles = useLiveQuery(() => db.cacheProfiles.toArray()) || [];
 
   const [direction, setDirection] = useState<DebtDirection>(defaultDirection);
   const [personName, setPersonName] = useState('');
@@ -21,13 +27,43 @@ export default function AddDebtModal({ isOpen, onClose, defaultDirection = 'they
   const [date, setDate] = useState(() => new Date().toISOString().split('T')[0]);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState('');
+  const [isSharedOptIn, setIsSharedOptIn] = useState(false);
+
+  const trimmedPerson = personName.trim();
+  const existingPersonForSync = people.find(
+    p => p.name.toLowerCase() === trimmedPerson.toLowerCase()
+  );
+
+  let targetFriendId: string | null = null;
+  let targetFriendUsername: string | null = null;
+
+  if (direction === 'theyOweMe' && existingPersonForSync?.connection_id && user) {
+    const conn = cacheConnections.find(
+      c => c.id === existingPersonForSync.connection_id && c.status === 'accepted'
+    );
+    if (conn) {
+      targetFriendId = conn.user_a === user.id ? conn.user_b : conn.user_a;
+      const friendProfile = cacheProfiles.find(p => p.id === targetFriendId);
+      if (friendProfile) {
+        targetFriendUsername = friendProfile.username || friendProfile.display_name;
+      }
+    }
+  }
+
+  const canShare = !!(targetFriendId && targetFriendUsername);
+
+  useEffect(() => {
+    if (!canShare) {
+      setIsSharedOptIn(false);
+    }
+  }, [canShare]);
+
 
   if (!isOpen) return null;
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     const numAmount = Number(amount);
-    const trimmedPerson = personName.trim();
 
     if (!trimmedPerson) {
       setError('Please specify a person name.');
@@ -41,13 +77,39 @@ export default function AddDebtModal({ isOpen, onClose, defaultDirection = 'they
     setIsSubmitting(true);
     setError('');
 
+    if (canShare && isSharedOptIn) {
+      if (!navigator.onLine) {
+        setError('You must be online to send a Shared IOU request.');
+        setIsSubmitting(false);
+        return;
+      }
+
+      try {
+        const { error: rpcError } = await supabase.rpc('create_shared_iou', {
+          p_debtor_id: targetFriendId,
+          p_amount: numAmount,
+          p_currency: 'LKR',
+          p_description: note.trim() || undefined
+        });
+
+        if (rpcError) throw rpcError;
+
+        syncSharedIous().catch(e => console.error("Sync failed after creation", e));
+
+        handleClose();
+        return;
+      } catch (err: any) {
+        console.error('Failed to create shared IOU', err);
+        setError(err?.message || 'Failed to send Shared IOU request. Please try again.');
+        setIsSubmitting(false);
+        return;
+      }
+    }
+
     try {
       const now = Date.now();
       const selectedDate = date ? new Date(date).getTime() : now;
 
-      const existingPersonForSync = people.find(
-        p => p.name.toLowerCase() === trimmedPerson.toLowerCase()
-      );
       const newPersonId = existingPersonForSync?.id ?? createId('person');
       const newDebtId = createId('debt');
 
@@ -91,6 +153,8 @@ export default function AddDebtModal({ isOpen, onClose, defaultDirection = 'they
     setNote('');
     setDate(new Date().toISOString().split('T')[0]);
     setError('');
+    setIsSharedOptIn(false);
+    setIsSubmitting(false);
     onClose();
   };
 
@@ -169,6 +233,25 @@ export default function AddDebtModal({ isOpen, onClose, defaultDirection = 'they
               ))}
             </datalist>
           </div>
+
+          {canShare && (
+            <div className="flex items-center justify-between p-3.5 bg-accent/30 border border-accent/60 rounded-xl -mt-2 mb-2">
+              <div>
+                <p className="text-sm font-medium text-foreground">Share with @{targetFriendUsername}</p>
+                <p className="text-xs text-muted-foreground mt-0.5">Sends an IOU request to this person.</p>
+              </div>
+              <label className="relative inline-flex items-center cursor-pointer shrink-0 ml-4">
+                <input
+                  type="checkbox"
+                  className="sr-only peer"
+                  checked={isSharedOptIn}
+                  onChange={(e) => setIsSharedOptIn(e.target.checked)}
+                  disabled={isSubmitting}
+                />
+                <div className="w-11 h-6 bg-muted peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-border after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-primary"></div>
+              </label>
+            </div>
+          )}
 
           {/* Amount */}
           <div>
