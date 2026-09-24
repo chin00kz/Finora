@@ -1,6 +1,9 @@
 import { useState, useEffect, useMemo } from 'react';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { db, type Debt } from '../db/db';
+import { useAuthStore } from '../store/authStore';
+import { supabase } from '../lib/supabase';
+import { syncSharedIous } from '../sync/sharedIouSync';
 import {
   Plus,
   Search,
@@ -19,6 +22,86 @@ type FilterTab = 'all' | 'owed_to_me' | 'i_owe' | 'settled';
 
 export default function Debts() {
   const debts = useLiveQuery(() => db.debts.toArray()) || [];
+
+  // Phase 2D: Shared IOUs (Cloud)
+  const sharedIous = useLiveQuery(() => db.cacheSharedIous.toArray()) || [];
+  const cachedProfiles = useLiveQuery(() => db.cacheProfiles.toArray()) || [];
+  const { user } = useAuthStore();
+
+  const [actioningIouId, setActioningIouId] = useState<string | null>(null);
+  const [actionError, setActionError] = useState<string | null>(null);
+  const [actionedIous, setActionedIous] = useState<Record<string, string>>({}); // id -> 'accepted' | 'declined'
+
+  // Fetch missing profiles for Shared IOUs
+  useEffect(() => {
+    if (!user) return;
+    const neededProfileIds = new Set<string>();
+    sharedIous.forEach(iou => {
+      const otherId = iou.creator_id === user.id ? iou.debtor_id : iou.creator_id;
+      if (!cachedProfiles.find(p => p.id === otherId)) {
+        neededProfileIds.add(otherId);
+      }
+    });
+    if (neededProfileIds.size > 0) {
+      // Securely fetch missing profiles via the connections RPC (since IOUs only come from connected friends)
+      const fetchProfiles = async () => {
+        try {
+          const { data, error } = await supabase.rpc('get_my_connections');
+          if (error) throw error;
+          if (data) {
+            const profs = data.map((row: any) => ({
+              id: row.other_user_id,
+              username: row.other_username,
+              display_name: row.other_display_name,
+              updatedAt: Date.now()
+            }));
+            await db.cacheProfiles.bulkPut(profs);
+          }
+        } catch (err) {
+          console.error("Failed to securely fetch profiles for shared IOUs", err);
+        }
+      };
+      fetchProfiles();
+    }
+  }, [sharedIous, cachedProfiles, user]);
+
+  // Initial load sync
+  useEffect(() => {
+    if (user) {
+      syncSharedIous().catch(e => console.error("Initial shared IOU sync failed", e));
+    }
+  }, [user]);
+
+  const handleActionSharedIou = async (iouId: string, action: 'accepted' | 'declined') => {
+    if (!user || actioningIouId) return;
+    setActioningIouId(iouId);
+    setActionError(null);
+
+    const rpcName = action === 'accepted' ? 'accept_shared_iou' : 'decline_shared_iou';
+
+    try {
+      const { error } = await supabase.rpc(rpcName, { p_iou_id: iouId });
+      if (error) throw error;
+
+      // Mutation succeeded! Reflect locally
+      setActionedIous(prev => ({ ...prev, [iouId]: action }));
+
+      // Refresh cache
+      const res = await syncSharedIous();
+      if (!res.success) {
+        console.warn('Post-mutation cache refresh failed. UI state preserved locally.', res.error);
+      }
+    } catch (err: any) {
+      console.error(`Failed to ${action} shared IOU`, err);
+      setActionError(err.message || `Failed to ${action} request. Please try again.`);
+    } finally {
+      setActioningIouId(null);
+    }
+  };
+
+  const incomingRequests = sharedIous.filter(iou => iou.status === 'pending' && iou.debtor_id === user?.id && !actionedIous[iou.id]);
+  const acceptedSharedIous = sharedIous.filter(iou => (iou.status === 'accepted' || actionedIous[iou.id] === 'accepted'));
+
 
   const [searchQuery, setSearchQuery] = useState('');
   const [activeTab, setActiveTab] = useState<FilterTab>('all');
@@ -119,6 +202,52 @@ export default function Debts() {
           <span>Record Debt</span>
         </button>
       </div>
+
+      {/* Phase 2D: Shared IOU Requests */}
+      {incomingRequests.length > 0 && (
+        <div className="space-y-3">
+          <h4 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground px-1">Shared IOU Requests</h4>
+          {actionError && <p className="text-sm text-red-500 px-1">{actionError}</p>}
+          <div className="grid gap-3">
+            {incomingRequests.map(iou => {
+              const creator = cachedProfiles.find(p => p.id === iou.creator_id);
+              const name = creator?.display_name || "Unknown";
+              const username = creator?.username ? `@${creator.username}` : "";
+              const isProcessing = actioningIouId === iou.id;
+
+              return (
+                <div key={iou.id} className={`bg-card rounded-2xl p-4 border border-border shadow-xs flex flex-col sm:flex-row sm:items-center justify-between gap-4 ${isProcessing ? 'opacity-50 pointer-events-none' : ''}`}>
+                  <div>
+                    <p className="font-medium text-sm text-foreground">
+                      {name} <span className="text-xs text-muted-foreground font-normal ml-1">{username}</span>
+                    </p>
+                    <p className="text-xs text-muted-foreground mt-0.5">
+                      requests <span className="font-medium text-foreground">{iou.currency} {iou.amount.toLocaleString()}</span>
+                      {iou.description && <span className="ml-1 opacity-80">&bull; {iou.description}</span>}
+                    </p>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <button
+                      onClick={() => handleActionSharedIou(iou.id, 'declined')}
+                      disabled={isProcessing}
+                      className="px-4 py-2 bg-secondary text-secondary-foreground text-xs rounded-xl font-medium"
+                    >
+                      Decline
+                    </button>
+                    <button
+                      onClick={() => handleActionSharedIou(iou.id, 'accepted')}
+                      disabled={isProcessing}
+                      className="px-4 py-2 bg-primary text-primary-foreground text-xs rounded-xl font-medium"
+                    >
+                      Accept
+                    </button>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
 
       {/* Summary Cards */}
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
@@ -384,6 +513,51 @@ export default function Debts() {
           </div>
         )}
       </div>
+
+      {/* Phase 2D: Accepted Shared IOUs */}
+      {acceptedSharedIous.length > 0 && (
+        <div className="space-y-4 pt-4 border-t border-border/50 mt-6">
+          <h4 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground px-1">Shared IOUs</h4>
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+            {acceptedSharedIous.map(iou => {
+              const otherId = iou.creator_id === user?.id ? iou.debtor_id : iou.creditor_id;
+              const otherProf = cachedProfiles.find(p => p.id === otherId);
+              const name = otherProf?.display_name || "Unknown";
+              const isTheyOweMe = iou.creditor_id === user?.id;
+
+              return (
+                <div key={iou.id} className="bg-card rounded-2xl p-5 border border-border shadow-xs flex flex-col gap-4 relative overflow-hidden group">
+                  <div className="absolute top-0 right-0 p-4">
+                    <div className="w-8 h-8 rounded-full bg-accent/5 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
+                      <Receipt size={14} className="text-muted-foreground" />
+                    </div>
+                  </div>
+                  <div>
+                    <div className="flex items-center gap-2 mb-1">
+                      <p className="text-xs font-medium text-muted-foreground uppercase tracking-wider">
+                        {name}
+                      </p>
+                      <span className="text-[9px] px-1.5 py-0.5 bg-blue-500/10 text-blue-500 rounded font-medium uppercase tracking-widest">Shared</span>
+                    </div>
+                    <p className={`text-2xl font-medium ${isTheyOweMe ? 'text-emerald-500' : 'text-amber-500'}`}>
+                      <span className="text-sm mr-1 font-normal text-muted-foreground">{iou.currency}</span>
+                      {iou.amount.toLocaleString()}
+                    </p>
+                    <p className="text-[11px] text-muted-foreground mt-1">
+                      {isTheyOweMe ? 'They owe me' : 'I owe them'}
+                    </p>
+                  </div>
+                  {iou.description && (
+                    <div className="bg-muted/50 p-3 rounded-xl border border-border/50">
+                      <p className="text-xs text-foreground italic">"{iou.description}"</p>
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
 
       {/* Modals */}
       <AddDebtModal
