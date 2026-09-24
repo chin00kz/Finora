@@ -15,6 +15,9 @@ This document tracks temporary/current information, active phases, feature branc
   - 2D Recipient handshake: complete
   - 2E UI: complete
 - **Phase 3 — Settlements:** **CURRENT**
+  - 3A Cloud Settlement Logic: complete (*Note: The unrelated-user settlement SELECT RLS test was skipped during automated testing because disposable signup hit Supabase free-tier auth limits. Other RLS rules were indirectly verified via permissions.*)
+  - 3B Settlement Read Cache: complete
+  - 3C UI (TBD)
 - **Phase 4 � Notifications/shared UX**
 - **Phase 5 � Polish/advanced sharing**
 

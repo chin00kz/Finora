@@ -5,6 +5,7 @@ import { Plus, Search } from 'lucide-react';
 import AddDebtModal from '../components/AddDebtModal';
 import SettleDebtModal from '../components/SettleDebtModal';
 import { getDebtSettlementStatus, reconcileSharedExpenses } from '../utils/debtSettlementEngine';
+import { getSharedIouSettlementStatus } from '../utils/sharedIouSettlementEngine';
 import MaskedAmount from '../components/MaskedAmount';
 import { useAuthStore } from '../store/authStore';
 import { supabase } from '../lib/supabase';
@@ -30,6 +31,7 @@ interface UnifiedIou {
 export default function Debts() {
   const debts = useLiveQuery(() => db.debts.toArray()) || [];
   const sharedIous = useLiveQuery(() => db.cacheSharedIous.toArray()) || [];
+  const cacheSharedIouSettlements = useLiveQuery(() => db.cacheSharedIouSettlements.toArray()) || [];
   const cachedProfiles = useLiveQuery(() => db.cacheProfiles.toArray()) || [];
   const { user } = useAuthStore();
 
@@ -132,32 +134,36 @@ export default function Debts() {
       });
     }
 
-    for (const iou of sharedIous) {
-      const isAccepted = iou.status === 'accepted' || actionedIous[iou.id] === 'accepted';
-      const isOutgoingPending = iou.status === 'pending' && iou.creator_id === user?.id && !actionedIous[iou.id];
+      for (const iou of sharedIous) {
+        const isAccepted = iou.status === 'accepted' || actionedIous[iou.id] === 'accepted';
+        const isSettled = iou.status === 'settled';
+        const isOutgoingPending = iou.status === 'pending' && iou.creator_id === user?.id && !actionedIous[iou.id];
 
-      if (isAccepted || isOutgoingPending) {
-        const otherId = iou.creditor_id === user?.id ? iou.debtor_id : iou.creditor_id;
-        const otherProf = cachedProfiles.find(p => p.id === otherId);
+        if (isAccepted || isSettled || isOutgoingPending) {
+          const otherId = iou.creditor_id === user?.id ? iou.debtor_id : iou.creditor_id;
+          const otherProf = cachedProfiles.find(p => p.id === otherId);
 
-        list.push({
-          id: iou.id,
-          source: 'shared',
-          personName: otherProf?.display_name || 'Unknown',
-          username: otherProf?.username,
-          amount: iou.amount,
-          currency: iou.currency,
-          direction: iou.creditor_id === user?.id ? 'theyOweMe' : 'iOweThem',
-          description: iou.description,
-          status: isAccepted ? 'active' : 'pending',
-          date: iou.created_at || 0,
-          isShared: true
-        });
+          const iouSettlements = cacheSharedIouSettlements.filter(s => s.shared_iou_id === iou.id);
+          const { remainingAmount } = getSharedIouSettlementStatus(iou.amount, iouSettlements);
+
+          list.push({
+            id: iou.id,
+            source: 'shared',
+            personName: otherProf?.display_name || 'Unknown',
+            username: otherProf?.username,
+            amount: remainingAmount > 0 ? remainingAmount : iou.amount,
+            currency: iou.currency,
+            direction: iou.creditor_id === user?.id ? 'theyOweMe' : 'iOweThem',
+            description: iou.description,
+            status: (isSettled || (isAccepted && remainingAmount === 0)) ? 'settled' : (isAccepted ? 'active' : 'pending'),
+            date: iou.created_at || 0,
+            isShared: true
+          });
+        }
       }
-    }
 
-    return list;
-  }, [debts, sharedIous, actionedIous, user, cachedProfiles]);
+      return list;
+    }, [debts, sharedIous, cacheSharedIouSettlements, actionedIous, user, cachedProfiles]);
 
   const debtMetrics = useMemo(() => {
     let totalOwedToMe = 0;

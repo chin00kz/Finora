@@ -341,6 +341,7 @@ const db = new Dexie('FinoraDB') as Dexie & {
     cacheProfiles: EntityTable<CacheProfile, 'id'>;
     cacheConnections: EntityTable<CacheConnection, 'id'>;
     cacheSharedIous: EntityTable<CacheSharedIou, 'id'>;
+    cacheSharedIouSettlements: EntityTable<CacheSharedIouSettlement, 'id'>;
 };
 
 
@@ -446,6 +447,18 @@ db.version(9).stores({
 });
 
 
+export interface CacheSharedIouSettlement {
+  id: string;
+  shared_iou_id: string;
+  amount: number;
+  proposed_by: string;
+  status: 'pending' | 'confirmed' | 'rejected';
+  created_at: number;
+  confirmed_at?: number;
+  confirmed_by?: string;
+  updatedAt?: number;
+}
+
 export interface CacheSharedIou {
   id: string;
   creator_id: string;
@@ -466,6 +479,10 @@ db.version(10).stores({
   cacheConnections: "id, user_a, user_b, status, updatedAt",
   people: "id, connection_id, updatedAt",
   cacheSharedIous: "id, creditor_id, debtor_id, status"
+});
+
+db.version(11).stores({
+  cacheSharedIouSettlements: "id, shared_iou_id, status"
 });
 
 export { db };

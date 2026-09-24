@@ -76,6 +76,8 @@ export const useAuthStore = create<AuthState>((set, get) => ({
     await Promise.all(ALL_TABLES.map(t => DEXIE_TABLES[t]?.()));
     await db.cacheProfiles.clear();
     await db.cacheConnections.clear();
+      await db.cacheSharedIous.clear();
+      await db.cacheSharedIouSettlements.clear();
       useUIStore.getState().resetProfileIntroState();
     },
 
@@ -103,6 +105,8 @@ export const useAuthStore = create<AuthState>((set, get) => ({
       set({ user: null, session: null });
       await db.cacheProfiles.clear();
       await db.cacheConnections.clear();
+      await db.cacheSharedIous.clear();
+      await db.cacheSharedIouSettlements.clear();
         useUIStore.getState().resetProfileIntroState();
         return null;
       } catch (err) {

@@ -5,7 +5,7 @@ import type { CacheSharedIou } from '../db/db';
 /**
  * Fetches all Shared IOUs visible to the authenticated user via RLS,
  * normalizes them, and atomically replaces the local Dexie read cache.
- * 
+ *
  * Preserves the existing cache if the fetch fails (e.g., offline).
  * This completely bypasses the generic dirty-sync pipeline.
  */
@@ -14,7 +14,7 @@ export async function syncSharedIous(): Promise<{ success: boolean; error?: stri
     // 1. Fetch from authoritative cloud via authenticated client
     // RLS policies automatically filter to rows where the user is creator, creditor, or debtor.
     const { data, error } = await supabase.from('shared_ious').select('*');
-    
+
     if (error) {
       console.error('[SharedIOU Sync] Fetch failed:', error.message);
       return { success: false, error: error.message };
@@ -48,6 +48,50 @@ export async function syncSharedIous(): Promise<{ success: boolean; error?: stri
     return { success: true };
   } catch (err: any) {
     console.error('[SharedIOU Sync] Transaction/Normalization failed:', err.message);
+    return { success: false, error: err.message };
+  }
+}
+
+/**
+ * Fetches all Shared IOU Settlements visible to the authenticated user via RLS,
+ * normalizes them, and atomically replaces the local Dexie read cache.
+ *
+ * Preserves the existing cache if the fetch fails (e.g., offline).
+ * This completely bypasses the generic dirty-sync pipeline.
+ */
+export async function syncSharedIouSettlements(): Promise<{ success: boolean; error?: string }> {
+  try {
+    const { data, error } = await supabase.from('shared_iou_settlements').select('*');
+
+    if (error) {
+      console.error('[SharedIOU Settlement Sync] Fetch failed:', error.message);
+      return { success: false, error: error.message };
+    }
+
+    const rows = data ?? [];
+    const normalized = rows.map((row: any) => ({
+      id: row.id,
+      shared_iou_id: row.shared_iou_id,
+      amount: Number(row.amount),
+      proposed_by: row.proposed_by,
+      status: row.status,
+      created_at: Number(row.created_at),
+      confirmed_at: row.confirmed_at ? Number(row.confirmed_at) : undefined,
+      confirmed_by: row.confirmed_by || undefined,
+      updatedAt: Date.now() // Standard Dexie tracking field
+    }));
+
+    await db.transaction('rw', db.cacheSharedIouSettlements, async () => {
+      await db.cacheSharedIouSettlements.clear();
+      if (normalized.length > 0) {
+        await db.cacheSharedIouSettlements.bulkPut(normalized);
+      }
+    });
+
+    console.log(`[SharedIOU Settlement Sync] Atomically cached ${normalized.length} settlements.`);
+    return { success: true };
+  } catch (err: any) {
+    console.error('[SharedIOU Settlement Sync] Transaction/Normalization failed:', err.message);
     return { success: false, error: err.message };
   }
 }
