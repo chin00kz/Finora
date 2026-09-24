@@ -340,6 +340,7 @@ const db = new Dexie('FinoraDB') as Dexie & {
   parsedStatements: EntityTable<ParsedStatement, 'id'>;
     cacheProfiles: EntityTable<CacheProfile, 'id'>;
     cacheConnections: EntityTable<CacheConnection, 'id'>;
+    cacheSharedIous: EntityTable<CacheSharedIou, 'id'>;
 };
 
 
@@ -442,6 +443,29 @@ db.version(9).stores({
   cacheProfiles: 'id, username, updatedAt',
   cacheConnections: 'id, user_a, user_b, status, updatedAt',
   people: 'id, connection_id, updatedAt'
+});
+
+
+export interface CacheSharedIou {
+  id: string;
+  creator_id: string;
+  creditor_id: string;
+  debtor_id: string;
+  amount: number;
+  currency: string;
+  description?: string;
+  status: string;
+  created_at: number;
+  accepted_at?: number;
+  updated_at: number;
+}
+
+
+db.version(10).stores({
+  cacheProfiles: "id, username, updatedAt",
+  cacheConnections: "id, user_a, user_b, status, updatedAt",
+  people: "id, connection_id, updatedAt",
+  cacheSharedIous: "id, creditor_id, debtor_id, status"
 });
 
 export { db };
