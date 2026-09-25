@@ -49,6 +49,7 @@ import type {
 
 export type TableName =
   | 'accounts'
+  | 'groups'
   | 'transactions'
   | 'budgets'
   | 'tags'
@@ -77,6 +78,7 @@ export const ALL_TABLES: TableName[] = [
   'savings_goals',
   'people',
   'debts',
+  'groups',
   'credit_cards',
   'cash_offset_sources',
   'fixed_deposits',
@@ -403,6 +405,26 @@ function fromSupabasePerson(row: Record<string, unknown>): Person {
     name: String(row.name),
     connection_id: row.connection_id ? String(row.connection_id) : undefined,
     updatedAt: Number(row.updated_at) || 0,
+  };
+}
+
+
+// Groups
+function toSupabaseGroup(userId: string, l: any) {
+  return {
+    id: l.id,
+    user_id: userId,
+    name: l.name,
+    participant_ids: l.participantIds,
+    updated_at: new Date(l.updatedAt || Date.now()).toISOString(),
+  };
+}
+function fromSupabaseGroup(s: any) {
+  return {
+    id: s.id,
+    name: s.name,
+    participantIds: s.participant_ids || [],
+    updatedAt: new Date(s.updated_at).getTime(),
   };
 }
 
@@ -1115,6 +1137,7 @@ async function upsertSingleRemoteRow(
     case 'savings_goals': await putIfNewer(db.savingsGoals, fromSupabaseGoal(row)); break;
     case 'people': await putIfNewer(db.people, fromSupabasePerson(row)); break;
     case 'debts': await putIfNewer(db.debts, fromSupabaseDebt(row)); break;
+    case 'groups': await putIfNewer(db.groups, fromSupabaseGroup(row)); break;
     case 'credit_cards': await putIfNewer(db.creditCards, fromSupabaseCreditCard(row)); break;
     case 'cash_offset_sources': await putIfNewer(db.cashOffsetSources, fromSupabaseCashOffsetSource(row)); break;
     case 'fixed_deposits': await putIfNewer(db.fixedDeposits, fromSupabaseFixedDeposit(row)); break;
@@ -1149,6 +1172,7 @@ export async function applyRealtimeChange(
       case 'savings_goals': await db.savingsGoals.delete(id); break;
       case 'people': await db.people.delete(id); break;
       case 'debts': await db.debts.delete(id); break;
+      case 'groups': await db.groups.delete(id); break;
       case 'credit_cards': await db.creditCards.delete(id); break;
       case 'cash_offset_sources': await db.cashOffsetSources.delete(id); break;
       case 'fixed_deposits': await db.fixedDeposits.delete(id); break;

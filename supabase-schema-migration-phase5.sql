@@ -1,6 +1,26 @@
 -- Phase 5 Shared Expenses Migration
 -- NOT YET APPLIED
 
+
+-- 0. Groups Table (Personal Sync)
+CREATE TABLE IF NOT EXISTS public.groups (
+    id text NOT NULL PRIMARY KEY,
+    user_id uuid NOT NULL REFERENCES public.profiles(id) ON DELETE CASCADE,
+    name text NOT NULL,
+    participant_ids jsonb NOT NULL DEFAULT '[]'::jsonb,
+    updated_at timestamptz NOT NULL DEFAULT now()
+);
+
+ALTER TABLE public.groups ENABLE ROW LEVEL SECURITY;
+
+CREATE POLICY "Users can manage their own groups"
+    ON public.groups
+    USING (auth.uid() = user_id)
+    WITH CHECK (auth.uid() = user_id);
+
+-- Make sure real-time replication works for groups if needed by personal sync
+alter publication supabase_realtime add table public.groups;
+
 -- 1. Create shared_payments table for first-class relationship payments
 CREATE TABLE IF NOT EXISTS public.shared_payments (
     id uuid NOT NULL PRIMARY KEY,

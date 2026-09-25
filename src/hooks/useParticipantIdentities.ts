@@ -12,7 +12,7 @@ export function useParticipantIdentities(currentUserId?: string) {
   const people = useLiveQuery(() => db.people.toArray()) || [];
   const profiles = useLiveQuery(() => db.cacheProfiles.toArray()) || [];
   const connections = useLiveQuery(() => db.cacheConnections.toArray()) || [];
-  const transactions = useLiveQuery(() => db.transactions.filter(t => !t.isDeleted).toArray()) || [];
+  const transactions = useLiveQuery(() => db.transactions.toArray()) || [];
   const groups = useLiveQuery(() => db.groups?.toArray() || []) || [];
 
   const identities = useMemo(() => {

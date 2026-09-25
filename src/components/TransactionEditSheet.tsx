@@ -20,7 +20,7 @@ export default function TransactionEditSheet({ transaction, onClose }: Props) {
   const accounts = useLiveQuery(() => db.accounts.toArray()) || [];
   const categories = useLiveQuery(() => db.categories.toArray()) || [];
   const tags = useLiveQuery(() => db.tags.toArray()) || [];
-  const allTransactions = useLiveQuery(() => db.transactions.filter(t => !t.isDeleted).toArray()) || [];
+  const allTransactions = useLiveQuery(() => db.transactions.toArray()) || [];
 
   // Form state — initialise from the transaction
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -192,9 +192,17 @@ export default function TransactionEditSheet({ transaction, onClose }: Props) {
     });
     if (!ok) return;
     try {
-      await db.transaction('rw', db.transactions, db.accounts, async () => {
+      await db.transaction('rw', db.transactions, db.accounts, db.transactionProvenance, async () => {
         await reverseBalance();
-        await db.transactions.delete(transaction.id);
+        // Preserve provenance
+          if (transaction.isShared && transaction.splitDetails && transaction.splitStatus === 'synced') {
+            await db.transactionProvenance.put({
+              id: transaction.id,
+              transactionSnapshot: transaction,
+              archivedAt: Date.now()
+            });
+          }
+          await db.transactions.delete(transaction.id);
       });
       if (transaction.type === 'debt_settlement') {
         await syncSettlementFromTransactionDelete(transaction);

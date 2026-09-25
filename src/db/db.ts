@@ -58,7 +58,7 @@ export interface Transaction {
   personalAmount?: number;
   splitDetails?: SplitDetail[];
   splitStatus?: 'pending' | 'synced' | 'failed' | 'none';
-  isDeleted?: boolean;
+
   isSettled?: boolean;
 
   // Out of budget expenses
@@ -349,6 +349,7 @@ const db = new Dexie('FinoraDB') as Dexie & {
     cacheNotifications: EntityTable<CacheNotification, 'id'>;
   sharedOutbox: EntityTable<SharedOutbox, 'id'>;
   groups: EntityTable<Group, 'id'>;
+  transactionProvenance: EntityTable<TransactionProvenance, 'id'>;
 };
 
 
@@ -470,6 +471,13 @@ export interface CacheNotification {
 }
 
 
+
+export interface TransactionProvenance {
+  id: string;
+  transactionSnapshot: any; // Full copy of the transaction
+  archivedAt: number;
+}
+
 export interface Group {
   id: string;
   name: string;
@@ -477,16 +485,21 @@ export interface Group {
   updatedAt: number;
 }
 
-export interface SharedOutbox {
+
+export type SharedOutboxPayload =
+  | { operation_type: 'propose_split'; payload: { transaction_id: string; splits: { id: string; debtor_id: string; amount: number; description: string; }[] } }
+  | { operation_type: 'record_payment'; payload: { payment_id: string; recipient_id: string; amount: number; description: string; } }
+  | { operation_type: 'cancel_split'; payload: { ids: string[] } };
+
+export type SharedOutbox = {
   id: string;
-  operation_type: 'propose_split' | 'record_payment' | 'cancel_split';
   idempotency_key: string;
-  payload: any;
   status: 'queued' | 'failed';
   last_attempt?: number;
   retry_count: number;
   created_at: number;
-}
+} & SharedOutboxPayload;
+
 
 export interface CacheSharedIouSettlement {
   id: string;
@@ -533,7 +546,8 @@ db.version(12).stores({
 
 db.version(13).stores({
   groups: "id, updatedAt",
-  sharedOutbox: "id, status"
+  sharedOutbox: "id, status",
+  transactionProvenance: "id"
 });
 
 export { db };

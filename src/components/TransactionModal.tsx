@@ -81,7 +81,7 @@ export default function TransactionModal() {
   // Ensure "You" is always in the identities list
   const fullIdentities = [{ identityKey: 'local:me', name: 'You', isConnected: false }, ...identities];
   
-  const allTransactions = useLiveQuery(() => db.transactions.filter(t => !t.isDeleted).toArray()) || [];
+  const allTransactions = useLiveQuery(() => db.transactions.toArray()) || [];
 
   const [autoFillIndicator, setAutoFillIndicator] = useState<string | null>(null);
 
@@ -301,7 +301,7 @@ export default function TransactionModal() {
         tagsToProcess.push(tagInput.trim());
       }
 
-      await db.transaction('rw', [db.transactions, db.accounts, db.tags, db.debts, db.people], async () => {
+      await db.transaction('rw', [db.transactions, db.accounts, db.tags, db.debts, db.people, db.sharedOutbox], async () => {
         const resolvedTagIds: string[] = [];
         for (const tagName of tagsToProcess) {
           const allTags = await db.tags.toArray();
