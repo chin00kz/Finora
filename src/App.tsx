@@ -70,17 +70,31 @@ function ThemeInitializer() {
 
   useEffect(() => {
     const root = document.documentElement;
+    const lightBackground = '#f9fafb';
+    const darkBackground = '#09090b';
+
+    const setThemeColor = (color: string) => {
+      document
+        .querySelectorAll<HTMLMetaElement>('meta[name="theme-color"]')
+        .forEach(meta => {
+          meta.content = color;
+        });
+    };
 
     const applyTheme = () => {
       if (theme === 'dark') {
         root.classList.add('dark');
+        setThemeColor(darkBackground);
       } else if (theme === 'light') {
         root.classList.remove('dark');
+        setThemeColor(lightBackground);
       } else {
         if (window.matchMedia('(prefers-color-scheme: dark)').matches) {
           root.classList.add('dark');
+          setThemeColor(darkBackground);
         } else {
           root.classList.remove('dark');
+          setThemeColor(lightBackground);
         }
       }
     };
