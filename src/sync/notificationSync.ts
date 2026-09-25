@@ -40,34 +40,30 @@ export async function syncNotifications() {
 
 export async function markNotificationRead(id: string) {
   try {
-    // Optimistic cache update
-    await db.cacheNotifications.update(id, { read_at: Date.now() });
-
-    // Cloud mutate
+    // Cloud mutate first (authoritative)
     const { error } = await supabase.rpc('mark_notification_read', { p_notification_id: id });
     if (error) throw error;
+    
+    // Update local cache only on success
+    await db.cacheNotifications.update(id, { read_at: Date.now() });
   } catch (e) {
     console.warn("Failed to mark notification read", e);
-    // Reconcile on failure
-    await syncNotifications();
   }
 }
 
 export async function markAllNotificationsRead() {
   try {
-    // Optimistic cache update
+    // Cloud mutate first (authoritative)
+    const { error } = await supabase.rpc('mark_all_notifications_read');
+    if (error) throw error;
+
+    // Update local cache only on success
     const unread = await db.cacheNotifications.filter(n => !n.read_at).toArray();
     const now = Date.now();
     for (const n of unread) {
       await db.cacheNotifications.update(n.id, { read_at: now });
     }
-
-    // Cloud mutate
-    const { error } = await supabase.rpc('mark_all_notifications_read');
-    if (error) throw error;
   } catch (e) {
     console.warn("Failed to mark all notifications read", e);
-    // Reconcile on failure
-    await syncNotifications();
   }
 }

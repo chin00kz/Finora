@@ -821,13 +821,21 @@ LANGUAGE plpgsql
 SECURITY DEFINER
 SET search_path = public
 AS $$
+DECLARE
+    v_limit INT;
 BEGIN
+    IF auth.uid() IS NULL THEN
+        RETURN;
+    END IF;
+    
+    v_limit := LEAST(GREATEST(p_limit, 1), 100);
+
     RETURN QUERY
     SELECT *
     FROM notifications
     WHERE user_id = auth.uid()
     ORDER BY created_at DESC
-    LIMIT p_limit;
+    LIMIT v_limit;
 END;
 $$;
 
