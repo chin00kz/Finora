@@ -22,7 +22,18 @@ This document tracks temporary/current information, active phases, feature branc
   - 3E Detail/history + settlement UX polish: complete
   - *Real two-account E2E settlement test passed:* proposal, multiple pending claims, partial confirmation, rejection, restored proposal capacity, final confirmation, settled transition.
 - **Phase 4 — Notifications & Shared UX: CURRENT**
-  - [x] 4A In-app notification foundation (Deployed & Partially Verified; blocked on live E2E UI auth tests)
+  - [x] 4A In-app notification foundation (Verified)
+  - Real Production Verification:
+    - Notification fetch/render: PASS
+    - Unread state: PASS
+    - Mark-one-read: PASS
+    - Realtime global discovery: PASS x2
+    - App-start hydration: PASS
+    - Two-account realtime isolation: PASS x2
+    - Production realtime migration applied
+  - Lower-level automated security/RLS assertions (A-K) skipped (test credentials unavailable in environment)
+  - Cloud-authoritative cache isolation confirmed
+
   - [ ] 4B Connection notifications
   - [ ] 4C Shared IOU notifications
   - [ ] 4D Settlement notifications
