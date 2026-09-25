@@ -377,6 +377,7 @@ ALTER PUBLICATION supabase_realtime ADD TABLE public.savings_goals;
 ALTER PUBLICATION supabase_realtime ADD TABLE public.recurring_transactions;
 ALTER PUBLICATION supabase_realtime ADD TABLE public.debts;
 ALTER PUBLICATION supabase_realtime ADD TABLE public.people;
+ALTER PUBLICATION supabase_realtime ADD TABLE public.notifications;
 
 ALTER TABLE public.accounts REPLICA IDENTITY DEFAULT;
 ALTER TABLE public.transactions REPLICA IDENTITY DEFAULT;

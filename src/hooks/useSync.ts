@@ -2,6 +2,7 @@ import { useEffect, useRef, useState, useCallback } from 'react';
 import { useAuthStore } from '../store/authStore';
 import { pullAll, pullLiveActivity, pushDirtyRecords, drainPendingSync, applyRealtimeChange, hasPendingDirty, ALL_TABLES } from '../sync/syncEngine';
 import type { TableName } from '../sync/syncEngine';
+import { syncNotifications } from '../sync/notificationSync';
 import { supabase, isSupabaseConfigured } from '../lib/supabase';
 export type SyncStatus = 'idle' | 'syncing' | 'error';
 
@@ -32,7 +33,9 @@ export function useSync(): {
     try {
       // 1. Drain pending local writes & deletes FIRST
       await drainPendingSync(userId);
-      // 2. Pull and reconcile from cloud
+      // 2. Refresh notifications
+      void syncNotifications();
+      // 3. Pull and reconcile from cloud
       const res = await pullAll(userId);
       setSyncStatus(res.success ? 'idle' : 'error');
       lastFullSyncRef.current = Date.now();
@@ -71,19 +74,25 @@ export function useSync(): {
           schema: 'public',
         },
         payload => {
-          const table = payload.table as TableName;
-          if (ALL_TABLES.includes(table)) {
+          const table = payload.table;
+          if (ALL_TABLES.includes(table as any)) {
             const rowUser =
               (payload.new as Record<string, unknown> | undefined)?.user_id ||
               (payload.old as Record<string, unknown> | undefined)?.user_id;
             if (rowUser && rowUser !== userId) return;
 
             void applyRealtimeChange(
-              table,
+              table as TableName,
               payload.eventType as 'INSERT' | 'UPDATE' | 'DELETE',
               (payload.new as Record<string, unknown>) || null,
               (payload.old as Record<string, unknown>) || null,
             );
+          } else if (table === 'notifications') {
+            const rowUser =
+              (payload.new as Record<string, unknown> | undefined)?.user_id ||
+              (payload.old as Record<string, unknown> | undefined)?.user_id;
+            if (rowUser && rowUser !== userId) return;
+            void syncNotifications();
           }
         },
       )
