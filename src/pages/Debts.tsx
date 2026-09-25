@@ -1,4 +1,5 @@
 import { useState, useEffect, useMemo } from 'react';
+import { useLocation, useNavigate } from 'react-router-dom';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { db, type Debt } from '../db/db';
 import { Plus, Search } from 'lucide-react';
@@ -44,6 +45,10 @@ export default function Debts() {
   const cacheSharedIouSettlements = useLiveQuery(() => db.cacheSharedIouSettlements.toArray()) || [];
   const cachedProfiles = useLiveQuery(() => db.cacheProfiles.toArray()) || [];
   const { user } = useAuthStore();
+
+  const location = useLocation();
+  const navigate = useNavigate();
+
 
   const [searchQuery, setSearchQuery] = useState('');
   const [activeTab, setActiveTab] = useState<FilterTab>('all');
@@ -202,6 +207,20 @@ export default function Debts() {
     const netBalance = totalOwedToMe - totalIOwe;
     return { totalOwedToMe, totalIOwe, netBalance };
   }, [unifiedIous]);
+
+  useEffect(() => {
+    const state = location.state as { sharedIouId?: string } | null;
+    if (state?.sharedIouId && sharedIous.length > 0) {
+      const match = unifiedIous.find(i => i.id === state.sharedIouId);
+      if (match) {
+        setSelectedSharedIou(match);
+      }
+      // If it's a pending incoming request, it won't be in unifiedIous
+      // but it will be visible at the top in incomingRequests, which is fine.
+      navigate(location.pathname, { replace: true, state: {} });
+    }
+  }, [location.state, sharedIous, unifiedIous, navigate, location.pathname]);
+
 
   const filteredIous = useMemo(() => {
     return unifiedIous

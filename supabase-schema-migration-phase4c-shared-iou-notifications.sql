@@ -1,41 +1,6 @@
--- Phase 2A: Shared IOUs
--- Migration script for existing production deployments.
+-- Phase 4C: Shared IOU Notifications
 
--- 1. Table Creation
-CREATE TABLE IF NOT EXISTS public.shared_ious (
-  id TEXT PRIMARY KEY,
-  creator_id UUID REFERENCES public.profiles(id) ON DELETE RESTRICT NOT NULL,
-  creditor_id UUID REFERENCES public.profiles(id) ON DELETE RESTRICT NOT NULL,
-  debtor_id UUID REFERENCES public.profiles(id) ON DELETE RESTRICT NOT NULL,
-  amount NUMERIC NOT NULL CHECK (amount > 0),
-  currency TEXT NOT NULL CHECK (currency ~ '^[A-Z]{3,5}$'),
-  description TEXT CHECK (description IS NULL OR char_length(description) <= 255),
-  status TEXT NOT NULL CHECK (status IN ('pending', 'accepted', 'declined', 'cancelled', 'settled')),
-  created_at BIGINT NOT NULL,
-  accepted_at BIGINT,
-  updated_at BIGINT NOT NULL,
-
-  -- V1 Invariants
-  CONSTRAINT creator_is_creditor CHECK (creator_id = creditor_id),
-  CONSTRAINT different_users CHECK (creditor_id != debtor_id)
-);
-
--- 2. Table Privileges
--- Explicitly revoke direct write access from clients
-REVOKE ALL ON public.shared_ious FROM PUBLIC;
-REVOKE ALL ON public.shared_ious FROM anon;
-REVOKE ALL ON public.shared_ious FROM authenticated;
-GRANT SELECT ON public.shared_ious TO authenticated;
-
--- 3. Row Level Security
-ALTER TABLE public.shared_ious ENABLE ROW LEVEL SECURITY;
-DROP POLICY IF EXISTS "Users can read own shared IOUs" ON public.shared_ious;
-CREATE POLICY "Users can read own shared IOUs" ON public.shared_ious
-  FOR SELECT USING (auth.uid() = creditor_id OR auth.uid() = debtor_id);
-
--- 4. RPCs
-
--- CREATE
+-- 1. CREATE
 CREATE OR REPLACE FUNCTION create_shared_iou(
   p_debtor_id UUID,
   p_amount NUMERIC,
@@ -43,7 +8,7 @@ CREATE OR REPLACE FUNCTION create_shared_iou(
   p_description TEXT DEFAULT NULL
 ) RETURNS public.shared_ious
 LANGUAGE plpgsql SECURITY DEFINER SET search_path = public
-AS $func$
+AS $$
 DECLARE
   v_uid UUID := auth.uid();
   v_conn_status TEXT;
@@ -117,13 +82,13 @@ BEGIN
 
   RETURN v_result;
 END;
-$func$;
+$$;
 
--- ACCEPT
+-- 2. ACCEPT
 CREATE OR REPLACE FUNCTION accept_shared_iou(p_iou_id TEXT)
 RETURNS public.shared_ious
 LANGUAGE plpgsql SECURITY DEFINER SET search_path = public
-AS $func$
+AS $$
 DECLARE
   v_uid UUID := auth.uid();
   v_now BIGINT := (extract(epoch from now()) * 1000)::bigint;
@@ -164,13 +129,13 @@ BEGIN
 
   RETURN v_result;
 END;
-$func$;
+$$;
 
--- DECLINE
+-- 3. DECLINE
 CREATE OR REPLACE FUNCTION decline_shared_iou(p_iou_id TEXT)
 RETURNS public.shared_ious
 LANGUAGE plpgsql SECURITY DEFINER SET search_path = public
-AS $func$
+AS $$
 DECLARE
   v_uid UUID := auth.uid();
   v_now BIGINT := (extract(epoch from now()) * 1000)::bigint;
@@ -211,13 +176,13 @@ BEGIN
 
   RETURN v_result;
 END;
-$func$;
+$$;
 
--- CANCEL
+-- 4. CANCEL
 CREATE OR REPLACE FUNCTION cancel_shared_iou(p_iou_id TEXT)
 RETURNS public.shared_ious
 LANGUAGE plpgsql SECURITY DEFINER SET search_path = public
-AS $func$
+AS $$
 DECLARE
   v_uid UUID := auth.uid();
   v_now BIGINT := (extract(epoch from now()) * 1000)::bigint;
@@ -258,18 +223,4 @@ BEGIN
 
   RETURN v_result;
 END;
-$func$;
-
-
--- RPC Privileges
-REVOKE EXECUTE ON FUNCTION create_shared_iou(UUID, NUMERIC, TEXT, TEXT) FROM PUBLIC;
-GRANT EXECUTE ON FUNCTION create_shared_iou(UUID, NUMERIC, TEXT, TEXT) TO authenticated;
-
-REVOKE EXECUTE ON FUNCTION accept_shared_iou(TEXT) FROM PUBLIC;
-GRANT EXECUTE ON FUNCTION accept_shared_iou(TEXT) TO authenticated;
-
-REVOKE EXECUTE ON FUNCTION decline_shared_iou(TEXT) FROM PUBLIC;
-GRANT EXECUTE ON FUNCTION decline_shared_iou(TEXT) TO authenticated;
-
-REVOKE EXECUTE ON FUNCTION cancel_shared_iou(TEXT) FROM PUBLIC;
-GRANT EXECUTE ON FUNCTION cancel_shared_iou(TEXT) TO authenticated;
+$$;
