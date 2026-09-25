@@ -21,7 +21,7 @@ This document tracks temporary/current information, active phases, feature branc
   - 3D Creditor Confirm/Reject: complete
   - 3E Detail/history + settlement UX polish: complete
   - *Real two-account E2E settlement test passed:* proposal, multiple pending claims, partial confirmation, rejection, restored proposal capacity, final confirmation, settled transition.
-- **Phase 4 — Notifications & Shared UX: CURRENT**
+- **Phase 4 — Notifications & Shared UX: COMPLETE**
   - [x] 4A In-app notification foundation (COMPLETE)
   - Real Production Verification:
     - Notification fetch/render: PASS
@@ -53,20 +53,32 @@ This document tracks temporary/current information, active phases, feature branc
     - PASS: Parent IOU settled transition & final notification wording.
     - PASS: 701b48b modal reconciliation fix production verified (no page refresh required).
     - DEFERRED: manual E2E for settlement rejection notifications.
-  - [x] 4E Shared UX polish / final E2E (IMPLEMENTED / AWAITING FINAL PRODUCTION UX CHECK)
-    - SharedIouDetailModal UX: Add subtle 'X' close button (Lucide icon, top-right, accessible, preserve backdrop/escape close).
-    - SharedIouDetailModal UX: Inspect small loading spinner observed in settled debtor modal.
-    - Polish Connections UI (align with Shared IOU visual language: clearer hierarchy, subtle secondary font colors, cleaner Accept/Decline presentation, no major redesign).
+  - [x] 4E Shared UX polish / final E2E (COMPLETE / production UX verified)
+    - PASS: SharedIouDetailModal explicit X close button (visible, properly positioned, tap closes normally).
+    - PASS: Friends & Connections incoming request UI (Accept is primary, Decline is secondary, mobile layout fits, display name readable).
     - DEFERRED: "Remove Friend" capability. Investigation revealed that deleting a connection row prevents that user's profile from syncing into the local cache on fresh installs. Until a dedicated `syncMissingProfiles(uuid[])` pipeline is added to safely hydrate historical IOUs, removing connections would break historical display names.
 
-- **Phase 5 — Shared Expenses / Split Transactions: PLANNED — HIGH PRIORITY**
-  - 5A Split transaction foundation (Friends/local People)
-  - 5B Equal Split (auto-calculate, deterministic rounding)
-  - 5C Custom Split + Shared Remainder (custom base amount + distribute remainder)
-  - 5D Automatic IOU Routing (Finora Friend -> Shared IOU, Local -> local IOU)
-  - 5E Lifecycle & Data Integrity (editing/deleting, atomic recovery)
-  - 5F UX Polish + Full E2E
-  *(Note: Receipt scanning, percentage splits, multiple payers, and complex group balances are OUT OF SCOPE for V1)*
+- **Phase 5 — Shared Expenses / Split Transactions: NEXT — DESIGN PASS ONLY**
+  *(Note: Phase 5 is a major/core workflow and requires a dedicated PRODUCT + ARCHITECTURE DESIGN PASS before any implementation)*
+
+  **Intent:**
+  - extremely fast expense splitting
+  - equal splits
+  - unequal/custom personal amounts
+  - automatically shared remainder such as delivery/service fees
+  - Finora Friends + local People
+  - repeated participant combinations
+  - recent participant suggestions
+  - optional saved groups
+  - accumulated balances across days/weeks
+  - per-person financial activity/history
+  - repayments and partial repayments
+  - clear explanation of why someone owes the current amount
+  - user-selectable Start Page so users primarily interested in IOUs/shared money can open Finora directly into that area
+
+  **Core Product Principle:** "Using Finora to split a real shared expense should require less thought and effort than calculating and tracking it manually."
+
+  *(DO NOT design schemas, tables, RPCs, components, or implementation details yet)*
 
 - **Phase 6 — Advanced Sharing / Future Enhancements: FUTURE**
 
