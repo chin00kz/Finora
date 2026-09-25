@@ -48,6 +48,18 @@ export async function processSharedOutbox() {
             triggerSync('transactions', txnId);
           }
           
+        
+        } else if (item.operation_type === 'record_payment') {
+          const payload = item.payload as any;
+          const { error } = await supabase.rpc('propose_shared_payment', {
+            p_idempotency_key: item.idempotency_key,
+            p_payee_id: payload.recipient_id,
+            p_amount: payload.amount,
+            p_currency: 'LKR',
+            p_notes: payload.description
+          });
+          if (error) throw error;
+          await db.sharedOutbox.delete(item.id);
         } else if (item.operation_type === 'cancel_split') {
            const { error } = await supabase.rpc('cancel_shared_iou_bulk', {
              payload: item.payload
