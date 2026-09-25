@@ -28,6 +28,8 @@ export default function Settings() {
   const {
     isMasked,
     toggleMask,
+    startPage,
+    setStartPage,
     showSafeToSpendHome,
     setShowSafeToSpendHome,
     safeToSpendForecastDays,
@@ -652,8 +654,25 @@ export default function Settings() {
           <p className="text-xs text-muted-foreground mt-1">Configure cashflow forecasting and privacy masking preferences.</p>
         </div>
         <div className="p-5 space-y-5">
+          {/* Start Page Selection */}
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+            <div>
+              <p className="text-sm font-medium text-foreground">Start Page</p>
+              <p className="text-xs text-muted-foreground">Choose which page opens first when you launch the app</p>
+            </div>
+            <select
+              value={startPage}
+              onChange={(e) => setStartPage(e.target.value as 'home' | 'shared' | 'activity')}
+              className="p-2 bg-muted border border-border rounded-xl text-sm font-medium text-foreground outline-none focus:border-foreground min-w-[120px]"
+            >
+              <option value="home">Home</option>
+              <option value="shared">Shared</option>
+              <option value="activity">Activity</option>
+            </select>
+          </div>
+
           {/* Safe-to-Spend Toggle */}
-          <div className="flex items-center justify-between">
+          <div className="flex items-center justify-between pt-3 border-t border-border">
             <div>
               <p className="text-sm font-medium text-foreground">Safe-to-Spend Forecast</p>
               <p className="text-xs text-muted-foreground">Show forward-looking cashflow liquidity card on Home Overview</p>

@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import { db } from './db/db';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { IDENTITY_ROLLOUT_CUTOFF } from './config';
-import { BrowserRouter, Routes, Route, Link, useLocation, useNavigate } from 'react-router-dom';
+import { BrowserRouter, Routes, Route, Link, useLocation, useNavigate, Navigate } from 'react-router-dom';
 import {
   Home,
   List,
@@ -40,7 +40,8 @@ import { useSync } from './hooks/useSync';
 import Dashboard from './pages/Dashboard';
 import Accounts from './pages/Accounts';
 import Activity from './pages/Activity';
-import Debts from './pages/Debts';
+import Shared from './pages/Shared';
+import Relationship from './pages/Relationship';
 import Settings from './pages/Settings';
 import Connections from './pages/Connections';
 import Notifications from './pages/Notifications';
@@ -107,7 +108,7 @@ function DesktopSidebar({ syncStatus }: { syncStatus: 'idle' | 'syncing' | 'erro
   const { isMasked, toggleMask } = usePrivacyStore();
 
   const navItems = [
-    { to: '/', label: 'Home', icon: Home },
+    { to: '/home', label: 'Home', icon: Home },
     { to: '/accounts', label: 'Accounts', icon: PieChart },
     { to: '/activity', label: 'Activity', icon: List },
     { to: '/analytics', label: 'Analytics', icon: BarChart3 },
@@ -487,6 +488,18 @@ function MobileBottomNav({ syncStatus }: { syncStatus: 'idle' | 'syncing' | 'err
   );
 }
 
+function StartPageRedirector() {
+  const { startPage } = usePrivacyStore();
+  
+  if (startPage === 'shared') {
+    return <Navigate to="/debts" replace />;
+  }
+  if (startPage === 'activity') {
+    return <Navigate to="/activity" replace />;
+  }
+  return <Navigate to="/home" replace />;
+}
+
 // ── Main App Shell (Full Application) ───────────────────────────────────────
 function MainAppShell() {
   const { user } = useAuthStore();
@@ -568,8 +581,9 @@ function MainAppShell() {
       <main className="flex-1 min-w-0 min-h-[100dvh] overflow-y-auto">
         <div className="w-full min-h-[100dvh]">
           <Routes>
+            <Route path="/" element={<StartPageRedirector />} />
             <Route
-              path="/"
+              path="/home"
               element={
                 <>
                   <MigrateLocalDataBanner />
@@ -582,7 +596,8 @@ function MainAppShell() {
             <Route path="/analytics" element={<Analytics />} />
             <Route path="/goals" element={<Goals />} />
             <Route path="/recurring" element={<Recurring />} />
-            <Route path="/debts" element={<Debts />} />
+            <Route path="/shared" element={<Shared />} />
+            <Route path="/shared/:identityKey" element={<Relationship />} />
             <Route path="/connections" element={<Connections />} />
             <Route path="/notifications" element={<Notifications />} />
               <Route path="/settings" element={<Settings />} />
