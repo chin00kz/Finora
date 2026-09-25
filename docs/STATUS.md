@@ -40,7 +40,11 @@ This document tracks temporary/current information, active phases, feature branc
     - PASS: Acceptance notification (realtime delivery back to requester)
     - DEFERRED: manual edge-case test for decline -> legitimate re-request -> new notification
 
-  - [x] 4C Shared IOU notifications (IMPLEMENTED / AWAITING PRODUCTION MIGRATION + REAL E2E)
+  - [x] 4C Shared IOU notifications (COMPLETE / primary production E2E verified)
+    - Production migration manually applied successfully.
+    - PASS: Shared IOU request notification (realtime global discovery, exact request deep-link to /debts).
+    - PASS: Acceptance notification (realtime delivery back to creator, exact deep-link to detail modal).
+    - DEFERRED: manual E2E for decline and cancel notifications.
   - [ ] 4D Settlement notifications
   - [ ] 4E Shared UX polish / final E2E
     - Polish Connections UI (align with Shared IOU visual language: clearer hierarchy, subtle secondary font colors, cleaner Accept/Decline presentation, no major redesign).
