@@ -53,11 +53,11 @@ This document tracks temporary/current information, active phases, feature branc
     - PASS: Parent IOU settled transition & final notification wording.
     - PASS: 701b48b modal reconciliation fix production verified (no page refresh required).
     - DEFERRED: manual E2E for settlement rejection notifications.
-  - [ ] 4E Shared UX polish / final E2E
+  - [x] 4E Shared UX polish / final E2E (IMPLEMENTED / AWAITING FINAL PRODUCTION UX CHECK)
     - SharedIouDetailModal UX: Add subtle 'X' close button (Lucide icon, top-right, accessible, preserve backdrop/escape close).
     - SharedIouDetailModal UX: Inspect small loading spinner observed in settled debtor modal.
     - Polish Connections UI (align with Shared IOU visual language: clearer hierarchy, subtle secondary font colors, cleaner Accept/Decline presentation, no major redesign).
-    - Future "Remove Friend" capability (requires confirmation, secure server-side RPC, must NOT delete historical shared IOUs/settlements, Block remains separate).
+    - DEFERRED: "Remove Friend" capability. Investigation revealed that deleting a connection row prevents that user's profile from syncing into the local cache on fresh installs. Until a dedicated `syncMissingProfiles(uuid[])` pipeline is added to safely hydrate historical IOUs, removing connections would break historical display names.
 
 - **Phase 5 — Shared Expenses / Split Transactions: PLANNED — HIGH PRIORITY**
   - 5A Split transaction foundation (Friends/local People)

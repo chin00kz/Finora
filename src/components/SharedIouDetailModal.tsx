@@ -1,4 +1,5 @@
 ﻿import { Modal } from './Modal';
+import { X } from 'lucide-react';
 import { formatMoney } from '../utils/formatters';
 import type { UnifiedIou } from '../pages/Debts';
 import CreditorSettlementReview from './CreditorSettlementReview';
@@ -23,7 +24,15 @@ export default function SharedIouDetailModal({ isOpen, onClose, iou, onProposePa
 
   return (
     <Modal open={isOpen} onClose={onClose} variant="sheet">
-      <div className="space-y-6 pt-2 pb-6 px-1">
+      <div className="space-y-6 pt-2 pb-6 px-1 relative">
+        {/* Explicit Close */}
+        <button
+          onClick={onClose}
+          aria-label="Close"
+          className="absolute top-1 right-1 p-2 text-muted-foreground hover:bg-muted/50 rounded-full transition-colors z-10"
+        >
+          <X size={20} />
+        </button>
         
         {/* Header Section */}
         <div className="text-center space-y-1">
