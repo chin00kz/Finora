@@ -22,7 +22,7 @@ This document tracks temporary/current information, active phases, feature branc
   - 3E Detail/history + settlement UX polish: complete
   - *Real two-account E2E settlement test passed:* proposal, multiple pending claims, partial confirmation, rejection, restored proposal capacity, final confirmation, settled transition.
 - **Phase 4 — Notifications & Shared UX: CURRENT**
-  - [x] 4A In-app notification foundation (Verified)
+  - [x] 4A In-app notification foundation (COMPLETE)
   - Real Production Verification:
     - Notification fetch/render: PASS
     - Unread state: PASS
@@ -34,10 +34,18 @@ This document tracks temporary/current information, active phases, feature branc
   - Lower-level automated security/RLS assertions (A-K) skipped (test credentials unavailable in environment)
   - Cloud-authoritative cache isolation confirmed
 
-  - [x] 4B Connection notifications (IMPLEMENTED / AWAITING PRODUCTION MIGRATION + REAL E2E)
+  - [x] 4B Connection notifications (COMPLETE / primary production E2E verified)
+    - PASS: Friend request notification (realtime global discovery, correct content)
+    - PASS: Notification deep-link to Connections (correct pending state)
+    - PASS: Acceptance notification (realtime delivery back to requester)
+    - DEFERRED: manual edge-case test for decline -> legitimate re-request -> new notification
+
   - [ ] 4C Shared IOU notifications
   - [ ] 4D Settlement notifications
   - [ ] 4E Shared UX polish / final E2E
+    - Polish Connections UI (align with Shared IOU visual language: clearer hierarchy, subtle secondary font colors, cleaner Accept/Decline presentation, no major redesign).
+    - Future "Remove Friend" capability (requires confirmation, secure server-side RPC, must NOT delete historical shared IOUs/settlements, Block remains separate).
+
 - **Phase 5 � Polish/advanced sharing**
 
 ## Known Unresolved/Intermittent Bugs
