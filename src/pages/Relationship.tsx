@@ -9,6 +9,8 @@ import { format } from 'date-fns';
 import { useParticipantIdentities } from '../hooks/useParticipantIdentities';
 import RecordPaymentModal from '../components/RecordPaymentModal';
 import { getSharedIouSettlementStatus } from '../utils/sharedIouSettlementEngine';
+import { supabase } from '../lib/supabase';
+import { syncSharedIous } from '../sync/sharedIouSync';
 
 export default function Relationship() {
   const { identityKey } = useParams();
@@ -16,9 +18,11 @@ export default function Relationship() {
   const navigate = useNavigate();
   const { user } = useAuthStore();
   const { identities } = useParticipantIdentities(user?.id);
-  
+  const [actioningId, setActioningId] = useState<string | null>(null);
+  const [actionError, setActionError] = useState<string | null>(null);
+
   const identity = identities.find(i => i.identityKey === identityKey);
-  
+
   const debts = useLiveQuery(() => db.debts.toArray()) || [];
   const sharedIous = useLiveQuery(() => db.cacheSharedIous.toArray()) || [];
   const sharedIouSettlements = useLiveQuery(() => db.cacheSharedIouSettlements.toArray()) || [];
@@ -38,11 +42,38 @@ export default function Relationship() {
       return getSharedIouSettlementStatus(iou.amount, settlements).availableToPropose > 0;
     });
   }, [identityKey, profileId, sharedIous, sharedIouSettlements, user]);
-  
+
+
+  const handleActionSharedIou = async (iouId: string, action: 'accepted' | 'declined') => {
+    if (!user || actioningId) return;
+    setActioningId(iouId);
+    setActionError(null);
+
+    const rpcName = action === 'accepted' ? 'accept_shared_iou' : 'decline_shared_iou';
+
+    try {
+      const { error } = await supabase.rpc(rpcName, { p_iou_id: iouId });
+      if (error) throw error;
+
+      // Optimistic update locally
+      await db.cacheSharedIous.update(iouId, { status: action });
+
+      const res = await syncSharedIous();
+      if (!res.success) {
+        console.warn('Post-mutation cache refresh failed.', res.error);
+      }
+    } catch (err: any) {
+      console.error(`Failed to ${action} shared IOU`, err);
+      setActionError(err.message || `Failed to ${action} request. Please try again.`);
+    } finally {
+      setActioningId(null);
+    }
+  };
+
   const timeline = useMemo(() => {
     if (!user || !identityKey) return [];
     const events: any[] = [];
-    
+
     if (identityKey.startsWith('local:')) {
       const localId = identityKey.replace('local:', '');
       debts.forEach(d => {
@@ -87,10 +118,10 @@ export default function Relationship() {
         }
       });
     }
-    
+
     return events.sort((a, b) => b.date - a.date);
   }, [debts, sharedIous, payments, user, identityKey]);
-  
+
   if (!identity) return <div className="p-4 text-center">Loading...</div>;
 
   return (
@@ -108,13 +139,14 @@ export default function Relationship() {
           </div>
         </div>
       </div>
-      
+
       <div className="p-4 space-y-3">
         {timeline.length === 0 ? (
           <p className="text-center text-muted-foreground py-8">No history with {identity.name}</p>
         ) : (
           timeline.map(event => (
-            <div key={event.id} className="bg-card p-4 rounded-2xl border border-border flex items-start justify-between">
+            <div key={event.id} className="bg-card p-4 rounded-2xl border border-border flex flex-col">
+              <div className="flex items-start justify-between w-full">
               <div>
                 <div className="flex items-center gap-1.5 mb-1">
                   {event.type === 'payment' ? (
@@ -137,6 +169,30 @@ export default function Relationship() {
                 </span>
                 {event.status === 'pending' && <div className="text-[10px] text-orange-500 font-medium mt-1">Pending</div>}
               </div>
+              </div>
+
+              {/* Actions for Incoming Pending Requests */}
+              {event.type === 'shared_iou' && event.status === 'pending' && event.direction === 'iOweThem' && (
+                <div className="mt-4 flex items-center justify-end gap-2 border-t border-border pt-3">
+                  <button
+                    onClick={() => handleActionSharedIou(event.id, 'declined')}
+                    disabled={actioningId === event.id}
+                    className="px-4 py-2 bg-secondary text-secondary-foreground text-xs rounded-xl font-medium disabled:opacity-50"
+                  >
+                    Decline
+                  </button>
+                  <button
+                    onClick={() => handleActionSharedIou(event.id, 'accepted')}
+                    disabled={actioningId === event.id}
+                    className="px-4 py-2 bg-primary text-primary-foreground text-xs rounded-xl font-medium disabled:opacity-50"
+                  >
+                    Accep
+                  </button>
+                </div>
+              )}
+              {actionError && actioningId === event.id && (
+                <p className="text-xs text-red-500 mt-2 text-right">{actionError}</p>
+              )}
             </div>
           ))
         )}
@@ -149,17 +205,17 @@ export default function Relationship() {
               onClick={() => setIsPaymentModalOpen(true)}
               className="flex-1 bg-foreground text-background py-3.5 rounded-xl font-semibold shadow-lg active:scale-95 transition-transform"
             >
-              Record Payment
+              Record Paymen
             </button>
           )}
         </div>
       </div>
-      
-      <RecordPaymentModal 
-        isOpen={isPaymentModalOpen} 
-        onClose={() => setIsPaymentModalOpen(false)} 
-        identityKey={identityKey!} 
-        name={identity.name} 
+
+      <RecordPaymentModal
+        isOpen={isPaymentModalOpen}
+        onClose={() => setIsPaymentModalOpen(false)}
+        identityKey={identityKey!}
+        name={identity.name}
       />
     </div>
   );
