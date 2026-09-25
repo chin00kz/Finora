@@ -75,7 +75,7 @@ export default function TransactionModal() {
   const accounts = accountsRaw || [];
   const categories = useLiveQuery(() => db.categories.toArray()) || [];
   const tags = useLiveQuery(() => db.tags.toArray()) || [];
-  const people = useLiveQuery(() => db.people.toArray()) || [];
+  
   
   const { identities, groups, recentCombinations } = useParticipantIdentities();
   // Ensure "You" is always in the identities list

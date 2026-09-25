@@ -1,6 +1,6 @@
 import { useState, useMemo } from 'react';
 import { X, Search, Users, Clock, Check, User } from 'lucide-react';
-import { UnifiedIdentity } from '../hooks/useParticipantIdentities';
+import type { UnifiedIdentity } from '../hooks/useParticipantIdentities';
 
 interface Group {
   id: string;

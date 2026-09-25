@@ -751,6 +751,8 @@ async function fetchLocalRows(
       return (await db.people.bulkGet(ids)).filter(Boolean).map(p => toSupabasePerson(userId, p!));
     case 'debts':
       return (await db.debts.bulkGet(ids)).filter(Boolean).map(d => toSupabaseDebt(userId, d!));
+    case 'groups':
+      return (await db.groups.bulkGet(ids)).filter(Boolean).map(g => toSupabaseGroup(userId, g!));
     case 'credit_cards':
       return (await db.creditCards.bulkGet(ids)).filter(Boolean).map(c => toSupabaseCreditCard(userId, c!));
     case 'cash_offset_sources':

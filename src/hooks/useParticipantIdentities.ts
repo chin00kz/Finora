@@ -1,6 +1,8 @@
 import { useLiveQuery } from 'dexie-react-hooks';
-import { db, Person, CacheProfile, CacheConnection } from '../db/db';
+import { db } from '../db/db';
+
 import { useMemo } from 'react';
+// unused imports handled
 
 export interface UnifiedIdentity {
   identityKey: string; // 'profile:<uuid>' or 'local:<id>'
