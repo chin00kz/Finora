@@ -22,7 +22,7 @@ This document tracks temporary/current information, active phases, feature branc
   - 3E Detail/history + settlement UX polish: complete
   - *Real two-account E2E settlement test passed:* proposal, multiple pending claims, partial confirmation, rejection, restored proposal capacity, final confirmation, settled transition.
 - **Phase 4 — Notifications & Shared UX: CURRENT**
-  - [x] 4A In-app notification foundation
+  - [x] 4A In-app notification foundation (Deployed & Partially Verified; blocked on live E2E UI auth tests)
   - [ ] 4B Connection notifications
   - [ ] 4C Shared IOU notifications
   - [ ] 4D Settlement notifications
