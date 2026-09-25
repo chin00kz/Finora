@@ -34,7 +34,7 @@ This document tracks temporary/current information, active phases, feature branc
   - Lower-level automated security/RLS assertions (A-K) skipped (test credentials unavailable in environment)
   - Cloud-authoritative cache isolation confirmed
 
-  - [ ] 4B Connection notifications
+  - [x] 4B Connection notifications (IMPLEMENTED / AWAITING PRODUCTION MIGRATION + REAL E2E)
   - [ ] 4C Shared IOU notifications
   - [ ] 4D Settlement notifications
   - [ ] 4E Shared UX polish / final E2E
