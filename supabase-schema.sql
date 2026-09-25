@@ -900,3 +900,5 @@ END;
 $$;
 
 REVOKE EXECUTE ON FUNCTION internal_create_notification(UUID, UUID, TEXT, TEXT, TEXT, TEXT, TEXT, TEXT, TEXT) FROM PUBLIC, anon, authenticated;
+
+
