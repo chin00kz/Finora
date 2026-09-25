@@ -118,6 +118,7 @@ export default function Shared() {
                     {r.owedToYou > 0 && <span className="text-xs text-green-500 font-medium">Owes you {formatMoney(r.owedToYou)}</span>}
                     {r.youOwe > 0 && <span className="text-xs text-red-500 font-medium">You owe {formatMoney(r.youOwe)}</span>}
                     {r.pendingOwedToYou > 0 && <span className="text-[11px] text-muted-foreground flex items-center gap-1"><Clock size={10}/> Pending: {formatMoney(r.pendingOwedToYou)}</span>}
+                    {r.pendingYouOwe > 0 && <span className="text-[11px] text-muted-foreground flex items-center gap-1"><Clock size={10}/> Request pending: {formatMoney(r.pendingYouOwe)}</span>}
                   </div>
                   {r.owedToYou === 0 && r.youOwe === 0 && r.pendingOwedToYou === 0 && r.pendingYouOwe === 0 && (
                     <span className="text-xs text-muted-foreground">Settled</span>

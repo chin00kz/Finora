@@ -1,4 +1,4 @@
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { db } from '../db/db';
@@ -20,6 +20,14 @@ export default function Relationship() {
   const { identities } = useParticipantIdentities(user?.id);
   const [actioningId, setActioningId] = useState<string | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
+
+
+  // Ensure fresh data when navigating directly (e.g. from a notification deep-link).
+  useEffect(() => {
+    if (user) {
+      syncSharedIous().catch(err => console.warn('[Relationship] Background sync failed:', err));
+    }
+  }, [user]);
 
   const identity = identities.find(i => i.identityKey === identityKey);
 
@@ -186,7 +194,7 @@ export default function Relationship() {
                     disabled={actioningId === event.id}
                     className="px-4 py-2 bg-primary text-primary-foreground text-xs rounded-xl font-medium disabled:opacity-50"
                   >
-                    Accep
+                    Accept
                   </button>
                 </div>
               )}
@@ -205,7 +213,7 @@ export default function Relationship() {
               onClick={() => setIsPaymentModalOpen(true)}
               className="flex-1 bg-foreground text-background py-3.5 rounded-xl font-semibold shadow-lg active:scale-95 transition-transform"
             >
-              Record Paymen
+              Record Payment
             </button>
           )}
         </div>
