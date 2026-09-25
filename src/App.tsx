@@ -245,7 +245,7 @@ function getNavIcon(id: NavItemId) {
       return PieChart;
     case 'activity':
       return List;
-    case 'debts':
+    case 'shared':
       return Users;
     case 'analytics':
       return BarChart3;
@@ -690,6 +690,7 @@ function App() {
 }
 
 export default App;
+
 
 
 

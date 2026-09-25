@@ -346,6 +346,7 @@ const db = new Dexie('FinoraDB') as Dexie & {
     cacheConnections: EntityTable<CacheConnection, 'id'>;
     cacheSharedIous: EntityTable<CacheSharedIou, 'id'>;
     cacheSharedIouSettlements: EntityTable<CacheSharedIouSettlement, 'id'>;
+  sharedPayments: EntityTable<SharedPayment, 'id'>;
     cacheNotifications: EntityTable<CacheNotification, 'id'>;
   sharedOutbox: EntityTable<SharedOutbox, 'id'>;
   groups: EntityTable<Group, 'id'>;
@@ -500,6 +501,20 @@ export type SharedOutbox = {
   created_at: number;
 } & SharedOutboxPayload;
 
+
+
+export interface SharedPayment {
+  id: string;
+  idempotency_key: string;
+  payer_id: string;
+  payee_id: string;
+  amount: number;
+  currency: string;
+  status: 'pending' | 'accepted' | 'rejected';
+  notes?: string;
+  created_at: number;
+  updated_at: number;
+}
 
 export interface CacheSharedIouSettlement {
   id: string;
