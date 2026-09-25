@@ -40,7 +40,8 @@ export const ALL_NAV_ITEMS: NavItemConfig[] = [
   { id: 'settings',         label: 'Settings',        to: '/settings' },
 ];
 
-export const DEFAULT_FRONT_ITEMS: NavItemId[] = ['home', 'accounts', 'activity', 'debts', 'settings'];
+export const DEFAULT_FRONT_ITEMS: NavItemId[] = ['home', 'activity', 'debts', 'notifications'];
+const NAV_PREFERENCES_VERSION = 1;
 
 interface NavState {
   frontItemIds: NavItemId[];
@@ -119,6 +120,8 @@ export const useNavStore = create<NavState>()(
     }),
     {
       name: 'finora-nav-preferences',
+      version: NAV_PREFERENCES_VERSION,
+      migrate: () => ({ frontItemIds: DEFAULT_FRONT_ITEMS }),
       partialize: (state) => ({ frontItemIds: state.frontItemIds }),
     }
   )
