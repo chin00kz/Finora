@@ -456,20 +456,6 @@ export default function TransactionModal() {
 
   return (
     <>
-      <ParticipantPickerSheet
-        isOpen={isParticipantPickerOpen}
-        onClose={() => setIsParticipantPickerOpen(false)}
-        identities={fullIdentities}
-        groups={groups}
-        recentCombinations={recentCombinations}
-        selectedKeys={splitParticipants}
-        onSelectMultiple={(keys) => setSplitParticipants(keys)}
-        onToggleSelection={(key) => {
-          setSplitParticipants(prev => 
-            prev.includes(key) ? prev.filter(k => k !== key) : [...prev, key]
-          );
-        }}
-      />
       <div className="fixed inset-0 z-50 bg-black/40 backdrop-blur-sm animate-in fade-in duration-200">
       <div
         className="absolute w-full flex flex-col justify-end pointer-events-none"
@@ -862,54 +848,62 @@ export default function TransactionModal() {
                       </label>
                     </div>
 
-                    <div className="bg-blue-500/10 p-5 rounded-xl border border-blue-500/20">
-                      <label className="flex items-center mb-4">
+                    <div>
+                      <label className="flex items-center cursor-pointer gap-3">
                         <input
                           type="checkbox"
                           checked={isShared}
                           onChange={e => setIsShared(e.target.checked)}
-                          className="w-5 h-5 rounded border-border text-blue-500 focus:ring-blue-500"
+                          className="w-5 h-5 rounded border-border text-blue-500 focus:ring-blue-500 shrink-0"
                         />
-                        <span className="ml-3 font-medium text-foreground">Shared Expense (Split)</span>
+                        <span className="font-medium text-foreground text-sm">Split this expense</span>
                       </label>
 
                       {isShared && (
-                        <div className="pl-8 space-y-4 animate-in fade-in slide-in-from-top-2 mt-2">
-                          
-                          {/* Selected Participants List */}
-                          <div className="space-y-3">
-                            <div className="flex items-center justify-between">
-                              <span className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Split with...</span>
+                        <div className="mt-4 ml-8 animate-in fade-in slide-in-from-top-2">
+                          {splitParticipants.filter(p => p !== 'local:me').length === 0 ? (
+                            <div className="flex items-center gap-3">
+                              <p className="text-sm text-muted-foreground flex-1">Split this with other people.</p>
                               <button
                                 type="button"
                                 onClick={() => setIsParticipantPickerOpen(true)}
-                                className="text-xs font-semibold text-blue-500 bg-blue-500/10 px-2.5 py-1 rounded-md"
+                                className="text-sm font-medium text-blue-500 bg-blue-500/10 px-3 py-1.5 rounded-lg shrink-0"
                               >
                                 Add People
                               </button>
                             </div>
-
-                            {splitParticipants.length > 0 ? (
-                              <div className="space-y-2">
-                                {/* Mode Toggle */}
-                                <div className="flex bg-muted p-1 rounded-lg mb-3">
-                                  <button type="button" onClick={() => setSplitMode('equal')} className={`flex-1 py-1 text-xs font-medium rounded-md ${splitMode === 'equal' ? 'bg-card shadow-sm text-foreground' : 'text-muted-foreground'}`}>Equal</button>
-                                  <button type="button" onClick={() => setSplitMode('custom')} className={`flex-1 py-1 text-xs font-medium rounded-md ${splitMode === 'custom' ? 'bg-card shadow-sm text-foreground' : 'text-muted-foreground'}`}>Custom</button>
+                          ) : (
+                            <div className="space-y-4">
+                              {/* Mode toggle + Add more */}
+                              <div className="flex items-center justify-between">
+                                <div className="flex bg-muted p-1 rounded-lg">
+                                  <button type="button" onClick={() => setSplitMode('equal')} className={`px-3 py-1 text-xs font-medium rounded-md ${splitMode === 'equal' ? 'bg-card shadow-sm text-foreground' : 'text-muted-foreground'}`}>Equal</button>
+                                  <button type="button" onClick={() => setSplitMode('custom')} className={`px-3 py-1 text-xs font-medium rounded-md ${splitMode === 'custom' ? 'bg-card shadow-sm text-foreground' : 'text-muted-foreground'}`}>Custom</button>
                                 </div>
+                                <button
+                                  type="button"
+                                  onClick={() => setIsParticipantPickerOpen(true)}
+                                  className="text-xs font-medium text-blue-500 px-2 py-1"
+                                >
+                                  + Add
+                                </button>
+                              </div>
 
+                              {/* Participants list */}
+                              <div className="space-y-2.5">
                                 {splitParticipants.map(key => {
+                                  const isMe = key === 'local:me';
                                   const iden = fullIdentities.find(i => i.identityKey === key);
-                                  const name = iden?.name || 'Unknown';
+                                  const name = isMe ? 'You' : (iden?.name || 'Unknown');
+                                  const finalAmt = splitMath?.results?.find(r => r.personId === key)?.finalAmount || 0;
                                   return (
-                                    <div key={key} className="flex items-center gap-2">
-                                      <div className="w-8 h-8 rounded-full bg-blue-500/10 text-blue-500 flex items-center justify-center font-bold shrink-0 text-xs">
+                                    <div key={key} className="flex items-center gap-2.5">
+                                      <div className={`w-8 h-8 rounded-full flex items-center justify-center font-semibold text-xs shrink-0 ${isMe ? 'bg-muted text-foreground' : 'bg-blue-500/10 text-blue-500'}`}>
                                         {name.charAt(0).toUpperCase()}
                                       </div>
-                                      <div className="flex-1 min-w-0">
-                                        <p className="font-medium text-sm text-foreground truncate">{name}</p>
-                                      </div>
+                                      <p className="flex-1 text-sm font-medium text-foreground truncate min-w-0">{name}</p>
                                       {splitMode === 'custom' ? (
-                                        <div className="w-24">
+                                        <div className="w-24 shrink-0">
                                           <input
                                             type="number"
                                             inputMode="decimal"
@@ -920,56 +914,48 @@ export default function TransactionModal() {
                                           />
                                         </div>
                                       ) : (
-                                        <div className="text-sm font-medium text-muted-foreground">
-                                          {formatMoney(splitMath?.results?.find(r => r.personId === key)?.finalAmount || 0)}
-                                        </div>
+                                        <span className="text-sm font-medium text-muted-foreground shrink-0">{formatMoney(finalAmt)}</span>
                                       )}
-                                      <button 
-                                        type="button" 
-                                        onClick={() => setSplitParticipants(prev => prev.filter(k => k !== key))}
-                                        className="p-1.5 text-muted-foreground hover:bg-muted rounded-full shrink-0"
-                                      >
-                                        <X size={14} />
-                                      </button>
+                                      {isMe ? (
+                                        <div className="w-[26px] shrink-0" />
+                                      ) : (
+                                        <button
+                                          type="button"
+                                          onClick={() => setSplitParticipants(prev => prev.filter(k => k !== key))}
+                                          className="p-1.5 text-muted-foreground hover:bg-muted rounded-full shrink-0"
+                                        >
+                                          <X size={14} />
+                                        </button>
+                                      )}
                                     </div>
                                   );
                                 })}
                               </div>
-                            ) : (
-                              <p className="text-xs text-muted-foreground">No one selected.</p>
-                            )}
 
-                            {/* Split Math Preview */}
-                            {splitMath && splitParticipants.length > 0 && (
-                              <div className="mt-4 bg-muted/50 rounded-xl p-3 text-xs space-y-1.5">
-                                {splitMath.error ? (
-                                  <p className="text-red-500 font-medium">{splitMath.error}</p>
-                                ) : (
-                                  <>
-                                    <div className="flex justify-between text-muted-foreground">
-                                      <span>Total</span>
-                                      <span>{formatMoney(splitMath.total)}</span>
-                                    </div>
-                                    {splitMode === 'custom' && splitMath.sharedRemainder > 0 && (
-                                      <div className="flex justify-between text-muted-foreground">
-                                        <span>Shared Fees</span>
-                                        <span>{formatMoney(splitMath.sharedRemainder)}</span>
-                                      </div>
-                                    )}
-                                    <div className="flex justify-between font-medium text-foreground pt-1 border-t border-border/50">
-                                      <span>Your Budget Share</span>
-                                      <span>{formatMoney(splitMath.myShare)}</span>
-                                    </div>
-                                    <div className="flex justify-between font-medium text-green-500">
-                                      <span>Others owe you</span>
-                                      <span>{formatMoney(splitMath.othersOwe)}</span>
-                                    </div>
-                                  </>
-                                )}
-                              </div>
-                            )}
-
-                          </div>
+                              {/* Math summary — typography-focused, no nested card */}
+                              {splitMath && !splitMath.error && (
+                                <div className="pt-3 border-t border-border/50 space-y-1">
+                                  {splitMode === 'equal' && (
+                                    <p className="text-xs text-muted-foreground pb-1">{formatMoney(splitMath.results[0]?.finalAmount || 0)} each</p>
+                                  )}
+                                  {splitMode === 'custom' && splitMath.sharedRemainder > 0 && (
+                                    <p className="text-xs text-muted-foreground pb-1">{formatMoney(splitMath.sharedRemainder)} shared fees split equally</p>
+                                  )}
+                                  <div className="flex justify-between items-baseline text-sm font-medium text-foreground">
+                                    <span>Your share</span>
+                                    <span>{formatMoney(splitMath.myShare)}</span>
+                                  </div>
+                                  <div className="flex justify-between items-baseline text-sm font-medium text-green-500">
+                                    <span>Others owe you</span>
+                                    <span>{formatMoney(splitMath.othersOwe)}</span>
+                                  </div>
+                                </div>
+                              )}
+                              {splitMath?.error && (
+                                <p className="text-sm text-red-500 font-medium">{splitMath.error}</p>
+                              )}
+                            </div>
+                          )}
                         </div>
                       )}
                     </div>
@@ -1004,6 +990,25 @@ export default function TransactionModal() {
       </div>
     </div>
   </div>
+      <ParticipantPickerSheet
+        isOpen={isParticipantPickerOpen}
+        onClose={() => setIsParticipantPickerOpen(false)}
+        identities={fullIdentities}
+        groups={groups}
+        recentCombinations={recentCombinations}
+        selectedKeys={splitParticipants}
+        onSelectMultiple={(keys) => {
+            // Always keep 'local:me' at the front — group shortcuts must not eject the payer
+            const others = keys.filter(k => k !== 'local:me');
+            setSplitParticipants(['local:me', ...others]);
+          }}
+        onToggleSelection={(key) => {
+          if (key === 'local:me') return; // payer cannot be removed via picker
+          setSplitParticipants(prev =>
+            prev.includes(key) ? prev.filter(k => k !== key) : [...prev, key]
+          );
+        }}
+      />
     </>
   );
 }

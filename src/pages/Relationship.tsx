@@ -116,7 +116,7 @@ export default function Relationship() {
               </div>
               <div className="text-right">
                 <span className={`font-semibold ${event.direction.includes('theyOwe') || event.direction === 'theyPaidMe' ? 'text-green-500' : 'text-foreground'}`}>
-                  LKR {formatMoney(event.amount)}
+                  {formatMoney(event.amount)}
                 </span>
                 {event.status === 'pending' && <div className="text-[10px] text-orange-500 font-medium mt-1">Pending</div>}
               </div>

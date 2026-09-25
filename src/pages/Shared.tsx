@@ -125,9 +125,9 @@ export default function Shared() {
                 <div>
                   <h3 className="font-semibold text-foreground">{r.name}</h3>
                   <div className="flex flex-col gap-0.5 mt-1">
-                    {r.owedToYou > 0 && <span className="text-xs text-green-500 font-medium">Owes you LKR {formatMoney(r.owedToYou)}</span>}
-                    {r.youOwe > 0 && <span className="text-xs text-red-500 font-medium">You owe LKR {formatMoney(r.youOwe)}</span>}
-                    {r.pendingOwedToYou > 0 && <span className="text-[11px] text-muted-foreground flex items-center gap-1"><Clock size={10}/> Pending requested: LKR {formatMoney(r.pendingOwedToYou)}</span>}
+                    {r.owedToYou > 0 && <span className="text-xs text-green-500 font-medium">Owes you {formatMoney(r.owedToYou)}</span>}
+                    {r.youOwe > 0 && <span className="text-xs text-red-500 font-medium">You owe {formatMoney(r.youOwe)}</span>}
+                    {r.pendingOwedToYou > 0 && <span className="text-[11px] text-muted-foreground flex items-center gap-1"><Clock size={10}/> Pending: {formatMoney(r.pendingOwedToYou)}</span>}
                   </div>
                   {r.owedToYou === 0 && r.youOwe === 0 && r.pendingOwedToYou === 0 && r.pendingYouOwe === 0 && (
                     <span className="text-xs text-muted-foreground">Settled</span>
