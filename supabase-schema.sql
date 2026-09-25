@@ -781,6 +781,7 @@ CREATE INDEX IF NOT EXISTS idx_notifications_created_at ON public.notifications(
 
 ALTER TABLE public.notifications ENABLE ROW LEVEL SECURITY;
 
+DROP POLICY IF EXISTS "Users can view their own notifications" ON public.notifications;
 CREATE POLICY "Users can view their own notifications"
     ON public.notifications FOR SELECT
     TO authenticated
