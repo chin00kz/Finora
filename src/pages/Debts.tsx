@@ -57,6 +57,7 @@ export default function Debts() {
   const [proposePaymentIou, setProposePaymentIou] = useState<UnifiedIou | null>(null);
   const [selectedSharedIou, setSelectedSharedIou] = useState<UnifiedIou | null>(null);
 
+  const [highlightedIouId, setHighlightedIouId] = useState<string | null>(null);
   const [actioning, setActioning] = useState<{id: string, action: 'accepted' | 'declined'} | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
   const [actionedIous, setActionedIous] = useState<Record<string, string>>({});
@@ -214,9 +215,14 @@ export default function Debts() {
       const match = unifiedIous.find(i => i.id === state.sharedIouId);
       if (match) {
         setSelectedSharedIou(match);
+      } else {
+        setHighlightedIouId(state.sharedIouId);
+        setTimeout(() => {
+          const el = document.getElementById(`iou-request-${state.sharedIouId}`);
+          if (el) el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        }, 100);
+        setTimeout(() => setHighlightedIouId(null), 3000);
       }
-      // If it's a pending incoming request, it won't be in unifiedIous
-      // but it will be visible at the top in incomingRequests, which is fine.
       navigate(location.pathname, { replace: true, state: {} });
     }
   }, [location.state, sharedIous, unifiedIous, navigate, location.pathname]);
@@ -316,9 +322,10 @@ export default function Debts() {
               const name = creator?.display_name || "Unknown";
               const username = creator?.username ? `@${creator.username}` : "";
               const isProcessing = actioning?.id === iou.id;
+                const isHighlighted = highlightedIouId === iou.id;
 
               return (
-                <div key={iou.id} className={`bg-card rounded-2xl p-4 border border-border/60 shadow-sm flex flex-col gap-4 ${isProcessing ? 'opacity-60 pointer-events-none' : ''}`}>
+                  <div id={`iou-request-${iou.id}`} key={iou.id} className={`bg-card rounded-2xl p-4 border shadow-sm flex flex-col gap-4 ${isProcessing ? 'opacity-60 pointer-events-none' : ''} ${isHighlighted ? 'border-primary ring-2 ring-primary/20' : 'border-border/60'}`}>
                   <div className="flex items-start justify-between gap-4">
                     <div className="flex-1 min-w-0">
                       <p className="text-base font-medium text-foreground truncate">{name}</p>
