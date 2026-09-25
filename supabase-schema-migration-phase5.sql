@@ -24,7 +24,7 @@ CREATE TABLE IF NOT EXISTS public.groups (
     updated_at bigint NOT NULL
 );
 ALTER TABLE public.groups ENABLE ROW LEVEL SECURITY;
-CREATE POLICY "Users can manage their own groups" ON public.groups FOR ALL USING (auth.uid() = user_id);
+CREATE POLICY "Users can manage their own groups" ON public.groups FOR ALL USING (auth.uid() = user_id) WITH CHECK (auth.uid() = user_id);
 
 GRANT SELECT, INSERT, UPDATE, DELETE ON public.groups TO authenticated;
 REVOKE ALL ON public.groups FROM anon, PUBLIC;
@@ -40,7 +40,10 @@ BEGIN
 END $$;
 
 
--- 3. Shared Payments Table
+-- 3. Add transaction_id to shared_ious
+ALTER TABLE public.shared_ious ADD COLUMN IF NOT EXISTS transaction_id text;
+
+-- 4. Shared Payments Table
 CREATE TABLE IF NOT EXISTS public.shared_payments (
     id text PRIMARY KEY,
     idempotency_key text NOT NULL,
@@ -80,7 +83,7 @@ BEGIN
 END $$;
 
 
--- 4. Propose Shared Payment RPC
+-- 5. Propose Shared Payment RPC
 CREATE OR REPLACE FUNCTION public.propose_shared_payment(
     p_idempotency_key text,
     p_payee_id uuid,
@@ -101,6 +104,8 @@ DECLARE
     v_norm_currency text;
     v_payload_hash text;
     v_existing_hash text;
+    v_existing_op_type text;
+    v_actor_display_name text;
 BEGIN
     v_payer_id := auth.uid();
     IF v_payer_id IS NULL THEN
@@ -121,7 +126,6 @@ BEGIN
     
     v_norm_currency := upper(trim(COALESCE(NULLIF(trim(p_currency), ''), 'LKR')));
 
-    -- Require accepted connection
     IF NOT EXISTS (
         SELECT 1 FROM public.connections c
         WHERE c.status = 'accepted'
@@ -134,19 +138,18 @@ BEGIN
     v_now := (extract(epoch from now()) * 1000)::bigint;
     v_payload_hash := md5(p_payee_id::text || '_' || p_amount::text || '_' || v_norm_currency || '_' || COALESCE(trim(p_notes), ''));
 
-    -- Idempotency Check
     INSERT INTO public.operation_idempotency (user_id, idempotency_key, operation_type, payload_hash, created_at)
     VALUES (v_payer_id, p_idempotency_key, 'propose_payment', v_payload_hash, v_now)
     ON CONFLICT (user_id, idempotency_key) DO NOTHING
     RETURNING user_id INTO v_idempotency_check;
 
     IF v_idempotency_check IS NULL THEN
-        -- Verify payload hash matches exactly
-        SELECT payload_hash INTO v_existing_hash FROM public.operation_idempotency 
+        SELECT operation_type, payload_hash INTO v_existing_op_type, v_existing_hash 
+        FROM public.operation_idempotency 
         WHERE user_id = v_payer_id AND idempotency_key = p_idempotency_key;
         
-        IF v_existing_hash != v_payload_hash THEN
-            RAISE EXCEPTION 'Idempotency conflict: same key used with different payload';
+        IF v_existing_op_type != 'propose_payment' OR v_existing_hash != v_payload_hash THEN
+            RAISE EXCEPTION 'Idempotency conflict: same key used with different operation type or payload';
         END IF;
         
         SELECT * INTO v_payment FROM public.shared_payments 
@@ -170,17 +173,22 @@ BEGIN
         v_now
     ) RETURNING * INTO v_payment;
 
-    -- Notify payee
-    INSERT INTO public.notifications (
-        id, user_id, actor_id, type, target_id, status, created_at
-    ) VALUES (
-        'notif_' || replace(gen_random_uuid()::text, '-', ''),
+    SELECT display_name INTO v_actor_display_name FROM public.profiles WHERE id = v_payer_id;
+    IF v_actor_display_name IS NULL OR length(trim(v_actor_display_name)) = 0 THEN
+        SELECT username INTO v_actor_display_name FROM public.profiles WHERE id = v_payer_id;
+        v_actor_display_name := '@' || v_actor_display_name;
+    END IF;
+
+    PERFORM internal_create_notification(
         p_payee_id,
         v_payer_id,
         'shared_payment_received',
+        v_actor_display_name || ' sent you a payment',
+        'They sent ' || v_norm_currency || ' ' || p_amount::text,
+        'shared_payment',
         v_payment.id,
-        'unread',
-        v_now
+        '/shared/' || v_payer_id::text,
+        'shared_payment_received:' || v_payment.id
     );
 
     RETURN v_payment;
@@ -188,7 +196,7 @@ END;
 $$;
 
 
--- 5. Respond Shared Payment RPC
+-- 6. Respond Shared Payment RPC
 CREATE OR REPLACE FUNCTION public.respond_shared_payment(
     p_payment_id text,
     p_accept boolean
@@ -208,6 +216,7 @@ DECLARE
     v_allocate numeric;
     v_settlements_sum numeric;
     v_accumulated_owed numeric := 0;
+    v_actor_display_name text;
 BEGIN
     v_payee_id := auth.uid();
     IF v_payee_id IS NULL THEN
@@ -216,16 +225,15 @@ BEGIN
 
     v_now := (extract(epoch from now()) * 1000)::bigint;
 
-    -- Lock the payment
     SELECT * INTO v_payment FROM public.shared_payments WHERE id = p_payment_id FOR UPDATE;
-    IF NOT FOUND THEN
-        RAISE EXCEPTION 'Payment not found';
-    END IF;
-    IF v_payment.payee_id != v_payee_id THEN
-        RAISE EXCEPTION 'Not authorized';
-    END IF;
-    IF v_payment.status != 'pending' THEN
-        RAISE EXCEPTION 'Payment is not pending';
+    IF NOT FOUND THEN RAISE EXCEPTION 'Payment not found'; END IF;
+    IF v_payment.payee_id != v_payee_id THEN RAISE EXCEPTION 'Not authorized'; END IF;
+    IF v_payment.status != 'pending' THEN RAISE EXCEPTION 'Payment is not pending'; END IF;
+
+    SELECT display_name INTO v_actor_display_name FROM public.profiles WHERE id = v_payee_id;
+    IF v_actor_display_name IS NULL OR length(trim(v_actor_display_name)) = 0 THEN
+        SELECT username INTO v_actor_display_name FROM public.profiles WHERE id = v_payee_id;
+        v_actor_display_name := '@' || v_actor_display_name;
     END IF;
 
     IF NOT p_accept THEN
@@ -234,24 +242,22 @@ BEGIN
         WHERE id = p_payment_id
         RETURNING * INTO v_payment;
 
-        INSERT INTO public.notifications (
-            id, user_id, actor_id, type, target_id, status, created_at
-        ) VALUES (
-            'notif_' || replace(gen_random_uuid()::text, '-', ''),
+        PERFORM internal_create_notification(
             v_payment.payer_id,
             v_payee_id,
             'shared_payment_rejected',
+            v_actor_display_name || ' rejected your payment',
+            'They rejected your payment of ' || v_payment.currency || ' ' || v_payment.amount::text,
+            'shared_payment',
             v_payment.id,
-            'unread',
-            v_now
+            '/shared/' || v_payee_id::text,
+            'shared_payment_rejected:' || v_payment.id
         );
         RETURN v_payment;
     END IF;
 
     v_remaining_amount := v_payment.amount;
 
-    -- Secure Row-Lock Loop
-    -- Currency must explicitly match
     FOR v_iou IN 
         SELECT * FROM public.shared_ious 
         WHERE status = 'accepted'
@@ -298,7 +304,6 @@ BEGIN
         END IF;
     END LOOP;
 
-    -- Strict overpayment check POST-LOCK
     IF v_payment.amount > v_accumulated_owed THEN
         RAISE EXCEPTION 'Overpayment: payment amount (%) exceeds total owed (%) in currency %', v_payment.amount, v_accumulated_owed, v_payment.currency;
     END IF;
@@ -308,16 +313,16 @@ BEGIN
     WHERE id = p_payment_id
     RETURNING * INTO v_payment;
 
-    INSERT INTO public.notifications (
-        id, user_id, actor_id, type, target_id, status, created_at
-    ) VALUES (
-        'notif_' || replace(gen_random_uuid()::text, '-', ''),
+    PERFORM internal_create_notification(
         v_payment.payer_id,
         v_payee_id,
         'shared_payment_accepted',
+        v_actor_display_name || ' accepted your payment',
+        'Your payment of ' || v_payment.currency || ' ' || v_payment.amount::text || ' was applied to your balance.',
+        'shared_payment',
         v_payment.id,
-        'unread',
-        v_now
+        '/shared/' || v_payee_id::text,
+        'shared_payment_accepted:' || v_payment.id
     );
 
     RETURN v_payment;
@@ -325,7 +330,7 @@ END;
 $$;
 
 
--- 6. Bulk Propose Shared IOUs (Outbox RPC)
+-- 7. Bulk Propose Shared IOUs (Outbox RPC)
 CREATE OR REPLACE FUNCTION public.propose_shared_ious_bulk(
     p_idempotency_key text,
     p_transaction_id text,
@@ -345,29 +350,18 @@ DECLARE
     v_debtor_id uuid;
     v_payload_hash text;
     v_existing_hash text;
+    v_existing_op_type text;
     v_id text;
 BEGIN
     v_creator_id := auth.uid();
-    IF v_creator_id IS NULL THEN
-        RAISE EXCEPTION 'Not authenticated';
-    END IF;
-
-    IF p_idempotency_key IS NULL OR trim(p_idempotency_key) = '' THEN
-        RAISE EXCEPTION 'Idempotency key required';
-    END IF;
-
-    IF p_transaction_id IS NULL OR trim(p_transaction_id) = '' THEN
-        RAISE EXCEPTION 'Transaction ID required';
-    END IF;
-
+    IF v_creator_id IS NULL THEN RAISE EXCEPTION 'Not authenticated'; END IF;
+    IF p_idempotency_key IS NULL OR trim(p_idempotency_key) = '' THEN RAISE EXCEPTION 'Idempotency key required'; END IF;
+    IF p_transaction_id IS NULL OR trim(p_transaction_id) = '' THEN RAISE EXCEPTION 'Transaction ID required'; END IF;
     IF p_splits IS NULL OR jsonb_typeof(p_splits) != 'array' OR jsonb_array_length(p_splits) = 0 THEN
         RAISE EXCEPTION 'Splits array must be a valid non-empty JSON array';
     END IF;
 
     v_now := (extract(epoch from now()) * 1000)::bigint;
-    
-    -- Hash transaction_id + normalized JSON payload
-    -- jsonb casts strip superficial whitespace and normalize key order deterministically
     v_payload_hash := md5(p_transaction_id || '_' || p_splits::text);
 
     INSERT INTO public.operation_idempotency (user_id, idempotency_key, operation_type, payload_hash, created_at)
@@ -376,14 +370,15 @@ BEGIN
     RETURNING user_id INTO v_idempotency_check;
 
     IF v_idempotency_check IS NULL THEN
-        SELECT payload_hash INTO v_existing_hash FROM public.operation_idempotency 
+        SELECT operation_type, payload_hash INTO v_existing_op_type, v_existing_hash 
+        FROM public.operation_idempotency 
         WHERE user_id = v_creator_id AND idempotency_key = p_idempotency_key;
         
-        IF v_existing_hash != v_payload_hash THEN
-            RAISE EXCEPTION 'Idempotency conflict: same key used with different payload';
+        IF v_existing_op_type != 'propose_bulk_split' OR v_existing_hash != v_payload_hash THEN
+            RAISE EXCEPTION 'Idempotency conflict: same key used with different operation type or payload';
         END IF;
         
-        RETURN; -- Harmless retry
+        RETURN;
     END IF;
 
     FOR split IN SELECT * FROM jsonb_array_elements(p_splits)
@@ -392,23 +387,11 @@ BEGIN
         v_debtor_id := (split->>'debtor_id')::uuid;
         v_split_amount := (split->>'amount')::numeric;
 
-        IF v_id IS NULL OR trim(v_id) = '' THEN
-            RAISE EXCEPTION 'Split ID required';
-        END IF;
+        IF v_id IS NULL OR trim(v_id) = '' THEN RAISE EXCEPTION 'Split ID required'; END IF;
+        IF v_debtor_id IS NULL THEN RAISE EXCEPTION 'Invalid debtor ID'; END IF;
+        IF v_debtor_id = v_creator_id THEN RAISE EXCEPTION 'Creator cannot be debtor in shared split'; END IF;
+        IF v_split_amount IS NULL OR v_split_amount <= 0 THEN RAISE EXCEPTION 'Split amount must be greater than zero'; END IF;
 
-        IF v_debtor_id IS NULL THEN
-            RAISE EXCEPTION 'Invalid debtor ID';
-        END IF;
-
-        IF v_debtor_id = v_creator_id THEN
-            RAISE EXCEPTION 'Creator cannot be debtor in shared split';
-        END IF;
-
-        IF v_split_amount IS NULL OR v_split_amount <= 0 THEN
-            RAISE EXCEPTION 'Split amount must be greater than zero';
-        END IF;
-
-        -- Validate connection exists and is accepted
         IF NOT EXISTS (
             SELECT 1 FROM public.connections c
             WHERE c.status = 'accepted'
@@ -418,28 +401,18 @@ BEGIN
             RAISE EXCEPTION 'No active connection with %', v_debtor_id;
         END IF;
 
-        -- DO NOT USE ON CONFLICT DO NOTHING. A collision means client reused UUIDs badly.
         INSERT INTO public.shared_ious (
             id, creator_id, creditor_id, debtor_id, amount, currency, description, status, transaction_id, created_at, updated_at
         ) VALUES (
-            v_id,
-            v_creator_id,
-            v_creator_id,
-            v_debtor_id,
-            v_split_amount,
-            'LKR',
-            split->>'description',
-            'pending',
-            p_transaction_id,
-            v_now,
-            v_now
+            v_id, v_creator_id, v_creator_id, v_debtor_id, v_split_amount, 'LKR',
+            split->>'description', 'pending', p_transaction_id, v_now, v_now
         );
     END LOOP;
 END;
 $$;
 
 
--- 7. Cancel Shared IOUs Bulk (Pre-consensus)
+-- 8. Cancel Shared IOUs Bulk (Pre-consensus)
 CREATE OR REPLACE FUNCTION public.cancel_shared_iou_bulk(
     p_transaction_id text
 )
@@ -453,21 +426,14 @@ DECLARE
     v_has_accepted boolean;
 BEGIN
     v_creator_id := auth.uid();
-    IF v_creator_id IS NULL THEN
-        RAISE EXCEPTION 'Not authenticated';
-    END IF;
+    IF v_creator_id IS NULL THEN RAISE EXCEPTION 'Not authenticated'; END IF;
+    IF p_transaction_id IS NULL OR trim(p_transaction_id) = '' THEN RAISE EXCEPTION 'Transaction ID required'; END IF;
 
-    IF p_transaction_id IS NULL OR trim(p_transaction_id) = '' THEN
-        RAISE EXCEPTION 'Transaction ID required';
-    END IF;
-
-    -- Lock the relevant IOUs FIRST before checking status to prevent concurrent accept races
     PERFORM id FROM public.shared_ious
     WHERE transaction_id = p_transaction_id
       AND creator_id = v_creator_id
     FOR UPDATE;
 
-    -- Check if ANY connected shared_iou is already accepted/settled
     SELECT EXISTS (
         SELECT 1 FROM public.shared_ious
         WHERE transaction_id = p_transaction_id
@@ -475,11 +441,8 @@ BEGIN
           AND status IN ('accepted', 'settled')
     ) INTO v_has_accepted;
 
-    IF v_has_accepted THEN
-        RAISE EXCEPTION 'Cannot cancel because some IOUs are already accepted or settled';
-    END IF;
+    IF v_has_accepted THEN RAISE EXCEPTION 'Cannot cancel because some IOUs are already accepted or settled'; END IF;
 
-    -- Safe to delete pending ones
     DELETE FROM public.shared_ious
     WHERE transaction_id = p_transaction_id
       AND creator_id = v_creator_id
