@@ -45,8 +45,17 @@ This document tracks temporary/current information, active phases, feature branc
     - PASS: Shared IOU request notification (realtime global discovery, exact request deep-link to /debts).
     - PASS: Acceptance notification (realtime delivery back to creator, exact deep-link to detail modal).
     - DEFERRED: manual E2E for decline and cancel notifications.
-  - [x] 4D Settlement notifications (IMPLEMENTED / AWAITING PRODUCTION MIGRATION + REAL E2E)
+  - [x] 4D Settlement notifications (COMPLETE / primary production E2E verified)
+    - Production migration manually applied successfully.
+    - PASS: Partial payment proposal notification & exact deep-link.
+    - PASS: Partial payment confirmation notification.
+    - PASS: Final exact-remainder proposal & confirmation notifications.
+    - PASS: Parent IOU settled transition & final notification wording.
+    - PASS: 701b48b modal reconciliation fix production verified (no page refresh required).
+    - DEFERRED: manual E2E for settlement rejection notifications.
   - [ ] 4E Shared UX polish / final E2E
+    - SharedIouDetailModal UX: Add subtle 'X' close button (Lucide icon, top-right, accessible, preserve backdrop/escape close).
+    - SharedIouDetailModal UX: Inspect small loading spinner observed in settled debtor modal.
     - Polish Connections UI (align with Shared IOU visual language: clearer hierarchy, subtle secondary font colors, cleaner Accept/Decline presentation, no major redesign).
     - Future "Remove Friend" capability (requires confirmation, secure server-side RPC, must NOT delete historical shared IOUs/settlements, Block remains separate).
 
