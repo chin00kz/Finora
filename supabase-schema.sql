@@ -904,6 +904,7 @@ $$;
 REVOKE EXECUTE ON FUNCTION internal_create_notification(UUID, UUID, TEXT, TEXT, TEXT, TEXT, TEXT, TEXT, TEXT) FROM PUBLIC, anon, authenticated;
 
 
+
 -- Phase 5 Shared Expenses Migration
 -- NOT YET APPLIED
 
@@ -912,58 +913,73 @@ CREATE TABLE IF NOT EXISTS public.groups (
     id text NOT NULL PRIMARY KEY,
     user_id uuid NOT NULL REFERENCES public.profiles(id) ON DELETE CASCADE,
     name text NOT NULL,
-    participant_ids jsonb NOT NULL DEFAULT '[]'::jsonb,
-    updated_at timestamptz NOT NULL DEFAULT now()
+    participants text[] NOT NULL DEFAULT '{}',
+    is_deleted boolean NOT NULL DEFAULT false,
+    updated_at bigint NOT NULL
 );
-
 ALTER TABLE public.groups ENABLE ROW LEVEL SECURITY;
+CREATE POLICY "Users can manage their own groups" ON public.groups FOR ALL USING (auth.uid() = user_id);
 
-CREATE POLICY "Users can manage their own groups"
-    ON public.groups
-    USING (auth.uid() = user_id)
-    WITH CHECK (auth.uid() = user_id);
 
--- Make sure real-time replication works for groups if needed by personal sync
-alter publication supabase_realtime add table public.groups;
+-- ==============================================================================
+-- PHASE 5: SHARED EXPENSES / SPLITS & RELATIONSHIP PAYMENTS
+-- ==============================================================================
 
--- 1. Create shared_payments table for first-class relationship payments
+-- 0. Idempotency Table (Smallest robust design for RPC idempotency)
+CREATE TABLE IF NOT EXISTS public.operation_idempotency (
+    user_id uuid NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
+    idempotency_key text NOT NULL,
+    created_at bigint NOT NULL,
+    PRIMARY KEY (user_id, idempotency_key)
+);
+ALTER TABLE public.operation_idempotency ENABLE ROW LEVEL SECURITY;
+-- No policies needed since it's only accessed by SECURITY DEFINER RPCs
+
+-- 1. Shared Payments Table
 CREATE TABLE IF NOT EXISTS public.shared_payments (
-    id text NOT NULL PRIMARY KEY,
-    idempotency_key text NOT NULL UNIQUE,
-    payer_id uuid NOT NULL REFERENCES public.profiles(id) ON DELETE RESTRICT,
-    payee_id uuid NOT NULL REFERENCES public.profiles(id) ON DELETE RESTRICT,
+    id text PRIMARY KEY,
+    idempotency_key text NOT NULL,
+    payer_id uuid NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
+    payee_id uuid NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
     amount numeric NOT NULL CHECK (amount > 0),
     currency text NOT NULL DEFAULT 'LKR',
+    status text NOT NULL CHECK (status IN ('pending', 'accepted', 'rejected')),
     notes text,
-    status text NOT NULL CHECK (status IN ('pending', 'accepted', 'rejected')) DEFAULT 'pending',
     created_at bigint NOT NULL,
     updated_at bigint NOT NULL,
     accepted_at bigint,
-    rejected_at bigint
+    rejected_at bigint,
+    UNIQUE(payer_id, idempotency_key)
 );
 
--- RLS for shared_payments
 ALTER TABLE public.shared_payments ENABLE ROW LEVEL SECURITY;
 
-CREATE POLICY "Users can view their shared_payments"
+CREATE POLICY "Users can view payments they are involved in"
     ON public.shared_payments FOR SELECT
     USING (auth.uid() = payer_id OR auth.uid() = payee_id);
 
--- Only RPCs can insert/update, explicitly revoke public access
-REVOKE ALL ON public.shared_payments FROM PUBLIC;
-REVOKE ALL ON public.shared_payments FROM anon;
-REVOKE ALL ON public.shared_payments FROM authenticated;
-GRANT SELECT ON public.shared_payments TO authenticated;
+-- Direct mutations disabled; handled by RPCs
+CREATE POLICY "No direct insert on shared_payments"
+    ON public.shared_payments FOR INSERT WITH CHECK (false);
+CREATE POLICY "No direct update on shared_payments"
+    ON public.shared_payments FOR UPDATE USING (false);
+CREATE POLICY "No direct delete on shared_payments"
+    ON public.shared_payments FOR DELETE USING (false);
 
-
--- 1b. Add transaction_id to shared_ious
-ALTER TABLE public.shared_ious ADD COLUMN IF NOT EXISTS transaction_id TEXT;
-
-
--- 1c. Add Notifications
-ALTER TYPE notification_type ADD VALUE IF NOT EXISTS 'shared_payment_received';
-ALTER TYPE notification_type ADD VALUE IF NOT EXISTS 'shared_payment_accepted';
-ALTER TYPE notification_type ADD VALUE IF NOT EXISTS 'shared_payment_rejected';
+-- 1.5 Groups Privileges + Realtime fix
+-- The groups table was created previously but needs proper privileges
+GRANT SELECT, INSERT, UPDATE, DELETE ON public.groups TO authenticated;
+REVOKE ALL ON public.groups FROM anon, PUBLIC;
+-- Safe publication addition
+DO $$
+BEGIN
+    IF NOT EXISTS (
+        SELECT 1 FROM pg_publication_tables 
+        WHERE pubname = 'supabase_realtime' AND schemaname = 'public' AND tablename = 'groups'
+    ) THEN
+        ALTER PUBLICATION supabase_realtime ADD TABLE public.groups;
+    END IF;
+END $$;
 
 
 -- 2. Propose Shared Payment RPC
@@ -981,15 +997,27 @@ SET search_path = public
 AS $$
 DECLARE
     v_payer_id uuid;
-    v_payment public.shared_payments;
     v_now bigint;
+    v_payment public.shared_payments;
+    v_idempotency_check uuid;
+    v_norm_currency text;
 BEGIN
     v_payer_id := auth.uid();
     IF v_payer_id IS NULL THEN
         RAISE EXCEPTION 'Not authenticated';
     END IF;
 
-    -- Validate connection exists and is accepted
+    IF v_payer_id = p_payee_id THEN
+        RAISE EXCEPTION 'Payer and payee cannot be the same';
+    END IF;
+
+    IF p_amount <= 0 THEN
+        RAISE EXCEPTION 'Payment amount must be greater than zero';
+    END IF;
+    
+    v_norm_currency := COALESCE(NULLIF(trim(p_currency), ''), 'LKR');
+
+    -- Require accepted connection
     IF NOT EXISTS (
         SELECT 1 FROM public.connections c
         WHERE c.status = 'accepted'
@@ -1001,22 +1029,41 @@ BEGIN
 
     v_now := (extract(epoch from now()) * 1000)::bigint;
 
+    -- Idempotency Check
+    INSERT INTO public.operation_idempotency (user_id, idempotency_key, created_at)
+    VALUES (v_payer_id, p_idempotency_key, v_now)
+    ON CONFLICT (user_id, idempotency_key) DO NOTHING
+    RETURNING user_id INTO v_idempotency_check;
+
+    IF v_idempotency_check IS NULL THEN
+        -- Already processed, return the existing payment if it matches perfectly
+        SELECT * INTO v_payment FROM public.shared_payments 
+        WHERE payer_id = v_payer_id AND idempotency_key = p_idempotency_key;
+        
+        IF v_payment.amount != p_amount OR v_payment.payee_id != p_payee_id THEN
+            RAISE EXCEPTION 'Idempotency conflict: same key used with different payload';
+        END IF;
+        
+        RETURN v_payment;
+    END IF;
+
+    -- Insert payment
     INSERT INTO public.shared_payments (
-        id, idempotency_key, payer_id, payee_id, amount, currency, notes, status, created_at, updated_at
+        id, idempotency_key, payer_id, payee_id, amount, currency, status, notes, created_at, updated_at
     ) VALUES (
-        'pay_' || replace(gen_random_uuid()::text, '-', ''),
+        'pmt_' || replace(gen_random_uuid()::text, '-', ''),
         p_idempotency_key,
         v_payer_id,
         p_payee_id,
         p_amount,
-        p_currency,
-        p_notes,
+        v_norm_currency,
         'pending',
+        p_notes,
         v_now,
         v_now
     ) RETURNING * INTO v_payment;
 
-    -- Emits Notification
+    -- Notify payee
     INSERT INTO public.notifications (
         id, user_id, actor_id, type, target_id, status, created_at
     ) VALUES (
@@ -1053,7 +1100,7 @@ DECLARE
     v_iou_remaining numeric;
     v_allocate numeric;
     v_settlements_sum numeric;
-    v_active_ious_total numeric;
+    v_accumulated_owed numeric := 0;
 BEGIN
     v_payee_id := auth.uid();
     IF v_payee_id IS NULL THEN
@@ -1096,27 +1143,10 @@ BEGIN
         RETURN v_payment;
     END IF;
 
-    -- Accepting payment: Allocate against active IOUs
-    -- Calculate total owed
-    SELECT COALESCE(SUM(amount), 0) INTO v_active_ious_total
-    FROM public.shared_ious
-    WHERE status = 'accepted'
-      AND creditor_id = v_payee_id
-      AND debtor_id = v_payment.payer_id;
-
-    -- Calculate total already settled for these IOUs
-    SELECT COALESCE(SUM(s.amount), 0) INTO v_settlements_sum
-    FROM public.shared_iou_settlements s
-    JOIN public.shared_ious i ON s.shared_iou_id = i.id
-    WHERE i.status = 'accepted'
-      AND i.creditor_id = v_payee_id
-      AND i.debtor_id = v_payment.payer_id
-      AND s.status = 'confirmed';
-
-    IF v_payment.amount > (v_active_ious_total - v_settlements_sum) THEN
-        RAISE EXCEPTION 'Overpayment: payment amount exceeds total owed';
-    END IF;
-
+    -- Accepting payment: 
+    -- 1. Pass through candidates FOR UPDATE and allocate safely.
+    -- We rollback if we discover the payment exceeds available same-currency debt.
+    
     v_remaining_amount := v_payment.amount;
 
     FOR v_iou IN 
@@ -1124,21 +1154,19 @@ BEGIN
         WHERE status = 'accepted'
           AND creditor_id = v_payee_id
           AND debtor_id = v_payment.payer_id
-        ORDER BY created_at ASC
+          AND currency = v_payment.currency
+        ORDER BY created_at ASC, id ASC
         FOR UPDATE
     LOOP
-        IF v_remaining_amount <= 0 THEN
-            EXIT;
-        END IF;
-
         -- Calculate remaining on this specific IOU
         SELECT COALESCE(SUM(amount), 0) INTO v_settlements_sum
         FROM public.shared_iou_settlements
         WHERE shared_iou_id = v_iou.id AND status = 'confirmed';
 
         v_iou_remaining := v_iou.amount - v_settlements_sum;
+        v_accumulated_owed := v_accumulated_owed + v_iou_remaining;
 
-        IF v_iou_remaining > 0 THEN
+        IF v_iou_remaining > 0 AND v_remaining_amount > 0 THEN
             IF v_remaining_amount >= v_iou_remaining THEN
                 v_allocate := v_iou_remaining;
             ELSE
@@ -1168,6 +1196,11 @@ BEGIN
             v_remaining_amount := v_remaining_amount - v_allocate;
         END IF;
     END LOOP;
+
+    -- Final strict overpayment check AFTER locking everything
+    IF v_payment.amount > v_accumulated_owed THEN
+        RAISE EXCEPTION 'Overpayment: payment amount (%) exceeds total owed (%) in currency %', v_payment.amount, v_accumulated_owed, v_payment.currency;
+    END IF;
 
     -- Update payment
     UPDATE public.shared_payments
@@ -1208,35 +1241,69 @@ DECLARE
     v_creator_id uuid;
     split JSONB;
     v_now bigint;
+    v_idempotency_check uuid;
+    v_split_amount numeric;
+    v_debtor_id uuid;
 BEGIN
     v_creator_id := auth.uid();
     IF v_creator_id IS NULL THEN
         RAISE EXCEPTION 'Not authenticated';
     END IF;
 
+    IF p_idempotency_key IS NULL OR trim(p_idempotency_key) = '' THEN
+        RAISE EXCEPTION 'Idempotency key required';
+    END IF;
+
+    IF jsonb_array_length(p_splits) = 0 THEN
+        RAISE EXCEPTION 'Splits array cannot be empty';
+    END IF;
+
     v_now := (extract(epoch from now()) * 1000)::bigint;
+
+    -- Operation-level Idempotency Check
+    INSERT INTO public.operation_idempotency (user_id, idempotency_key, created_at)
+    VALUES (v_creator_id, p_idempotency_key, v_now)
+    ON CONFLICT (user_id, idempotency_key) DO NOTHING
+    RETURNING user_id INTO v_idempotency_check;
+
+    IF v_idempotency_check IS NULL THEN
+        -- Operation already processed.
+        -- We do not natively check payload hash, we just return safely (harmless retry).
+        RETURN;
+    END IF;
 
     FOR split IN SELECT * FROM jsonb_array_elements(p_splits)
     LOOP
+        v_debtor_id := (split->>'debtor_id')::uuid;
+        v_split_amount := (split->>'amount')::numeric;
+
+        IF v_debtor_id = v_creator_id THEN
+            RAISE EXCEPTION 'Creator cannot be debtor in shared split';
+        END IF;
+
+        IF v_split_amount <= 0 THEN
+            RAISE EXCEPTION 'Split amount must be greater than zero';
+        END IF;
+
         -- Validate connection exists and is accepted
         IF NOT EXISTS (
             SELECT 1 FROM public.connections c
             WHERE c.status = 'accepted'
-              AND ((c.user_a = v_creator_id AND c.user_b = (split->>'debtor_id')::uuid)
-                OR (c.user_b = v_creator_id AND c.user_a = (split->>'debtor_id')::uuid))
+              AND ((c.user_a = v_creator_id AND c.user_b = v_debtor_id)
+                OR (c.user_b = v_creator_id AND c.user_a = v_debtor_id))
         ) THEN
-            RAISE EXCEPTION 'No active connection with %', split->>'debtor_id';
+            RAISE EXCEPTION 'No active connection with %', v_debtor_id;
         END IF;
 
-        -- Insert idempotent
+        -- Insert the shared IOU
         INSERT INTO public.shared_ious (
             id, creator_id, creditor_id, debtor_id, amount, currency, description, status, transaction_id, created_at, updated_at
         ) VALUES (
             split->>'id',
             v_creator_id,
             v_creator_id,
-            (split->>'debtor_id')::uuid,
-            (split->>'amount')::numeric,
+            v_debtor_id,
+            v_split_amount,
             'LKR',
             split->>'description',
             'pending',
@@ -1244,6 +1311,9 @@ BEGIN
             v_now,
             v_now
         ) ON CONFLICT (id) DO NOTHING;
+
+        -- We DO NOT generate the 'shared_iou_request' notification here.
+        -- The Edge Function trigger `on_shared_iou_created` handles that safely using NEW.id.
     END LOOP;
 END;
 $$;
@@ -1261,11 +1331,18 @@ AS $$
 DECLARE
     v_creator_id uuid;
     v_has_accepted boolean;
+    v_lock_check uuid;
 BEGIN
     v_creator_id := auth.uid();
     IF v_creator_id IS NULL THEN
         RAISE EXCEPTION 'Not authenticated';
     END IF;
+
+    -- Lock the relevant IOUs FIRST before checking status to prevent concurrent accept races
+    PERFORM id FROM public.shared_ious
+    WHERE transaction_id = p_transaction_id
+      AND creator_id = v_creator_id
+    FOR UPDATE;
 
     -- Check if ANY connected shared_iou is already accepted/settled
     SELECT EXISTS (
@@ -1279,7 +1356,7 @@ BEGIN
         RAISE EXCEPTION 'Cannot cancel because some IOUs are already accepted or settled';
     END IF;
 
-    -- Delete pending ones
+    -- Safe to delete pending ones
     DELETE FROM public.shared_ious
     WHERE transaction_id = p_transaction_id
       AND creator_id = v_creator_id
@@ -1293,7 +1370,9 @@ GRANT EXECUTE ON FUNCTION public.respond_shared_payment(text, boolean) TO authen
 GRANT EXECUTE ON FUNCTION public.propose_shared_ious_bulk(text, text, jsonb) TO authenticated;
 GRANT EXECUTE ON FUNCTION public.cancel_shared_iou_bulk(text) TO authenticated;
 
+-- Revoke from public/anon
 REVOKE EXECUTE ON FUNCTION public.propose_shared_payment(text, uuid, numeric, text, text) FROM PUBLIC, anon;
 REVOKE EXECUTE ON FUNCTION public.respond_shared_payment(text, boolean) FROM PUBLIC, anon;
 REVOKE EXECUTE ON FUNCTION public.propose_shared_ious_bulk(text, text, jsonb) FROM PUBLIC, anon;
 REVOKE EXECUTE ON FUNCTION public.cancel_shared_iou_bulk(text) FROM PUBLIC, anon;
+

@@ -27,8 +27,11 @@ export async function processSharedOutbox() {
 
         if (item.operation_type === 'propose_split') {
           // Fire bulk RPC
+          const payload = item.payload as any;
           const { error } = await supabase.rpc('propose_shared_ious_bulk', {
-            payload: item.payload
+            p_idempotency_key: item.idempotency_key,
+            p_transaction_id: payload.transaction_id,
+            p_splits: payload.splits
           });
 
           if (error) {
@@ -61,9 +64,10 @@ export async function processSharedOutbox() {
           if (error) throw error;
           await db.sharedOutbox.delete(item.id);
         } else if (item.operation_type === 'cancel_split') {
-           const { error } = await supabase.rpc('cancel_shared_iou_bulk', {
-             payload: item.payload
-           });
+           const payload = item.payload as any;
+          const { error } = await supabase.rpc('cancel_shared_iou_bulk', {
+            p_transaction_id: payload.ids[0]
+          });
            if (error) throw error;
            await db.sharedOutbox.delete(item.id);
         }
