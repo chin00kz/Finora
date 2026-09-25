@@ -6,10 +6,14 @@ import { db } from '../db/db';
 import type { TransactionType } from '../db/db';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { useUIStore } from '../store/uiStore';
+import { useAuthStore } from '../store/authStore';
 import { triggerSync } from '../sync/syncEngine';
 import { createId } from '../utils/createId';
 import { formatMoney } from '../utils/formatters';
 import QuickAddChips from './QuickAddChips';
+import { useParticipantIdentities } from '../hooks/useParticipantIdentities';
+import ParticipantPickerSheet from './ParticipantPickerSheet';
+import { calculateSplit } from '../utils/splitEngine';
 import { useVisualViewport } from '../hooks/useVisualViewport';
 
 export default function TransactionModal() {
@@ -20,6 +24,7 @@ export default function TransactionModal() {
     prefillData,
     setPrefillData,
   } = useUIStore();
+  const { user } = useAuthStore();
 
   const { height: vvHeight, offsetTop, isKeyboardOpen } = useVisualViewport();
 
@@ -51,8 +56,10 @@ export default function TransactionModal() {
 
   const [toAccountId, setToAccountId] = useState(''); // For transfers
   const [isShared, setIsShared] = useState(false);
-  const [personalAmount, setPersonalAmount] = useState(''); // For shared expenses
-  const [sharedPersonName, setSharedPersonName] = useState('');
+  const [splitMode, setSplitMode] = useState<'equal' | 'custom'>('equal');
+  const [splitParticipants, setSplitParticipants] = useState<string[]>(['local:me']);
+  const [customAmounts, setCustomAmounts] = useState<Record<string, string>>({});
+  const [isParticipantPickerOpen, setIsParticipantPickerOpen] = useState(false);
   const [excludeFromBudget, setExcludeFromBudget] = useState(false);
   const [txnDate, setTxnDate] = useState(() => format(Date.now(), 'yyyy-MM-dd'));
   const [txnTime, setTxnTime] = useState(() => format(Date.now(), 'HH:mm'));
@@ -70,10 +77,41 @@ export default function TransactionModal() {
   const accounts = accountsRaw || [];
   const categories = useLiveQuery(() => db.categories.toArray()) || [];
   const tags = useLiveQuery(() => db.tags.toArray()) || [];
-  const people = useLiveQuery(() => db.people.toArray()) || [];
+  
+  
+  const { identities, groups, recentCombinations } = useParticipantIdentities(user?.id);
+  // Ensure "You" is always in the identities list
+  const fullIdentities = [
+    { identityKey: 'local:me', name: 'You', isConnected: false },
+    ...identities.filter(i => i.identityKey !== 'local:me'),
+  ];
+  
   const allTransactions = useLiveQuery(() => db.transactions.toArray()) || [];
 
   const [autoFillIndicator, setAutoFillIndicator] = useState<string | null>(null);
+
+  const splitMath = useMemo(() => {
+    if (!isShared || splitParticipants.length === 0) return null;
+    const numAmt = parseFloat(amount) || 0;
+    
+    const inputs = splitParticipants.map(id => ({
+      personId: id,
+      baseAmount: splitMode === 'custom' ? parseFloat(customAmounts[id]) || 0 : 0
+    }));
+    
+    try {
+      const results = calculateSplit(numAmt, inputs, splitMode);
+      
+      const myShare = results.find(r => r.personId === 'local:me')?.finalAmount || 0;
+      const othersOwe = results.filter(r => r.personId !== 'local:me').reduce((s, r) => s + r.finalAmount, 0);
+      const sharedRemainder = results[0]?.sharedAmount ? (results[0].sharedAmount * results.length) : 0;
+      
+      return { results, total: numAmt, myShare, othersOwe, sharedRemainder, error: null };
+    } catch (err: any) {
+      return { results: [], total: numAmt, myShare: 0, othersOwe: 0, sharedRemainder: 0, error: err.message };
+    }
+  }, [isShared, amount, splitParticipants, customAmounts, splitMode]);
+
 
   // Build merchant memory mapping: lowercased note -> most recent transaction details
   const merchantMemory = useMemo(() => {
@@ -268,7 +306,7 @@ export default function TransactionModal() {
         tagsToProcess.push(tagInput.trim());
       }
 
-      await db.transaction('rw', [db.transactions, db.accounts, db.tags, db.debts, db.people], async () => {
+      await db.transaction('rw', [db.transactions, db.accounts, db.tags, db.debts, db.people, db.sharedOutbox], async () => {
         const resolvedTagIds: string[] = [];
         for (const tagName of tagsToProcess) {
           const allTags = await db.tags.toArray();
@@ -293,59 +331,89 @@ export default function TransactionModal() {
         const now = txDateObj.getTime();
 
         // 1. Add transaction record
-        await db.transactions.add({
-          id: txnId,
-          type,
-          amount: numAmount,
-          date: now,
-          accountId,
-          categoryId: type !== 'transfer' ? categoryId : undefined,
-          notes,
-          tagIds: resolvedTagIds.length > 0 ? resolvedTagIds : undefined,
-          toAccountId: type === 'transfer' ? toAccountId : undefined,
-          isShared,
-          personalAmount: isShared ? Number(personalAmount) : undefined,
-          excludeFromBudget: type === 'expense' ? excludeFromBudget : undefined,
-          updatedAt: now,
-        });
+          const finalSplitDetails = isShared && splitMath && !splitMath.error ? splitMath.results.map(r => ({
+            personId: r.personId,
+            participantNameSnapshot: fullIdentities.find(i => i.identityKey === r.personId)?.name || 'Unknown',
+            baseAmount: r.baseAmount,
+            sharedAmount: r.sharedAmount,
+            finalAmount: r.finalAmount
+          })) : undefined;
 
-        // 2. Auto-generate debt record if shared expense
-        if (type === 'expense' && isShared && personalAmount !== '') {
-          const myShare = Number(personalAmount);
-          const owedAmount = numAmount - myShare;
-          if (owedAmount > 0) {
-            const trimmedName = sharedPersonName.trim() || 'Friend';
-            const allPeople = await db.people.toArray();
-            const existingPerson = allPeople.find(
-              p => p.name.toLowerCase() === trimmedName.toLowerCase()
-            );
-            let personId = existingPerson?.id;
-            if (!existingPerson && trimmedName !== 'Friend') {
-              personId = createId('person');
-              await db.people.add({
-                id: personId,
-                name: trimmedName,
-                updatedAt: now,
-              });
+          const finalSyncStatus = isShared && splitMath && !splitMath.error ? 'pending' : 'none';
+
+          await db.transactions.add({
+            id: txnId,
+            type,
+            amount: numAmount,
+            date: now,
+            accountId,
+            categoryId: type !== 'transfer' ? categoryId : undefined,
+            notes,
+            tagIds: resolvedTagIds.length > 0 ? resolvedTagIds : undefined,
+            toAccountId: type === 'transfer' ? toAccountId : undefined,
+            isShared,
+            personalAmount: isShared && splitMath && !splitMath.error ? splitMath.myShare : undefined,
+            splitDetails: finalSplitDetails,
+            splitStatus: finalSyncStatus,
+            excludeFromBudget: type === 'expense' ? excludeFromBudget : undefined,
+            updatedAt: now,
+          });
+
+          // 2. Auto-generate shared obligations (Local Debts + Cloud Outbox)
+          if (type === 'expense' && isShared && splitMath && !splitMath.error) {
+            
+            const cloudPayloads = [];
+
+            for (const result of splitMath.results) {
+              if (result.personId === 'local:me' || result.finalAmount <= 0) continue;
+
+              const snapshotName = fullIdentities.find(i => i.identityKey === result.personId)?.name || 'Unknown';
+              
+              if (result.personId.startsWith('local:')) {
+                const localId = result.personId.replace('local:', '');
+                await db.debts.add({
+                  id: createId('debt'),
+                  source: 'shared_expense',
+                  direction: 'theyOweMe',
+                  personId: localId,
+                  personName: snapshotName,
+                  amount: result.finalAmount,
+                  note: notes ? `Split: ${notes}` : 'Shared expense split',
+                  date: now,
+                  relatedTransactionId: txnId,
+                  settlements: [],
+                  updatedAt: now,
+                });
+              } else if (result.personId.startsWith('profile:')) {
+                const profileId = result.personId.replace('profile:', '');
+                cloudPayloads.push({
+                  id: createId('siou'),
+                  debtor_id: profileId,
+                  amount: result.finalAmount,
+                  description: notes ? `Split: ${notes}` : 'Shared expense split'
+                });
+              }
             }
 
-            await db.debts.add({
-              id: createId('debt'),
-              source: 'shared_expense',
-              direction: 'theyOweMe',
-              personId,
-              personName: trimmedName,
-              amount: owedAmount,
-              note: notes ? `Split: ${notes}` : 'Shared expense split',
-              date: now,
-              relatedTransactionId: txnId,
-              settlements: [],
-              updatedAt: now,
-            });
+            if (cloudPayloads.length > 0) {
+              await db.sharedOutbox.add({
+                id: createId('outbox'),
+                operation_type: 'propose_split',
+                idempotency_key: txnId,
+                payload: {
+                  transaction_id: txnId,
+                  splits: cloudPayloads
+                },
+                status: 'queued',
+                retry_count: 0,
+                created_at: now
+              });
+            } else {
+              await db.transactions.update(txnId, { splitStatus: 'synced' });
+            }
           }
-        }
 
-        // 3. Update account balances
+          // 3. Update account balances
         const fromAcc = await db.accounts.get(accountId);
         if (fromAcc) {
           if (type === 'expense') {
@@ -376,8 +444,9 @@ export default function TransactionModal() {
       setTagInput('');
       setShowAdvanced(false);
       setIsShared(false);
-      setPersonalAmount('');
-      setSharedPersonName('');
+      setSplitMode('equal');
+      setSplitParticipants(['local:me']);
+      setCustomAmounts({});
       setExcludeFromBudget(false);
       setAutoFillIndicator(null);
       setAddTransactionModalOpen(false);
@@ -391,7 +460,8 @@ export default function TransactionModal() {
   if (!isAddTransactionModalOpen) return null;
 
   return (
-    <div className="fixed inset-0 z-50 bg-black/40 backdrop-blur-sm animate-in fade-in duration-200">
+    <>
+      <div className="fixed inset-0 z-50 bg-black/40 backdrop-blur-sm animate-in fade-in duration-200">
       <div
         className="absolute w-full flex flex-col justify-end pointer-events-none"
         style={{
@@ -783,49 +853,114 @@ export default function TransactionModal() {
                       </label>
                     </div>
 
-                    <div className="bg-blue-500/10 p-5 rounded-xl border border-blue-500/20">
-                      <label className="flex items-center mb-4">
+                    <div>
+                      <label className="flex items-center cursor-pointer gap-3">
                         <input
                           type="checkbox"
                           checked={isShared}
                           onChange={e => setIsShared(e.target.checked)}
-                          className="w-5 h-5 rounded border-border text-blue-500 focus:ring-blue-500"
+                          className="w-5 h-5 rounded border-border text-blue-500 focus:ring-blue-500 shrink-0"
                         />
-                        <span className="ml-3 font-medium text-foreground">Shared Expense (Split)</span>
+                        <span className="font-medium text-foreground text-sm">Split this expense</span>
                       </label>
 
                       {isShared && (
-                        <div className="pl-8 space-y-3 animate-in fade-in slide-in-from-top-2">
-                          <div>
-                            <label className="block text-xs font-medium text-muted-foreground mb-2 uppercase tracking-wider">My Share (LKR)</label>
-                            <input
-                              type="number"
-                              value={personalAmount}
-                              onChange={e => setPersonalAmount(e.target.value)}
-                              className="w-full p-3 bg-card border border-border rounded-xl font-medium text-foreground outline-none focus:border-blue-500"
-                              placeholder="How much is actually yours?"
-                            />
-                            <p className="text-xs text-muted-foreground mt-1">
-                              The full {amount || '0'} will be deducted from your account, but only your share will count against your budget.
-                            </p>
-                          </div>
+                        <div className="mt-4 ml-8 animate-in fade-in slide-in-from-top-2">
+                          {splitParticipants.filter(p => p !== 'local:me').length === 0 ? (
+                            <div className="flex items-center gap-3">
+                              <p className="text-sm text-muted-foreground flex-1">Split this with other people.</p>
+                              <button
+                                type="button"
+                                onClick={() => setIsParticipantPickerOpen(true)}
+                                className="text-sm font-medium text-blue-500 bg-blue-500/10 px-3 py-1.5 rounded-lg shrink-0"
+                              >
+                                Add People
+                              </button>
+                            </div>
+                          ) : (
+                            <div className="space-y-4">
+                              {/* Mode toggle + Add more */}
+                              <div className="flex items-center justify-between">
+                                <div className="flex bg-muted p-1 rounded-lg">
+                                  <button type="button" onClick={() => setSplitMode('equal')} className={`px-3 py-1 text-xs font-medium rounded-md ${splitMode === 'equal' ? 'bg-card shadow-sm text-foreground' : 'text-muted-foreground'}`}>Equal</button>
+                                  <button type="button" onClick={() => setSplitMode('custom')} className={`px-3 py-1 text-xs font-medium rounded-md ${splitMode === 'custom' ? 'bg-card shadow-sm text-foreground' : 'text-muted-foreground'}`}>Custom</button>
+                                </div>
+                                <button
+                                  type="button"
+                                  onClick={() => setIsParticipantPickerOpen(true)}
+                                  className="text-xs font-medium text-blue-500 px-2 py-1"
+                                >
+                                  + Add
+                                </button>
+                              </div>
 
-                          <div>
-                            <label className="block text-xs font-medium text-muted-foreground mb-2 uppercase tracking-wider">Who owes you? (IOU)</label>
-                            <input
-                              type="text"
-                              list="shared-people-list"
-                              value={sharedPersonName}
-                              onChange={e => setSharedPersonName(e.target.value)}
-                              className="w-full p-3 bg-card border border-border rounded-xl font-medium text-foreground outline-none focus:border-blue-500"
-                              placeholder="e.g. John, Sarah (creates an IOU)"
-                            />
-                            <datalist id="shared-people-list">
-                              {people.map(p => (
-                                <option key={p.id} value={p.name} />
-                              ))}
-                            </datalist>
-                          </div>
+                              {/* Participants list */}
+                              <div className="space-y-2.5">
+                                {splitParticipants.map(key => {
+                                  const isMe = key === 'local:me';
+                                  const iden = fullIdentities.find(i => i.identityKey === key);
+                                  const name = isMe ? 'You' : (iden?.name || 'Unknown');
+                                  const finalAmt = splitMath?.results?.find(r => r.personId === key)?.finalAmount || 0;
+                                  return (
+                                    <div key={key} className="flex items-center gap-2.5">
+                                      <div className={`w-8 h-8 rounded-full flex items-center justify-center font-semibold text-xs shrink-0 ${isMe ? 'bg-muted text-foreground' : 'bg-blue-500/10 text-blue-500'}`}>
+                                        {name.charAt(0).toUpperCase()}
+                                      </div>
+                                      <p className="flex-1 text-sm font-medium text-foreground truncate min-w-0">{name}</p>
+                                      {splitMode === 'custom' ? (
+                                        <div className="w-24 shrink-0">
+                                          <input
+                                            type="number"
+                                            inputMode="decimal"
+                                            placeholder="Base"
+                                            value={customAmounts[key] || ''}
+                                            onChange={e => setCustomAmounts(prev => ({ ...prev, [key]: e.target.value }))}
+                                            className="w-full bg-card border border-border rounded-lg px-2 py-1.5 text-sm font-medium text-right outline-none focus:border-blue-500"
+                                          />
+                                        </div>
+                                      ) : (
+                                        <span className="text-sm font-medium text-muted-foreground shrink-0">{formatMoney(finalAmt)}</span>
+                                      )}
+                                      {isMe ? (
+                                        <div className="w-[26px] shrink-0" />
+                                      ) : (
+                                        <button
+                                          type="button"
+                                          onClick={() => setSplitParticipants(prev => prev.filter(k => k !== key))}
+                                          className="p-1.5 text-muted-foreground hover:bg-muted rounded-full shrink-0"
+                                        >
+                                          <X size={14} />
+                                        </button>
+                                      )}
+                                    </div>
+                                  );
+                                })}
+                              </div>
+
+                              {/* Math summary — typography-focused, no nested card */}
+                              {splitMath && !splitMath.error && (
+                                <div className="pt-3 border-t border-border/50 space-y-1">
+                                  {splitMode === 'equal' && (
+                                    <p className="text-xs text-muted-foreground pb-1">{formatMoney(splitMath.results[0]?.finalAmount || 0)} each</p>
+                                  )}
+                                  {splitMode === 'custom' && splitMath.sharedRemainder > 0 && (
+                                    <p className="text-xs text-muted-foreground pb-1">{formatMoney(splitMath.sharedRemainder)} shared fees split equally</p>
+                                  )}
+                                  <div className="flex justify-between items-baseline text-sm font-medium text-foreground">
+                                    <span>Your share</span>
+                                    <span>{formatMoney(splitMath.myShare)}</span>
+                                  </div>
+                                  <div className="flex justify-between items-baseline text-sm font-medium text-green-500">
+                                    <span>Others owe you</span>
+                                    <span>{formatMoney(splitMath.othersOwe)}</span>
+                                  </div>
+                                </div>
+                              )}
+                              {splitMath?.error && (
+                                <p className="text-sm text-red-500 font-medium">{splitMath.error}</p>
+                              )}
+                            </div>
+                          )}
                         </div>
                       )}
                     </div>
@@ -860,5 +995,25 @@ export default function TransactionModal() {
       </div>
     </div>
   </div>
+      <ParticipantPickerSheet
+        isOpen={isParticipantPickerOpen}
+        onClose={() => setIsParticipantPickerOpen(false)}
+        identities={fullIdentities}
+        groups={groups}
+        recentCombinations={recentCombinations}
+        selectedKeys={splitParticipants}
+        onSelectMultiple={(keys) => {
+            // Always keep 'local:me' at the front — group shortcuts must not eject the payer
+            const others = keys.filter(k => k !== 'local:me');
+            setSplitParticipants(['local:me', ...others]);
+          }}
+        onToggleSelection={(key) => {
+          if (key === 'local:me') return; // payer cannot be removed via picker
+          setSplitParticipants(prev =>
+            prev.includes(key) ? prev.filter(k => k !== key) : [...prev, key]
+          );
+        }}
+      />
+    </>
   );
 }

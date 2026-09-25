@@ -53,7 +53,7 @@ export default function CustomizeNavModal() {
         return <PieChart size={16} />;
       case 'activity':
         return <List size={16} />;
-      case 'debts':
+      case 'shared':
         return <Users size={16} />;
       case 'analytics':
         return <BarChart3 size={16} />;
@@ -329,3 +329,4 @@ export default function CustomizeNavModal() {
     </div>
   );
 }
+

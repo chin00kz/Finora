@@ -7,6 +7,8 @@ interface PrivacyState {
   setMasked: (masked: boolean) => void;
 
   // Home customization preferences
+  startPage: 'home' | 'shared' | 'activity';
+  setStartPage: (page: 'home' | 'shared' | 'activity') => void;
   showSafeToSpendHome: boolean;
   setShowSafeToSpendHome: (show: boolean) => void;
   safeToSpendForecastDays: number;
@@ -39,6 +41,9 @@ export const usePrivacyStore = create<PrivacyState>()(
       isMasked: false,
       toggleMask: () => set((state) => ({ isMasked: !state.isMasked })),
       setMasked: (isMasked) => set({ isMasked }),
+
+      startPage: 'home',
+      setStartPage: (startPage) => set({ startPage }),
 
       showSafeToSpendHome: false, // OFF by default as specified
       setShowSafeToSpendHome: (showSafeToSpendHome) => set({ showSafeToSpendHome }),

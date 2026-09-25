@@ -32,9 +32,11 @@ export interface Category {
 }
 
 export interface SplitDetail {
-  personId: string;
-  amount: number;
-  settled: boolean;
+  personId: string; // 'local:id' or 'profile:uuid'
+  participantNameSnapshot: string;
+  baseAmount: number;
+  sharedAmount: number;
+  finalAmount: number;
 }
 
 export interface Transaction {
@@ -55,6 +57,8 @@ export interface Transaction {
   totalAmount?: number;
   personalAmount?: number;
   splitDetails?: SplitDetail[];
+  splitStatus?: 'pending' | 'synced' | 'failed' | 'none';
+
   isSettled?: boolean;
 
   // Out of budget expenses
@@ -342,7 +346,11 @@ const db = new Dexie('FinoraDB') as Dexie & {
     cacheConnections: EntityTable<CacheConnection, 'id'>;
     cacheSharedIous: EntityTable<CacheSharedIou, 'id'>;
     cacheSharedIouSettlements: EntityTable<CacheSharedIouSettlement, 'id'>;
+  sharedPayments: EntityTable<SharedPayment, 'id'>;
     cacheNotifications: EntityTable<CacheNotification, 'id'>;
+  sharedOutbox: EntityTable<SharedOutbox, 'id'>;
+  groups: EntityTable<Group, 'id'>;
+  transactionProvenance: EntityTable<TransactionProvenance, 'id'>;
 };
 
 
@@ -463,6 +471,51 @@ export interface CacheNotification {
   created_at: number;
 }
 
+
+
+export interface TransactionProvenance {
+  id: string;
+  transactionSnapshot: any; // Full copy of the transaction
+  archivedAt: number;
+}
+
+export interface Group {
+  id: string;
+  name: string;
+  participantIds: string[];
+  updatedAt: number;
+}
+
+
+export type SharedOutboxPayload =
+  | { operation_type: 'propose_split'; payload: { transaction_id: string; splits: { id: string; debtor_id: string; amount: number; description: string; }[] } }
+  | { operation_type: 'record_payment'; payload: { payment_id: string; recipient_id: string; amount: number; description: string; } }
+  | { operation_type: 'cancel_split'; payload: { ids: string[] } };
+
+export type SharedOutbox = {
+  id: string;
+  idempotency_key: string;
+  status: 'queued' | 'failed';
+  last_attempt?: number;
+  retry_count: number;
+  created_at: number;
+} & SharedOutboxPayload;
+
+
+
+export interface SharedPayment {
+  id: string;
+  idempotency_key: string;
+  payer_id: string;
+  payee_id: string;
+  amount: number;
+  currency: string;
+  status: 'pending' | 'accepted' | 'rejected';
+  notes?: string;
+  created_at: number;
+  updated_at: number;
+}
+
 export interface CacheSharedIouSettlement {
   id: string;
   shared_iou_id: string;
@@ -503,6 +556,13 @@ db.version(11).stores({
 
 db.version(12).stores({
   cacheNotifications: "id, read_at, created_at"
+});
+
+
+db.version(13).stores({
+  groups: "id, updatedAt",
+  sharedOutbox: "id, status",
+  transactionProvenance: "id"
 });
 
 export { db };

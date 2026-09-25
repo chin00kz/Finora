@@ -1,14 +1,14 @@
-﻿import { Modal } from './Modal';
+import { Modal } from './Modal';
 import { X } from 'lucide-react';
 import { formatMoney } from '../utils/formatters';
-import type { UnifiedIou } from '../pages/Debts';
+
 import CreditorSettlementReview from './CreditorSettlementReview';
 import { canProposePayment, canReviewPayment } from '../utils/sharedIouSettlementEngine';
 
 interface Props {
   isOpen: boolean;
   onClose: () => void;
-  iou: UnifiedIou | null;
+  iou: any | null;
   onProposePayment: () => void;
 }
 
@@ -151,3 +151,4 @@ export default function SharedIouDetailModal({ isOpen, onClose, iou, onProposePa
     </Modal>
   );
 }
+

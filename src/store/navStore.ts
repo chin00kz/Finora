@@ -9,6 +9,7 @@ export type NavItemId =
   | 'goals'
   | 'recurring'
   | 'debts'
+  | 'shared'
   | 'float-tools'
   | 'budgets'
   | 'statement-reader'
@@ -23,10 +24,11 @@ export interface NavItemConfig {
 }
 
 export const ALL_NAV_ITEMS: NavItemConfig[] = [
-  { id: 'home',             label: 'Home',            to: '/' },
+  { id: 'home',             label: 'Home',            to: '/home' },
   { id: 'accounts',         label: 'Accounts',        to: '/accounts' },
   { id: 'activity',         label: 'Activity',        to: '/activity' },
   { id: 'debts',            label: 'IOUs',            to: '/debts' },
+  { id: 'shared',            label: 'Shared',          to: '/shared' },
   { id: 'analytics',        label: 'Analytics',       to: '/analytics' },
   { id: 'goals',            label: 'Goals',           to: '/goals' },
   { id: 'recurring',        label: 'Recurring',       to: '/recurring' },
@@ -121,5 +123,6 @@ export const useNavStore = create<NavState>()(
     }
   )
 );
+
 
 

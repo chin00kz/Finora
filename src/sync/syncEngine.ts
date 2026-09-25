@@ -49,6 +49,7 @@ import type {
 
 export type TableName =
   | 'accounts'
+  | 'groups'
   | 'transactions'
   | 'budgets'
   | 'tags'
@@ -77,6 +78,7 @@ export const ALL_TABLES: TableName[] = [
   'savings_goals',
   'people',
   'debts',
+  'groups',
   'credit_cards',
   'cash_offset_sources',
   'fixed_deposits',
@@ -406,6 +408,26 @@ function fromSupabasePerson(row: Record<string, unknown>): Person {
   };
 }
 
+
+// Groups
+function toSupabaseGroup(userId: string, l: any) {
+  return {
+    id: l.id,
+    user_id: userId,
+    name: l.name,
+    participant_ids: l.participantIds,
+    updated_at: new Date(l.updatedAt || Date.now()).toISOString(),
+  };
+}
+function fromSupabaseGroup(s: any) {
+  return {
+    id: s.id,
+    name: s.name,
+    participantIds: s.participant_ids || [],
+    updatedAt: new Date(s.updated_at).getTime(),
+  };
+}
+
 // Debts
 function toSupabaseDebt(userId: string, d: Debt) {
   return {
@@ -729,6 +751,8 @@ async function fetchLocalRows(
       return (await db.people.bulkGet(ids)).filter(Boolean).map(p => toSupabasePerson(userId, p!));
     case 'debts':
       return (await db.debts.bulkGet(ids)).filter(Boolean).map(d => toSupabaseDebt(userId, d!));
+    case 'groups':
+      return (await db.groups.bulkGet(ids)).filter(Boolean).map(g => toSupabaseGroup(userId, g!));
     case 'credit_cards':
       return (await db.creditCards.bulkGet(ids)).filter(Boolean).map(c => toSupabaseCreditCard(userId, c!));
     case 'cash_offset_sources':
@@ -1115,6 +1139,7 @@ async function upsertSingleRemoteRow(
     case 'savings_goals': await putIfNewer(db.savingsGoals, fromSupabaseGoal(row)); break;
     case 'people': await putIfNewer(db.people, fromSupabasePerson(row)); break;
     case 'debts': await putIfNewer(db.debts, fromSupabaseDebt(row)); break;
+    case 'groups': await putIfNewer(db.groups, fromSupabaseGroup(row)); break;
     case 'credit_cards': await putIfNewer(db.creditCards, fromSupabaseCreditCard(row)); break;
     case 'cash_offset_sources': await putIfNewer(db.cashOffsetSources, fromSupabaseCashOffsetSource(row)); break;
     case 'fixed_deposits': await putIfNewer(db.fixedDeposits, fromSupabaseFixedDeposit(row)); break;
@@ -1149,6 +1174,7 @@ export async function applyRealtimeChange(
       case 'savings_goals': await db.savingsGoals.delete(id); break;
       case 'people': await db.people.delete(id); break;
       case 'debts': await db.debts.delete(id); break;
+      case 'groups': await db.groups.delete(id); break;
       case 'credit_cards': await db.creditCards.delete(id); break;
       case 'cash_offset_sources': await db.cashOffsetSources.delete(id); break;
       case 'fixed_deposits': await db.fixedDeposits.delete(id); break;

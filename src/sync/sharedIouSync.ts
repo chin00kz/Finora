@@ -94,3 +94,36 @@ export async function syncSharedIouSettlements(): Promise<{ success: boolean; er
     return { success: false, error: err.message };
   }
 }
+
+
+export async function syncSharedPayments(): Promise<{ success: boolean; error?: string }> {
+  try {
+    const { data, error } = await supabase.from('shared_payments').select('*');
+    if (error) return { success: false, error: error.message };
+    
+    const rows = data ?? [];
+    const normalized = rows.map((row) => ({
+      id: row.id,
+      idempotency_key: row.idempotency_key,
+      payer_id: row.payer_id,
+      payee_id: row.payee_id,
+      amount: Number(row.amount),
+      currency: row.currency,
+      status: row.status,
+      notes: row.notes,
+      created_at: new Date(row.created_at).getTime(),
+      updated_at: new Date(row.updated_at).getTime()
+    }));
+
+    await db.transaction('rw', db.sharedPayments, async () => {
+      await db.sharedPayments.clear();
+      if (normalized.length > 0) {
+        await db.sharedPayments.bulkAdd(normalized);
+      }
+    });
+
+    return { success: true };
+  } catch (err) {
+    return { success: false, error: err instanceof Error ? err.message : String(err) };
+  }
+}
