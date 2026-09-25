@@ -104,7 +104,7 @@ export default function Dashboard() {
   const accounts = useLiveQuery(() => db.accounts.toArray()) || [];
   const budgets = useLiveQuery(() => db.budgets.toArray()) || [];
   const activeBudget = budgets.find(b => b.status === 'active');
-  const transactionsRaw = useLiveQuery(() => db.transactions.filter(t => !t.isDeleted).toArray());
+  const transactionsRaw = useLiveQuery(() => db.transactions.toArray());
   const transactions = transactionsRaw || [];
   const categories = useLiveQuery(() => db.categories.toArray()) || [];
 
@@ -442,3 +442,4 @@ export default function Dashboard() {
     </div>
   );
 }
+

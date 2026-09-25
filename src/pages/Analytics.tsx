@@ -27,7 +27,7 @@ import MaskedAmount from '../components/MaskedAmount';
 
 export default function Analytics() {
   const budgets = useLiveQuery(() => db.budgets.toArray()) || [];
-  const transactions = useLiveQuery(() => db.transactions.filter(t => !t.isDeleted).toArray()) || [];
+  const transactions = useLiveQuery(() => db.transactions.toArray()) || [];
   const categories = useLiveQuery(() => db.categories.toArray()) || [];
   const accounts = useLiveQuery(() => db.accounts.toArray()) || [];
 
@@ -559,4 +559,5 @@ export default function Analytics() {
     </div>
   );
 }
+
 

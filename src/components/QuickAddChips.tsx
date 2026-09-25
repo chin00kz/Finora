@@ -22,7 +22,7 @@ export default function QuickAddChips({
   className = '',
 }: QuickAddChipsProps) {
   const [isLogging, setIsLogging] = useState(false);
-  const transactions = useLiveQuery(() => db.transactions.filter(t => !t.isDeleted).toArray()) || [];
+  const transactions = useLiveQuery(() => db.transactions.toArray()) || [];
   const accounts = useLiveQuery(() => db.accounts.toArray()) || [];
   const categories = useLiveQuery(() => db.categories.toArray()) || [];
 
@@ -188,3 +188,4 @@ export default function QuickAddChips({
     </div>
   );
 }
+
