@@ -32,9 +32,11 @@ export interface Category {
 }
 
 export interface SplitDetail {
-  personId: string;
-  amount: number;
-  settled: boolean;
+  personId: string; // 'local:id' or 'profile:uuid'
+  participantNameSnapshot: string;
+  baseAmount: number;
+  sharedAmount: number;
+  finalAmount: number;
 }
 
 export interface Transaction {
@@ -55,6 +57,8 @@ export interface Transaction {
   totalAmount?: number;
   personalAmount?: number;
   splitDetails?: SplitDetail[];
+  splitStatus?: 'pending' | 'synced' | 'failed' | 'none';
+  isDeleted?: boolean;
   isSettled?: boolean;
 
   // Out of budget expenses
@@ -343,6 +347,8 @@ const db = new Dexie('FinoraDB') as Dexie & {
     cacheSharedIous: EntityTable<CacheSharedIou, 'id'>;
     cacheSharedIouSettlements: EntityTable<CacheSharedIouSettlement, 'id'>;
     cacheNotifications: EntityTable<CacheNotification, 'id'>;
+  sharedOutbox: EntityTable<SharedOutbox, 'id'>;
+  groups: EntityTable<Group, 'id'>;
 };
 
 
@@ -463,6 +469,25 @@ export interface CacheNotification {
   created_at: number;
 }
 
+
+export interface Group {
+  id: string;
+  name: string;
+  participantIds: string[];
+  updatedAt: number;
+}
+
+export interface SharedOutbox {
+  id: string;
+  operation_type: 'propose_split' | 'record_payment' | 'cancel_split';
+  idempotency_key: string;
+  payload: any;
+  status: 'queued' | 'failed';
+  last_attempt?: number;
+  retry_count: number;
+  created_at: number;
+}
+
 export interface CacheSharedIouSettlement {
   id: string;
   shared_iou_id: string;
@@ -503,6 +528,12 @@ db.version(11).stores({
 
 db.version(12).stores({
   cacheNotifications: "id, read_at, created_at"
+});
+
+
+db.version(13).stores({
+  groups: "id, updatedAt",
+  sharedOutbox: "id, status"
 });
 
 export { db };

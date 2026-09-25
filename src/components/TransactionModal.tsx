@@ -71,7 +71,7 @@ export default function TransactionModal() {
   const categories = useLiveQuery(() => db.categories.toArray()) || [];
   const tags = useLiveQuery(() => db.tags.toArray()) || [];
   const people = useLiveQuery(() => db.people.toArray()) || [];
-  const allTransactions = useLiveQuery(() => db.transactions.toArray()) || [];
+  const allTransactions = useLiveQuery(() => db.transactions.filter(t => !t.isDeleted).toArray()) || [];
 
   const [autoFillIndicator, setAutoFillIndicator] = useState<string | null>(null);
 

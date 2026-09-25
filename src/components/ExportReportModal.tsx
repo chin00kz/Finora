@@ -13,7 +13,7 @@ interface ExportReportModalProps {
 
 export default function ExportReportModal({ isOpen, onClose, defaultPeriod = 'current' }: ExportReportModalProps) {
   const budgets = useLiveQuery(() => db.budgets.toArray()) || [];
-  const transactions = useLiveQuery(() => db.transactions.toArray()) || [];
+  const transactions = useLiveQuery(() => db.transactions.filter(t => !t.isDeleted).toArray()) || [];
   const categories = useLiveQuery(() => db.categories.toArray()) || [];
   const accounts = useLiveQuery(() => db.accounts.toArray()) || [];
   const tags = useLiveQuery(() => db.tags.toArray()) || [];

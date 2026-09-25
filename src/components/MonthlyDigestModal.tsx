@@ -33,7 +33,7 @@ export default function MonthlyDigestModal({
   const [currentDate, setCurrentDate] = useState<Date>(initialDate);
 
   // Live queries
-  const allTransactions = useLiveQuery(() => db.transactions.toArray()) || [];
+  const allTransactions = useLiveQuery(() => db.transactions.filter(t => !t.isDeleted).toArray()) || [];
   const categories = useLiveQuery(() => db.categories.toArray()) || [];
   const installmentPlans = useLiveQuery(() => db.installmentPlans.toArray()) || [];
 

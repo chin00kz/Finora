@@ -17,7 +17,7 @@ export default function BudgetDetail() {
   const { confirmDialog, requestConfirm } = useConfirm();
 
   const budgets = useLiveQuery(() => db.budgets.toArray()) || [];
-  const transactions = useLiveQuery(() => db.transactions.toArray()) || [];
+  const transactions = useLiveQuery(() => db.transactions.filter(t => !t.isDeleted).toArray()) || [];
 
   const activeBudget = budgets.find(b => b.status === 'active');
   const pastBudgets = budgets

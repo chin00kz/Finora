@@ -20,7 +20,7 @@ export default function TransactionEditSheet({ transaction, onClose }: Props) {
   const accounts = useLiveQuery(() => db.accounts.toArray()) || [];
   const categories = useLiveQuery(() => db.categories.toArray()) || [];
   const tags = useLiveQuery(() => db.tags.toArray()) || [];
-  const allTransactions = useLiveQuery(() => db.transactions.toArray()) || [];
+  const allTransactions = useLiveQuery(() => db.transactions.filter(t => !t.isDeleted).toArray()) || [];
 
   // Form state — initialise from the transaction
   const [isSubmitting, setIsSubmitting] = useState(false);

@@ -79,7 +79,7 @@ export async function generateMonthlyDigest(
     categories,
     installmentPlans,
   ] = await Promise.all([
-    db.transactions.toArray(),
+    db.transactions.filter(t => !t.isDeleted).toArray(),
     db.categories.toArray(),
     db.installmentPlans.toArray(),
   ]);
