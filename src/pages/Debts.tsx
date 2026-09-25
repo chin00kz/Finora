@@ -66,6 +66,7 @@ export default function Debts() {
     reconcileSharedExpenses();
   }, []);
 
+
   useEffect(() => {
     if (!user) return;
     const neededProfileIds = new Set<string>();
@@ -208,6 +209,22 @@ export default function Debts() {
     const netBalance = totalOwedToMe - totalIOwe;
     return { totalOwedToMe, totalIOwe, netBalance };
   }, [unifiedIous]);
+
+  // Reconcile selected Shared IOU if the authoritative cache updates in the background
+  useEffect(() => {
+    if (selectedSharedIou) {
+      const match = unifiedIous.find(i => i.id === selectedSharedIou.id);
+      if (match && match !== selectedSharedIou) {
+        setSelectedSharedIou(match);
+      } else if (!match) {
+        // If it was deleted
+        setSelectedSharedIou(null);
+      }
+    }
+  }, [unifiedIous, selectedSharedIou]);
+
+
+
 
   useEffect(() => {
     const state = location.state as { sharedIouId?: string } | null;
