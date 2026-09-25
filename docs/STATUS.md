@@ -45,12 +45,22 @@ This document tracks temporary/current information, active phases, feature branc
     - PASS: Shared IOU request notification (realtime global discovery, exact request deep-link to /debts).
     - PASS: Acceptance notification (realtime delivery back to creator, exact deep-link to detail modal).
     - DEFERRED: manual E2E for decline and cancel notifications.
-  - [ ] 4D Settlement notifications
+  - [x] 4D Settlement notifications (IMPLEMENTED / AWAITING PRODUCTION MIGRATION + REAL E2E)
   - [ ] 4E Shared UX polish / final E2E
     - Polish Connections UI (align with Shared IOU visual language: clearer hierarchy, subtle secondary font colors, cleaner Accept/Decline presentation, no major redesign).
     - Future "Remove Friend" capability (requires confirmation, secure server-side RPC, must NOT delete historical shared IOUs/settlements, Block remains separate).
 
-- **Phase 5 � Polish/advanced sharing**
+- **Phase 5 — Shared Expenses / Split Transactions: PLANNED — HIGH PRIORITY**
+  - 5A Split transaction foundation (Friends/local People)
+  - 5B Equal Split (auto-calculate, deterministic rounding)
+  - 5C Custom Split + Shared Remainder (custom base amount + distribute remainder)
+  - 5D Automatic IOU Routing (Finora Friend -> Shared IOU, Local -> local IOU)
+  - 5E Lifecycle & Data Integrity (editing/deleting, atomic recovery)
+  - 5F UX Polish + Full E2E
+  *(Note: Receipt scanning, percentage splits, multiple payers, and complex group balances are OUT OF SCOPE for V1)*
+
+- **Phase 6 — Advanced Sharing / Future Enhancements: FUTURE**
+
 
 ## Known Unresolved/Intermittent Bugs
 **Do not claim root cause solved on these without strict reproduction and evidence.**

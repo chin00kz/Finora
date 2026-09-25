@@ -1,48 +1,12 @@
+-- Phase 4D: Settlement Notifications
 
--- Phase 3A: Shared IOU Settlements
-
--- 1. Table Creation
-CREATE TABLE IF NOT EXISTS public.shared_iou_settlements (
-  id TEXT PRIMARY KEY,
-  shared_iou_id TEXT REFERENCES public.shared_ious(id) ON DELETE CASCADE NOT NULL,
-  amount NUMERIC NOT NULL CHECK (amount > 0),
-  proposed_by UUID REFERENCES public.profiles(id) ON DELETE RESTRICT NOT NULL,
-  status TEXT NOT NULL CHECK (status IN ('pending', 'confirmed', 'rejected')),
-  created_at BIGINT NOT NULL,
-  confirmed_at BIGINT,
-  confirmed_by UUID REFERENCES public.profiles(id) ON DELETE RESTRICT
-);
-
--- 2. Indexes
-CREATE INDEX IF NOT EXISTS idx_shared_iou_settlements_iou_id ON public.shared_iou_settlements(shared_iou_id);
-
--- 3. Table Privileges
-REVOKE ALL ON public.shared_iou_settlements FROM PUBLIC;
-REVOKE ALL ON public.shared_iou_settlements FROM anon;
-REVOKE ALL ON public.shared_iou_settlements FROM authenticated;
-GRANT SELECT ON public.shared_iou_settlements TO authenticated;
-
--- 4. Row Level Security
-ALTER TABLE public.shared_iou_settlements ENABLE ROW LEVEL SECURITY;
-DROP POLICY IF EXISTS "Users can read settlements for their shared IOUs" ON public.shared_iou_settlements;
-CREATE POLICY "Users can read settlements for their shared IOUs" ON public.shared_iou_settlements
-  FOR SELECT USING (
-    EXISTS (
-      SELECT 1 FROM public.shared_ious iou
-      WHERE iou.id = shared_iou_settlements.shared_iou_id
-      AND (iou.creditor_id = auth.uid() OR iou.debtor_id = auth.uid())
-    )
-  );
-
--- 5. RPCs
-
--- PROPOSE PAYMENT
+-- 1. PROPOSE PAYMENT
 CREATE OR REPLACE FUNCTION propose_iou_payment(
   p_iou_id TEXT,
   p_amount NUMERIC
 ) RETURNS public.shared_iou_settlements
 LANGUAGE plpgsql SECURITY DEFINER SET search_path = public
-AS $func$
+AS $$
 DECLARE
   v_uid UUID := auth.uid();
   v_parent_iou public.shared_ious;
@@ -103,14 +67,14 @@ BEGIN
 
   RETURN v_result;
 END;
-$func$;
+$$;
 
--- CONFIRM PAYMENT
+-- 2. CONFIRM PAYMENT
 CREATE OR REPLACE FUNCTION confirm_iou_payment(
   p_settlement_id TEXT
 ) RETURNS public.shared_iou_settlements
 LANGUAGE plpgsql SECURITY DEFINER SET search_path = public
-AS $func$
+AS $$
 DECLARE
   v_uid UUID := auth.uid();
   v_settlement public.shared_iou_settlements;
@@ -177,14 +141,14 @@ BEGIN
 
   RETURN v_result;
 END;
-$func$;
+$$;
 
--- REJECT PAYMENT
+-- 3. REJECT PAYMENT
 CREATE OR REPLACE FUNCTION reject_iou_payment(
   p_settlement_id TEXT
 ) RETURNS public.shared_iou_settlements
 LANGUAGE plpgsql SECURITY DEFINER SET search_path = public
-AS $func$
+AS $$
 DECLARE
   v_uid UUID := auth.uid();
   v_settlement public.shared_iou_settlements;
@@ -231,18 +195,4 @@ BEGIN
 
   RETURN v_result;
 END;
-$func$;
-
-
--- 6. RPC Privileges
-REVOKE EXECUTE ON FUNCTION propose_iou_payment(TEXT, NUMERIC) FROM PUBLIC;
-REVOKE EXECUTE ON FUNCTION propose_iou_payment(TEXT, NUMERIC) FROM anon;
-GRANT EXECUTE ON FUNCTION propose_iou_payment(TEXT, NUMERIC) TO authenticated;
-
-REVOKE EXECUTE ON FUNCTION confirm_iou_payment(TEXT) FROM PUBLIC;
-REVOKE EXECUTE ON FUNCTION confirm_iou_payment(TEXT) FROM anon;
-GRANT EXECUTE ON FUNCTION confirm_iou_payment(TEXT) TO authenticated;
-
-REVOKE EXECUTE ON FUNCTION reject_iou_payment(TEXT) FROM PUBLIC;
-REVOKE EXECUTE ON FUNCTION reject_iou_payment(TEXT) FROM anon;
-GRANT EXECUTE ON FUNCTION reject_iou_payment(TEXT) TO authenticated;
+$$;
