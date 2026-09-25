@@ -123,7 +123,7 @@ export async function syncSharedPayments(): Promise<{ success: boolean; error?: 
     });
 
     return { success: true };
-  } catch (err: any) {
-    return { success: false, error: err.message };
+  } catch (err) {
+    return { success: false, error: err instanceof Error ? err.message : String(err) };
   }
 }

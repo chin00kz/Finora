@@ -6,6 +6,7 @@ import { db } from '../db/db';
 import type { TransactionType } from '../db/db';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { useUIStore } from '../store/uiStore';
+import { useAuthStore } from '../store/authStore';
 import { triggerSync } from '../sync/syncEngine';
 import { createId } from '../utils/createId';
 import { formatMoney } from '../utils/formatters';
@@ -23,6 +24,7 @@ export default function TransactionModal() {
     prefillData,
     setPrefillData,
   } = useUIStore();
+  const { user } = useAuthStore();
 
   const { height: vvHeight, offsetTop, isKeyboardOpen } = useVisualViewport();
 
@@ -77,9 +79,12 @@ export default function TransactionModal() {
   const tags = useLiveQuery(() => db.tags.toArray()) || [];
   
   
-  const { identities, groups, recentCombinations } = useParticipantIdentities();
+  const { identities, groups, recentCombinations } = useParticipantIdentities(user?.id);
   // Ensure "You" is always in the identities list
-  const fullIdentities = [{ identityKey: 'local:me', name: 'You', isConnected: false }, ...identities];
+  const fullIdentities = [
+    { identityKey: 'local:me', name: 'You', isConnected: false },
+    ...identities.filter(i => i.identityKey !== 'local:me'),
+  ];
   
   const allTransactions = useLiveQuery(() => db.transactions.toArray()) || [];
 

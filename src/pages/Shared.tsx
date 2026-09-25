@@ -14,11 +14,10 @@ export default function Shared() {
   const navigate = useNavigate();
   const [isRefreshing, setIsRefreshing] = useState(false);
 
-  const debts = useLiveQuery(() => db.debts.toArray()) || [];
   const sharedIous = useLiveQuery(() => db.cacheSharedIous.toArray()) || [];
   
   
-  const { identities } = useParticipantIdentities();
+  const { identities } = useParticipantIdentities(user?.id);
 
   useEffect(() => {
     if (!user) return;
@@ -64,15 +63,6 @@ export default function Shared() {
 
     if (!user) return Array.from(map.values());
 
-    // Local Debts
-    debts.forEach(d => {
-      const settledAmount = d.settlements?.reduce((s, st) => s + st.amount, 0) || 0; if (settledAmount >= d.amount) return;
-      const r = getOrAdd(`local:${d.personId}`);
-      if (d.direction === 'theyOweMe') r.owedToYou += d.amount;
-      else r.youOwe += d.amount;
-      r.lastActivityAt = Math.max(r.lastActivityAt, d.updatedAt || d.date || 0);
-    });
-
     // Cloud Shared IOUs
     sharedIous.forEach(iou => {
       // we only care if we are creditor or debtor
@@ -94,7 +84,7 @@ export default function Shared() {
     // For now, keep it simple.
 
     return Array.from(map.values()).sort((a, b) => b.lastActivityAt - a.lastActivityAt);
-  }, [debts, sharedIous, identities, user]);
+  }, [sharedIous, identities, user]);
 
   return (
     <div className="max-w-md mx-auto p-4 pb-24">

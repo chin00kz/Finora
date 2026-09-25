@@ -8,6 +8,7 @@ export type NavItemId =
   | 'analytics'
   | 'goals'
   | 'recurring'
+  | 'debts'
   | 'shared'
   | 'float-tools'
   | 'budgets'
@@ -26,7 +27,8 @@ export const ALL_NAV_ITEMS: NavItemConfig[] = [
   { id: 'home',             label: 'Home',            to: '/home' },
   { id: 'accounts',         label: 'Accounts',        to: '/accounts' },
   { id: 'activity',         label: 'Activity',        to: '/activity' },
-  { id: 'shared',            label: 'IOUs',            to: '/debts' },
+  { id: 'debts',            label: 'IOUs',            to: '/debts' },
+  { id: 'shared',            label: 'Shared',          to: '/shared' },
   { id: 'analytics',        label: 'Analytics',       to: '/analytics' },
   { id: 'goals',            label: 'Goals',           to: '/goals' },
   { id: 'recurring',        label: 'Recurring',       to: '/recurring' },
@@ -38,7 +40,7 @@ export const ALL_NAV_ITEMS: NavItemConfig[] = [
   { id: 'settings',         label: 'Settings',        to: '/settings' },
 ];
 
-export const DEFAULT_FRONT_ITEMS: NavItemId[] = ['home', 'accounts', 'activity', 'shared', 'settings'];
+export const DEFAULT_FRONT_ITEMS: NavItemId[] = ['home', 'accounts', 'activity', 'debts', 'settings'];
 
 interface NavState {
   frontItemIds: NavItemId[];

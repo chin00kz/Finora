@@ -3,6 +3,7 @@ import { X } from 'lucide-react';
 import { db } from '../db/db';
 import { createId } from '../utils/createId';
 import { triggerSync } from '../sync/syncEngine';
+import { processSharedOutbox } from '../sync/sharedOutboxEngine';
 
 interface Props {
   isOpen: boolean;
@@ -16,12 +17,14 @@ export default function RecordPaymentModal({ isOpen, onClose, identityKey, name 
   const [notes, setNotes] = useState('');
   const [direction, setDirection] = useState<'iPaidThem' | 'theyPaidMe'>('iPaidThem');
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const isCloudPayment = identityKey.startsWith('profile:');
 
   if (!isOpen) return null;
 
   const handleSave = async () => {
     if (!amount || isNaN(Number(amount)) || Number(amount) <= 0) return;
     setIsSubmitting(true);
+    const effectiveDirection = isCloudPayment ? 'iPaidThem' : direction;
 
     try {
       if (identityKey.startsWith('local:')) {
@@ -32,7 +35,7 @@ export default function RecordPaymentModal({ isOpen, onClose, identityKey, name 
           id: debtId,
           personId,
           amount: Number(amount),
-          direction: direction === 'iPaidThem' ? 'theyOweMe' : 'iOweThem', // Payment they owe me if I paid them
+          direction: effectiveDirection === 'iPaidThem' ? 'theyOweMe' : 'iOweThem', // Payment they owe me if I paid them
           date: Date.now(),
           source: 'manual',
           personName: name,
@@ -50,8 +53,8 @@ export default function RecordPaymentModal({ isOpen, onClose, identityKey, name 
           await db.sharedPayments.add({
             id: paymentId,
             idempotency_key: idempotencyKey,
-            payer_id: direction === 'iPaidThem' ? 'local:me' : profileId,
-            payee_id: direction === 'iPaidThem' ? profileId : 'local:me',
+            payer_id: 'local:me',
+            payee_id: profileId,
             amount: Number(amount),
             currency: 'LKR',
             status: 'pending',
@@ -76,6 +79,7 @@ export default function RecordPaymentModal({ isOpen, onClose, identityKey, name 
             created_at: Date.now()
           });
         });
+        processSharedOutbox().catch(err => console.error('Failed to process shared payment outbox', err));
       }
       onClose();
     } catch (e) {
@@ -103,12 +107,14 @@ export default function RecordPaymentModal({ isOpen, onClose, identityKey, name 
             >
               You paid {name}
             </button>
-            <button
-              onClick={() => setDirection('theyPaidMe')}
-              className={`flex-1 py-2.5 text-sm font-medium rounded-lg transition-colors ${direction === 'theyPaidMe' ? 'bg-background shadow-sm text-foreground' : 'text-muted-foreground hover:text-foreground'}`}
-            >
-              {name} paid you
-            </button>
+            {!isCloudPayment && (
+              <button
+                onClick={() => setDirection('theyPaidMe')}
+                className={`flex-1 py-2.5 text-sm font-medium rounded-lg transition-colors ${direction === 'theyPaidMe' ? 'bg-background shadow-sm text-foreground' : 'text-muted-foreground hover:text-foreground'}`}
+              >
+                {name} paid you
+              </button>
+            )}
           </div>
         </div>
 

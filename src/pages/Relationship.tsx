@@ -8,19 +8,36 @@ import { useAuthStore } from '../store/authStore';
 import { format } from 'date-fns';
 import { useParticipantIdentities } from '../hooks/useParticipantIdentities';
 import RecordPaymentModal from '../components/RecordPaymentModal';
+import { getSharedIouSettlementStatus } from '../utils/sharedIouSettlementEngine';
 
 export default function Relationship() {
   const { identityKey } = useParams();
   const [isPaymentModalOpen, setIsPaymentModalOpen] = useState(false);
   const navigate = useNavigate();
   const { user } = useAuthStore();
-  const { identities } = useParticipantIdentities();
+  const { identities } = useParticipantIdentities(user?.id);
   
   const identity = identities.find(i => i.identityKey === identityKey);
   
   const debts = useLiveQuery(() => db.debts.toArray()) || [];
   const sharedIous = useLiveQuery(() => db.cacheSharedIous.toArray()) || [];
+  const sharedIouSettlements = useLiveQuery(() => db.cacheSharedIouSettlements.toArray()) || [];
   const payments = useLiveQuery(() => db.sharedPayments.toArray()) || [];
+  const profileId = identityKey?.startsWith('profile:') ? identityKey.replace('profile:', '') : null;
+
+  const canRecordPayment = useMemo(() => {
+    if (!identityKey) return false;
+    if (identityKey.startsWith('local:')) return true;
+    if (!user || !profileId) return false;
+
+    return sharedIous.some(iou => {
+      if (iou.status !== 'accepted' || iou.debtor_id !== user.id || iou.creditor_id !== profileId) {
+        return false;
+      }
+      const settlements = sharedIouSettlements.filter(s => s.shared_iou_id === iou.id);
+      return getSharedIouSettlementStatus(iou.amount, settlements).availableToPropose > 0;
+    });
+  }, [identityKey, profileId, sharedIous, sharedIouSettlements, user]);
   
   const timeline = useMemo(() => {
     if (!user || !identityKey) return [];
@@ -127,12 +144,14 @@ export default function Relationship() {
 
       <div className="fixed bottom-[72px] left-0 right-0 p-4 max-w-md mx-auto pointer-events-none">
         <div className="flex gap-2 pointer-events-auto">
-          <button 
-            onClick={() => setIsPaymentModalOpen(true)}
-            className="flex-1 bg-foreground text-background py-3.5 rounded-xl font-semibold shadow-lg active:scale-95 transition-transform"
-          >
-            Record Payment
-          </button>
+          {canRecordPayment && (
+            <button
+              onClick={() => setIsPaymentModalOpen(true)}
+              className="flex-1 bg-foreground text-background py-3.5 rounded-xl font-semibold shadow-lg active:scale-95 transition-transform"
+            >
+              Record Payment
+            </button>
+          )}
         </div>
       </div>
       

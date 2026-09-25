@@ -40,6 +40,7 @@ import { useSync } from './hooks/useSync';
 import Dashboard from './pages/Dashboard';
 import Accounts from './pages/Accounts';
 import Activity from './pages/Activity';
+import Debts from './pages/Debts';
 import Shared from './pages/Shared';
 import Relationship from './pages/Relationship';
 import Settings from './pages/Settings';
@@ -115,6 +116,7 @@ function DesktopSidebar({ syncStatus }: { syncStatus: 'idle' | 'syncing' | 'erro
     { to: '/goals', label: 'Savings Goals', icon: Target },
     { to: '/recurring', label: 'Recurring', icon: Repeat },
     { to: '/debts', label: 'IOUs & Debts', icon: Users },
+    { to: '/shared', label: 'Shared', icon: Users },
     { to: '/statements', label: 'Statement Reader', icon: FileText },
     { to: '/connections', label: 'Friends & Connections', icon: Users },
     { to: '/notifications', label: 'Notifications', icon: Bell },
@@ -245,6 +247,8 @@ function getNavIcon(id: NavItemId) {
       return PieChart;
     case 'activity':
       return List;
+    case 'debts':
+      return Users;
     case 'shared':
       return Users;
     case 'analytics':
@@ -425,6 +429,7 @@ function MobileBottomNav({ syncStatus }: { syncStatus: 'idle' | 'syncing' | 'err
               <Link
                 key={id}
                 to={item.to}
+                onClick={() => setIsMoreOpen(false)}
                 className={`flex flex-col items-center justify-center w-full h-full ${
                   active ? 'text-foreground' : 'text-muted-foreground'
                 }`}
@@ -492,7 +497,7 @@ function StartPageRedirector() {
   const { startPage } = usePrivacyStore();
   
   if (startPage === 'shared') {
-    return <Navigate to="/debts" replace />;
+    return <Navigate to="/shared" replace />;
   }
   if (startPage === 'activity') {
     return <Navigate to="/activity" replace />;
@@ -596,6 +601,7 @@ function MainAppShell() {
             <Route path="/analytics" element={<Analytics />} />
             <Route path="/goals" element={<Goals />} />
             <Route path="/recurring" element={<Recurring />} />
+            <Route path="/debts" element={<Debts />} />
             <Route path="/shared" element={<Shared />} />
             <Route path="/shared/:identityKey" element={<Relationship />} />
             <Route path="/connections" element={<Connections />} />
