@@ -203,6 +203,9 @@ ALTER TABLE public.debts ALTER COLUMN person_id DROP NOT NULL;
 ALTER TABLE public.transactions ADD COLUMN IF NOT EXISTS debt_id TEXT;
 ALTER TABLE public.transactions ADD COLUMN IF NOT EXISTS debt_direction TEXT;
 ALTER TABLE public.transactions ADD COLUMN IF NOT EXISTS debt_settlement_id TEXT;
+ALTER TABLE public.transactions ADD COLUMN IF NOT EXISTS split_details JSONB;
+ALTER TABLE public.transactions ADD COLUMN IF NOT EXISTS total_amount NUMERIC;
+ALTER TABLE public.transactions ADD COLUMN IF NOT EXISTS split_status TEXT;
 
 -- 4. Credit Cards
 CREATE TABLE IF NOT EXISTS public.credit_cards (

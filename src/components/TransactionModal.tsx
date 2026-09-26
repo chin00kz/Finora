@@ -8,6 +8,7 @@ import { useLiveQuery } from 'dexie-react-hooks';
 import { useUIStore } from '../store/uiStore';
 import { useAuthStore } from '../store/authStore';
 import { triggerSync } from '../sync/syncEngine';
+import { processSharedOutbox } from '../sync/sharedOutboxEngine';
 import { createId } from '../utils/createId';
 import { formatMoney } from '../utils/formatters';
 import QuickAddChips from './QuickAddChips';
@@ -306,6 +307,9 @@ export default function TransactionModal() {
         tagsToProcess.push(tagInput.trim());
       }
 
+      const createdDebtIds: string[] = [];
+      let queuedCloudSplit = false;
+
       await db.transaction('rw', [db.transactions, db.accounts, db.tags, db.debts, db.people, db.sharedOutbox], async () => {
         const resolvedTagIds: string[] = [];
         for (const tagName of tagsToProcess) {
@@ -353,6 +357,7 @@ export default function TransactionModal() {
             toAccountId: type === 'transfer' ? toAccountId : undefined,
             isShared,
             personalAmount: isShared && splitMath && !splitMath.error ? splitMath.myShare : undefined,
+            totalAmount: isShared && splitMath && !splitMath.error ? numAmount : undefined,
             splitDetails: finalSplitDetails,
             splitStatus: finalSyncStatus,
             excludeFromBudget: type === 'expense' ? excludeFromBudget : undefined,
@@ -371,8 +376,9 @@ export default function TransactionModal() {
               
               if (result.personId.startsWith('local:')) {
                 const localId = result.personId.replace('local:', '');
+                const newDebtId = createId('debt');
                 await db.debts.add({
-                  id: createId('debt'),
+                  id: newDebtId,
                   source: 'shared_expense',
                   direction: 'theyOweMe',
                   personId: localId,
@@ -384,6 +390,7 @@ export default function TransactionModal() {
                   settlements: [],
                   updatedAt: now,
                 });
+                createdDebtIds.push(newDebtId);
               } else if (result.personId.startsWith('profile:')) {
                 const profileId = result.personId.replace('profile:', '');
                 cloudPayloads.push({
@@ -408,6 +415,7 @@ export default function TransactionModal() {
                 retry_count: 0,
                 created_at: now
               });
+              queuedCloudSplit = true;
             } else {
               await db.transactions.update(txnId, { splitStatus: 'synced' });
             }
@@ -435,6 +443,10 @@ export default function TransactionModal() {
       triggerSync('accounts', accountId);
       if (type === 'transfer' && toAccountId) {
         triggerSync('accounts', toAccountId);
+      }
+      createdDebtIds.forEach(id => triggerSync('debts', id));
+      if (queuedCloudSplit) {
+        void processSharedOutbox();
       }
 
       // Reset & close

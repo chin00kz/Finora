@@ -5,6 +5,7 @@ import { db } from '../db/db';
 import type { Transaction, TransactionType } from '../db/db';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { triggerSync, deleteFromCloud } from '../sync/syncEngine';
+import { enqueueCancelSplit } from '../sync/sharedOutboxEngine';
 import { createId } from '../utils/createId';
 import { formatMoney } from '../utils/formatters';
 import { syncSettlementFromTransactionDelete, syncSettlementFromTransactionEdit } from '../utils/debtSettlementEngine';
@@ -208,6 +209,7 @@ export default function TransactionEditSheet({ transaction, onClose }: Props) {
         await syncSettlementFromTransactionDelete(transaction);
       }
       await deleteFromCloud('transactions', transaction.id);
+      await enqueueCancelSplit(transaction);
 
       // Sync reversed account balances to cloud
       triggerSync('accounts', transaction.accountId);

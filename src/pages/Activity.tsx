@@ -20,6 +20,7 @@ import { useLocation, useNavigate } from 'react-router-dom';
 import TransactionEditSheet from '../components/TransactionEditSheet';
 import ImportDataModal from '../components/ImportDataModal';
 import { triggerSync, deleteFromCloud } from '../sync/syncEngine';
+import { enqueueCancelSplit } from '../sync/sharedOutboxEngine';
 import { createId } from '../utils/createId';
 import { formatMoney } from '../utils/formatters';
 import { syncSettlementFromTransactionDelete } from '../utils/debtSettlementEngine';
@@ -322,6 +323,7 @@ export default function Activity() {
         await syncSettlementFromTransactionDelete(txn);
       }
       await deleteFromCloud('transactions', txn.id);
+      await enqueueCancelSplit(txn);
     }
     affectedAccountIds.forEach(accId => triggerSync('accounts', accId));
     setSelectedIds(new Set());
@@ -919,7 +921,7 @@ export default function Activity() {
                           )}
                           {txn.isShared && (
                             <span className="text-xs text-blue-500 font-medium">
-                              Split · Your share: LKR <MaskedAmount amount={txn.personalAmount || 0} />
+                              Split · Your share: <MaskedAmount amount={txn.personalAmount || 0} />
                             </span>
                           )}
                         </div>

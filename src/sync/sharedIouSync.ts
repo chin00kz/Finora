@@ -2,6 +2,19 @@ import { supabase } from '../lib/supabase';
 import { db } from '../db/db';
 import type { CacheSharedIou } from '../db/db';
 
+function toUnixMs(value: unknown): number {
+  if (value == null || value === '') return 0;
+  if (typeof value === 'number' && Number.isFinite(value)) {
+    return value < 1e12 ? value * 1000 : value;
+  }
+  const asNumber = Number(value);
+  if (Number.isFinite(asNumber) && String(value).trim() !== '' && !String(value).includes('-')) {
+    return asNumber < 1e12 ? asNumber * 1000 : asNumber;
+  }
+  const parsed = Date.parse(String(value));
+  return Number.isFinite(parsed) ? parsed : 0;
+}
+
 /**
  * Fetches all Shared IOUs visible to the authenticated user via RLS,
  * normalizes them, and atomically replaces the local Dexie read cache.
@@ -31,9 +44,9 @@ export async function syncSharedIous(): Promise<{ success: boolean; error?: stri
       currency: row.currency,
       description: row.description || undefined,
       status: row.status,
-      created_at: Number(row.created_at),
-      accepted_at: row.accepted_at ? Number(row.accepted_at) : undefined,
-      updated_at: Number(row.updated_at)
+      created_at: toUnixMs(row.created_at),
+      accepted_at: row.accepted_at ? toUnixMs(row.accepted_at) : undefined,
+      updated_at: toUnixMs(row.updated_at)
     }));
 
     // 3. Atomically replace the cache after successful fetch
@@ -75,8 +88,8 @@ export async function syncSharedIouSettlements(): Promise<{ success: boolean; er
       amount: Number(row.amount),
       proposed_by: row.proposed_by,
       status: row.status,
-      created_at: Number(row.created_at),
-      confirmed_at: row.confirmed_at ? Number(row.confirmed_at) : undefined,
+      created_at: toUnixMs(row.created_at),
+      confirmed_at: row.confirmed_at ? toUnixMs(row.confirmed_at) : undefined,
       confirmed_by: row.confirmed_by || undefined
     }));
 
@@ -111,14 +124,14 @@ export async function syncSharedPayments(): Promise<{ success: boolean; error?: 
       currency: row.currency,
       status: row.status,
       notes: row.notes,
-      created_at: new Date(row.created_at).getTime(),
-      updated_at: new Date(row.updated_at).getTime()
+      created_at: toUnixMs(row.created_at),
+      updated_at: toUnixMs(row.updated_at)
     }));
 
     await db.transaction('rw', db.sharedPayments, async () => {
       await db.sharedPayments.clear();
       if (normalized.length > 0) {
-        await db.sharedPayments.bulkAdd(normalized);
+        await db.sharedPayments.bulkPut(normalized);
       }
     });
 

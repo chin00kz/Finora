@@ -2,7 +2,7 @@ import { useUIStore } from './uiStore';
 import { create } from 'zustand';
 import { supabase } from '../lib/supabase';
 import { db } from '../db/db';
-import { ALL_TABLES } from '../sync/syncEngine';
+import { ALL_TABLES, clearSyncLocalState } from '../sync/syncEngine';
 import type { User, Session } from '@supabase/supabase-js';
 
 interface AuthState {
@@ -43,7 +43,24 @@ const DEXIE_TABLES: Record<string, () => Promise<void>> = {
   float_gap_history: () => db.floatGapHistory.clear(),
   reimbursement_ledgers: () => db.reimbursementLedgers.clear(),
   reimbursement_entries: () => db.reimbursementEntries.clear(),
+  groups: () => db.groups.clear(),
 };
+
+async function wipeLocalUserData(): Promise<void> {
+  clearSyncLocalState();
+  await Promise.all(ALL_TABLES.map(t => DEXIE_TABLES[t]?.()));
+  await Promise.all([
+    db.cacheProfiles.clear(),
+    db.cacheConnections.clear(),
+    db.cacheSharedIous.clear(),
+    db.cacheSharedIouSettlements.clear(),
+    db.cacheNotifications.clear(),
+    db.sharedOutbox.clear(),
+    db.sharedPayments.clear(),
+    db.transactionProvenance.clear(),
+  ]);
+  useUIStore.getState().resetProfileIntroState();
+}
 
 export const useAuthStore = create<AuthState>((set, get) => ({
   user: null,
@@ -71,16 +88,9 @@ export const useAuthStore = create<AuthState>((set, get) => ({
 
   signOut: async () => {
     await supabase.auth.signOut();
-    localStorage.removeItem('finora-dirty');
     set({ user: null, session: null, lastSyncedAt: null });
-    await Promise.all(ALL_TABLES.map(t => DEXIE_TABLES[t]?.()));
-    await db.cacheProfiles.clear();
-    await db.cacheConnections.clear();
-      await db.cacheSharedIous.clear();
-      await db.cacheSharedIouSettlements.clear();
-      await db.cacheNotifications.clear();
-      useUIStore.getState().resetProfileIntroState();
-    },
+    await wipeLocalUserData();
+  },
 
 
   sendPasswordReset: async (email) => {
@@ -103,14 +113,9 @@ export const useAuthStore = create<AuthState>((set, get) => ({
         }
       }
       await supabase.auth.signOut();
-      set({ user: null, session: null });
-      await db.cacheProfiles.clear();
-      await db.cacheConnections.clear();
-      await db.cacheSharedIous.clear();
-      await db.cacheSharedIouSettlements.clear();
-      await db.cacheNotifications.clear();
-        useUIStore.getState().resetProfileIntroState();
-        return null;
+      set({ user: null, session: null, lastSyncedAt: null });
+      await wipeLocalUserData();
+      return null;
       } catch (err) {
       return err instanceof Error ? err.message : 'Unknown error';
     }

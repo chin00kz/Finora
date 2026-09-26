@@ -490,7 +490,7 @@ export interface Group {
 export type SharedOutboxPayload =
   | { operation_type: 'propose_split'; payload: { transaction_id: string; splits: { id: string; debtor_id: string; amount: number; description: string; }[] } }
   | { operation_type: 'record_payment'; payload: { payment_id: string; recipient_id: string; amount: number; description: string; } }
-  | { operation_type: 'cancel_split'; payload: { ids: string[] } };
+  | { operation_type: 'cancel_split'; payload: { transaction_id?: string; ids?: string[] } };
 
 export type SharedOutbox = {
   id: string;
@@ -563,6 +563,10 @@ db.version(13).stores({
   groups: "id, updatedAt",
   sharedOutbox: "id, status",
   transactionProvenance: "id"
+});
+
+db.version(14).stores({
+  sharedPayments: "id, payer_id, payee_id, status, created_at"
 });
 
 export { db };

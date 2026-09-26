@@ -3,10 +3,13 @@ import { useAuthStore } from '../store/authStore';
 import { pullAll, pullLiveActivity, pushDirtyRecords, drainPendingSync, applyRealtimeChange, hasPendingDirty, ALL_TABLES } from '../sync/syncEngine';
 import type { TableName } from '../sync/syncEngine';
 import { syncNotifications } from '../sync/notificationSync';
+import { syncConnections } from '../sync/connectionSync';
+import { syncSharedIous, syncSharedIouSettlements, syncSharedPayments } from '../sync/sharedIouSync';
+import { processSharedOutbox } from '../sync/sharedOutboxEngine';
 import { supabase, isSupabaseConfigured } from '../lib/supabase';
 export type SyncStatus = 'idle' | 'syncing' | 'error';
 
-// Minimum time between full 18-table background pulls (ms)
+// Minimum time between full background pulls (ms)
 const MIN_FULL_SYNC_INTERVAL = 5 * 60 * 1000; // 5 minutes
 // Interval to pull accounts + transactions while tab is visible (ms)
 const LIVE_PULL_INTERVAL = 15 * 1000; // 15 seconds
@@ -33,8 +36,13 @@ export function useSync(): {
     try {
       // 1. Drain pending local writes & deletes FIRST
       await drainPendingSync(userId);
-      // 2. Refresh notifications
+      // 2. Flush shared-expense outbox and refresh social caches
+      void processSharedOutbox();
       void syncNotifications();
+      void syncConnections(userId);
+      void syncSharedIous();
+      void syncSharedIouSettlements();
+      void syncSharedPayments();
       // 3. Pull and reconcile from cloud
       const res = await pullAll(userId);
       setSyncStatus(res.success ? 'idle' : 'error');

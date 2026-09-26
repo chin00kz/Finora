@@ -3,10 +3,10 @@
  *
  * Local-first sync between Dexie (IndexedDB) and Supabase (Postgres).
  *
- * Covers all 18 tables:
+ * Covers 19 tables:
  *  - Core:     accounts, categories, transactions, budgets, tags
  *  - Planning: recurring_transactions, savings_goals
- *  - IOUs:     people, debts
+ *  - IOUs:     people, debts, groups
  *  - Float:    credit_cards, cash_offset_sources, fixed_deposits,
  *              money_market_accounts, installment_plans, card_promos,
  *              float_gap_history, reimbursement_ledgers, reimbursement_entries
@@ -15,11 +15,13 @@
  *  WRITE  → save to Dexie → triggerSync(table, id) marks just that record dirty
  *           → debounce fires → pushDirtyRecords() sends only dirty rows to cloud
  *  READ   → always from Dexie (useLiveQuery)
- *  LOGIN / FOCUS / VISIBILITY → pullAll() only — pull cloud into local, no push
- *  RECONNECT / MANUAL SYNC   → pushDirtyRecords() then pullAll()
+ *  LOGIN / FOCUS / VISIBILITY / RECONNECT / MANUAL
+ *           → drainPendingSync() (push dirty + pending deletes) then pullAll()
  *
- * Merge rule: remote wins only if remote.updatedAt >= local.updatedAt.
- * updatedAt || Date.now() is gone — missing timestamps use 0 (oldest possible).
+ * Merge rule: remote wins only if remote.updatedAt > local.updatedAt.
+ * Pull never deletes local rows. Cloud deletes arrive via realtime DELETE
+ * (skipped when the id is still dirty) or deleteFromCloud from this device.
+ * Missing timestamps use 0 (oldest possible).
  */
 
 import { supabase, isSupabaseConfigured } from '../lib/supabase';
@@ -45,6 +47,8 @@ import type {
   FloatGapHistory,
   ReimbursementLedger,
   ReimbursementEntry,
+  Group,
+  SplitDetail,
 } from '../db/db';
 
 export type TableName =
@@ -177,6 +181,29 @@ function isTableMissingError(err: any): boolean {
   return false;
 }
 
+/** PGRST204 — column missing from the live schema cache. Not a missing table. */
+function missingColumnFromError(err: any): string | null {
+  if (!err) return null;
+  const code = typeof err === 'object' && err !== null ? err.code : undefined;
+  const msg = typeof err === 'object' && err !== null ? String(err.message || err) : String(err);
+  if (code !== 'PGRST204' && !/schema cache|Could not find the '/i.test(msg)) return null;
+  const match = msg.match(/Could not find the '([^']+)' column/);
+  return match?.[1] ?? null;
+}
+
+function parseEpoch(value: unknown): number {
+  if (value == null || value === '') return 0;
+  if (typeof value === 'number' && Number.isFinite(value)) {
+    return value < 1e12 ? value * 1000 : value;
+  }
+  const asNumber = Number(value);
+  if (Number.isFinite(asNumber) && String(value).trim() !== '' && !String(value).includes('-')) {
+    return asNumber < 1e12 ? asNumber * 1000 : asNumber;
+  }
+  const parsed = Date.parse(String(value));
+  return Number.isFinite(parsed) ? parsed : 0;
+}
+
 // ── camelCase ↔ snake_case mappers ──────────────────────────────────────────
 // NOTE: updated_at uses ?? 0, NOT || Date.now().
 // A missing/zero timestamp sorts as oldest — it will be overwritten by cloud
@@ -208,6 +235,34 @@ function fromSupabaseAccount(row: Record<string, unknown>): Account {
   };
 }
 
+function parseSplitDetails(value: unknown): SplitDetail[] | undefined {
+  if (!value) return undefined;
+  const raw = typeof value === 'string' ? (() => { try { return JSON.parse(value); } catch { return null; } })() : value;
+  if (!Array.isArray(raw)) return undefined;
+  return raw.map((item: any) => ({
+    personId: String(item.personId ?? item.person_id ?? ''),
+    participantNameSnapshot: String(item.participantNameSnapshot ?? item.participant_name_snapshot ?? ''),
+    baseAmount: Number(item.baseAmount ?? item.base_amount) || 0,
+    sharedAmount: Number(item.sharedAmount ?? item.shared_amount) || 0,
+    finalAmount: Number(item.finalAmount ?? item.final_amount) || 0,
+  }));
+}
+
+/** Keep local-only extras when a newer remote row omitted columns the live DB does not have. */
+function preserveTransactionFields(remote: Transaction, local: Transaction): Transaction {
+  return {
+    ...remote,
+    isShared: remote.isShared || local.isShared,
+    splitDetails: remote.splitDetails ?? local.splitDetails,
+    totalAmount: remote.totalAmount ?? local.totalAmount,
+    personalAmount: remote.personalAmount ?? local.personalAmount,
+    splitStatus: remote.splitStatus ?? local.splitStatus,
+    debtId: remote.debtId ?? local.debtId,
+    debtDirection: remote.debtDirection ?? local.debtDirection,
+    debtSettlementId: remote.debtSettlementId ?? local.debtSettlementId,
+  };
+}
+
 // Transactions
 function toSupabaseTransaction(userId: string, t: Transaction) {
   return {
@@ -221,13 +276,17 @@ function toSupabaseTransaction(userId: string, t: Transaction) {
     notes: t.notes || null,
     tag_ids: t.tagIds || null,
     to_account_id: t.toAccountId || null,
-    is_shared: t.isShared || null,
-    personal_amount: t.personalAmount != null ? t.personalAmount : null,
-    is_settled: t.isSettled || null,
-    exclude_from_budget: t.excludeFromBudget || null,
-    debt_id: t.debtId || null,
-    debt_direction: t.debtDirection || null,
-    debt_settlement_id: t.debtSettlementId || null,
+    is_shared: t.isShared || undefined,
+    personal_amount: t.personalAmount != null ? t.personalAmount : undefined,
+    total_amount: t.totalAmount != null ? t.totalAmount : undefined,
+    split_details: t.splitDetails || undefined,
+    split_status: t.splitStatus || undefined,
+    is_settled: t.isSettled || undefined,
+    exclude_from_budget: t.excludeFromBudget || undefined,
+    // Omit unset debt_* so a live DB without those columns does not 400
+    debt_id: t.debtId || undefined,
+    debt_direction: t.debtDirection || undefined,
+    debt_settlement_id: t.debtSettlementId || undefined,
     updated_at: t.updatedAt ?? 0,
   };
 }
@@ -245,12 +304,17 @@ function fromSupabaseTransaction(row: Record<string, unknown>): Transaction {
     toAccountId: row.to_account_id ? String(row.to_account_id) : undefined,
     isShared: Boolean(row.is_shared),
     personalAmount: row.personal_amount != null ? Number(row.personal_amount) : undefined,
+    totalAmount: row.total_amount != null ? Number(row.total_amount) : undefined,
+    splitDetails: parseSplitDetails(row.split_details),
+    splitStatus: row.split_status
+      ? (row.split_status as Transaction['splitStatus'])
+      : undefined,
     isSettled: Boolean(row.is_settled),
     excludeFromBudget: Boolean(row.exclude_from_budget),
     debtId: row.debt_id ? String(row.debt_id) : undefined,
     debtDirection: (row.debt_direction as Transaction['debtDirection']) || undefined,
     debtSettlementId: row.debt_settlement_id ? String(row.debt_settlement_id) : undefined,
-    updatedAt: Number(row.updated_at) || 0,
+    updatedAt: parseEpoch(row.updated_at),
   };
 }
 
@@ -409,22 +473,23 @@ function fromSupabasePerson(row: Record<string, unknown>): Person {
 }
 
 
-// Groups
-function toSupabaseGroup(userId: string, l: any) {
+// Groups — schema uses participants text[] and updated_at bigint
+function toSupabaseGroup(userId: string, l: Group) {
   return {
     id: l.id,
     user_id: userId,
     name: l.name,
-    participant_ids: l.participantIds,
-    updated_at: new Date(l.updatedAt || Date.now()).toISOString(),
+    participants: l.participantIds ?? [],
+    updated_at: l.updatedAt ?? 0,
   };
 }
-function fromSupabaseGroup(s: any) {
+function fromSupabaseGroup(s: Record<string, unknown>): Group {
+  const participants = s.participants ?? s.participant_ids;
   return {
-    id: s.id,
-    name: s.name,
-    participantIds: s.participant_ids || [],
-    updatedAt: new Date(s.updated_at).getTime(),
+    id: String(s.id),
+    name: String(s.name ?? ''),
+    participantIds: Array.isArray(participants) ? participants.map(String) : [],
+    updatedAt: parseEpoch(s.updated_at),
   };
 }
 
@@ -780,47 +845,24 @@ async function mergeRemoteRows(
   table: TableName,
   remoteData: Record<string, unknown>[],
 ): Promise<void> {
-  // Helper: merge a batch of remote rows into a Dexie table.
-  // 1. Reconciles deletions: removes any local rows missing from remoteData (unless pending dirty write)
-  // 2. Upserts: writes remote rows where remote.updatedAt >= local.updatedAt or !local
+  // Upserts remote rows where remote.updatedAt > local.updatedAt or !local.
+  // Never deletes local rows that are missing from the cloud snapshot.
   async function merge<T extends { id: string; updatedAt?: number }>(
     dexieTable: {
       bulkGet: (ids: string[]) => Promise<(T | undefined)[]>;
       bulkPut: (items: T[]) => Promise<unknown>;
-      bulkDelete: (ids: string[]) => Promise<void>;
-      toCollection: () => { primaryKeys: () => Promise<string[]> };
     },
     remoteRows: T[],
+    hydrate?: (remote: T, local: T) => T,
   ) {
-    // 1. Identify and delete local rows that were deleted from cloud
-    const remoteIdSet = new Set(remoteRows.map(r => r.id));
-    const dirtyIdSet = new Set(getDirty()[table] ?? []);
-    const localIds = await dexieTable.toCollection().primaryKeys();
-    const candidateIds = localIds.filter(id => !remoteIdSet.has(id) && !dirtyIdSet.has(id));
-    if (candidateIds.length > 0) {
-      const candidateRows = await dexieTable.bulkGet(candidateIds);
-      const graceThreshold = Date.now() - 60_000; // 60-second backstop for in-flight/recent writes
-      const toDelete = candidateIds.filter((_, i) => {
-        const row = candidateRows[i];
-        if (row && (row.updatedAt ?? 0) > graceThreshold) {
-          return false; // Protect recent local write
-        }
-        return true;
-      });
-      if (toDelete.length > 0) {
-        await dexieTable.bulkDelete(toDelete);
-      }
-    }
-
-    // 2. Upsert changed or new remote rows
-    if (remoteRows.length > 0) {
-      const localRows = await dexieTable.bulkGet(remoteRows.map(r => r.id));
-      const toWrite = remoteRows.filter((remote, i) => {
-        const local = localRows[i];
-        return !local || (remote.updatedAt ?? 0) >= (local.updatedAt ?? 0);
-      });
-      if (toWrite.length > 0) await dexieTable.bulkPut(toWrite);
-    }
+    if (remoteRows.length === 0) return;
+    const localRows = await dexieTable.bulkGet(remoteRows.map(r => r.id));
+    const toWrite = remoteRows.flatMap((remote, i) => {
+      const local = localRows[i];
+      if (local && (remote.updatedAt ?? 0) <= (local.updatedAt ?? 0)) return [];
+      return [local && hydrate ? hydrate(remote, local) : remote];
+    });
+    if (toWrite.length > 0) await dexieTable.bulkPut(toWrite);
   }
 
   switch (table) {
@@ -828,7 +870,11 @@ async function mergeRemoteRows(
       await merge(db.accounts, remoteData.map(fromSupabaseAccount));
       break;
     case 'transactions':
-      await merge(db.transactions, remoteData.map(fromSupabaseTransaction));
+      await merge(
+        db.transactions,
+        remoteData.map(fromSupabaseTransaction),
+        preserveTransactionFields,
+      );
       break;
     case 'budgets':
       await merge(db.budgets, remoteData.map(fromSupabaseBudget));
@@ -850,6 +896,9 @@ async function mergeRemoteRows(
       break;
     case 'debts':
       await merge(db.debts, remoteData.map(fromSupabaseDebt));
+      break;
+    case 'groups':
+      await merge(db.groups, remoteData.map(fromSupabaseGroup));
       break;
     case 'credit_cards':
       await merge(db.creditCards, remoteData.map(fromSupabaseCreditCard));
@@ -924,6 +973,9 @@ export async function pushTable(
       case 'debts':
         rows = (await db.debts.toArray()).map(d => toSupabaseDebt(userId, d));
         break;
+      case 'groups':
+        rows = (await db.groups.toArray()).map(g => toSupabaseGroup(userId, g));
+        break;
       case 'credit_cards':
         rows = (await db.creditCards.toArray()).map(c => toSupabaseCreditCard(userId, c));
         break;
@@ -955,14 +1007,11 @@ export async function pushTable(
 
     if (rows.length === 0) return { success: true };
 
-    const { error } = await supabase.from(table).upsert(rows.map(stripUndefinedFields), { onConflict: 'id' });
-    if (error) {
-      if (isTableMissingError(error)) return { success: true, skipped: true };
-      console.warn(`[sync] pushTable failed for ${table}:`, error.message);
-      return { success: false, error: `${table}: ${error.message}` };
+    const result = await upsertRows(table, rows);
+    if (!result.success && !result.skipped) {
+      console.warn(`[sync] pushTable failed for ${table}:`, result.error);
     }
-
-    return { success: true };
+    return result;
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
     if (isTableMissingError(err)) return { success: true, skipped: true };
@@ -977,6 +1026,29 @@ function stripUndefinedFields(row: Record<string, unknown>): Record<string, unkn
     if (value !== undefined) out[key] = value;
   }
   return out;
+}
+
+async function upsertRows(
+  table: TableName,
+  rows: Record<string, unknown>[],
+): Promise<{ success: boolean; error?: string; skipped?: boolean }> {
+  let payload = rows.map(stripUndefinedFields);
+  for (let attempt = 0; attempt < 12; attempt++) {
+    const { error } = await supabase.from(table).upsert(payload, { onConflict: 'id' });
+    if (!error) return { success: true };
+    if (isTableMissingError(error)) return { success: true, skipped: true };
+    const missingCol = missingColumnFromError(error);
+    if (missingCol) {
+      payload = payload.map(row => {
+        const next = { ...row };
+        delete next[missingCol];
+        return next;
+      });
+      continue;
+    }
+    return { success: false, error: error.message };
+  }
+  return { success: false, error: `${table}: too many missing columns` };
 }
 
 /**
@@ -1000,13 +1072,13 @@ export async function pushDirtyRecords(userId: string): Promise<void> {
           clearDirtyIds(table, ids);
           return;
         }
-        const { error } = await supabase.from(table).upsert(rows.map(stripUndefinedFields), { onConflict: 'id' });
-        if (error) {
-          if (isTableMissingError(error)) {
-            clearDirtyIds(table, ids);
-            return;
-          }
-          console.warn(`[sync] pushDirtyRecords failed for ${table}:`, error);
+        const result = await upsertRows(table, rows);
+        if (result.skipped) {
+          clearDirtyIds(table, ids);
+          return;
+        }
+        if (!result.success) {
+          console.warn(`[sync] pushDirtyRecords failed for ${table}:`, result.error);
           return; // Keep dirty — will retry next time
         }
         clearDirtyIds(table, ids);
@@ -1021,7 +1093,7 @@ export async function pushDirtyRecords(userId: string): Promise<void> {
 
 /**
  * pullTable — pull all rows for a table from Supabase and merge into Dexie.
- * Remote wins only if remote.updatedAt >= local.updatedAt.
+ * Remote wins only if remote.updatedAt > local.updatedAt. Local-only rows stay.
  */
 export async function pullTable(
   table: TableName,
@@ -1122,16 +1194,17 @@ async function upsertSingleRemoteRow(
   async function putIfNewer<T extends { id: string; updatedAt?: number }>(
     dexieTable: any,
     item: T,
+    hydrate?: (remote: T, local: T) => T,
   ) {
     const local = await dexieTable.get(item.id);
-    if (!local || (item.updatedAt ?? 0) >= (local.updatedAt ?? 0)) {
-      await dexieTable.put(item);
+    if (!local || (item.updatedAt ?? 0) > (local.updatedAt ?? 0)) {
+      await dexieTable.put(local && hydrate ? hydrate(item, local) : item);
     }
   }
 
   switch (table) {
     case 'accounts': await putIfNewer(db.accounts, fromSupabaseAccount(row)); break;
-    case 'transactions': await putIfNewer(db.transactions, fromSupabaseTransaction(row)); break;
+    case 'transactions': await putIfNewer(db.transactions, fromSupabaseTransaction(row), preserveTransactionFields); break;
     case 'budgets': await putIfNewer(db.budgets, fromSupabaseBudget(row)); break;
     case 'tags': await putIfNewer(db.tags, fromSupabaseTag(row)); break;
     case 'categories': await putIfNewer(db.categories, fromSupabaseCategory(row)); break;
@@ -1164,6 +1237,8 @@ export async function applyRealtimeChange(
   if (eventType === 'DELETE') {
     const id = oldRow?.id ? String(oldRow.id) : null;
     if (!id) return;
+    // Keep a local row that still has an unsent write
+    if ((getDirty()[table] ?? []).includes(id)) return;
     switch (table) {
       case 'accounts': await db.accounts.delete(id); break;
       case 'transactions': await db.transactions.delete(id); break;
@@ -1299,6 +1374,12 @@ export function triggerSync(table: TableName, id: string, immediate = false): vo
     void pushDirtyRecords(user.id);
     syncTimer = null;
   }, delay);
+}
+
+/** Clear dirty + deleted queues. Used on sign-out so the next account cannot replay them. */
+export function clearSyncLocalState(): void {
+  localStorage.removeItem(DIRTY_KEY);
+  localStorage.removeItem(DELETED_KEY);
 }
 
 /** Check if any pending dirty writes exist, optionally filtered by specific tables. */

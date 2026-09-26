@@ -8,18 +8,24 @@ export async function syncConnections(userId: string) {
     if (error) throw error;
 
     if (data) {
+      const existingById = new Map(
+        (await db.cacheConnections.toArray()).map(c => [c.id, c]),
+      );
       const conns: CacheConnection[] = [];
       const profs: CacheProfile[] = [];
 
       data.forEach((row: any) => {
         if (row.status === 'declined') return;
+        const existing = existingById.get(row.connection_id);
         conns.push({
           id: row.connection_id,
           user_a: userId,
           user_b: row.other_user_id,
           status: row.status,
           action_user_id: row.action_user_id,
-          created_at: 0,
+          created_at: existing?.created_at && existing.created_at > 0
+            ? existing.created_at
+            : Date.now(),
           updatedAt: Date.now()
         });
 

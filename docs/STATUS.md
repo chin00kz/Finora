@@ -58,8 +58,8 @@ This document tracks temporary/current information, active phases, feature branc
     - PASS: Friends & Connections incoming request UI (Accept is primary, Decline is secondary, mobile layout fits, display name readable).
     - DEFERRED: "Remove Friend" capability. Investigation revealed that deleting a connection row prevents that user's profile from syncing into the local cache on fresh installs. Until a dedicated `syncMissingProfiles(uuid[])` pipeline is added to safely hydrate historical IOUs, removing connections would break historical display names.
 
-- **Phase 5 — Shared Expenses / Split Transactions: NEXT — DESIGN PASS ONLY**
-  *(Note: Phase 5 is a major/core workflow and requires a dedicated PRODUCT + ARCHITECTURE DESIGN PASS before any implementation)*
+- **Phase 5 — Shared Expenses / Split Transactions: IMPLEMENTED (beta on backup/broken-phase5-2026-09-26)**
+  *(Shipped: split UX, local debts, shared outbox RPCs, Shared / Relationship pages. 26 Sep 2026 sync-integrity pass: pull no longer deletes local-only rows; split debts are marked dirty; outbox flushes on save/login; split fields map + survive echo; Dexie `sharedPayments` + groups mappers aligned to schema.)*
 
   **Intent:**
   - extremely fast expense splitting
