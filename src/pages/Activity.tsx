@@ -281,7 +281,7 @@ export default function Activity() {
     const idsToDelete = Array.from(selectedIds);
     const txnsToDelete = transactions.filter(t => idsToDelete.includes(t.id));
 
-    await db.transaction('rw', [db.transactions, db.accounts, db.transactionProvenance], async () => {
+    await db.transaction('rw', [db.transactions, db.accounts], async () => {
       // Revert account balances
       for (const txn of txnsToDelete) {
         const acc = await db.accounts.get(txn.accountId);
@@ -300,18 +300,7 @@ export default function Activity() {
           });
         }
       }
-      // Preserve provenance for split transactions
-        const toArchive = txnsToDelete
-          .filter(t => t.isShared && t.splitDetails && t.splitStatus === 'synced')
-          .map(t => ({
-            id: t.id,
-            transactionSnapshot: t,
-            archivedAt: Date.now()
-          }));
-        if (toArchive.length > 0) {
-          await db.transactionProvenance.bulkPut(toArchive);
-        }
-        await db.transactions.bulkDelete(idsToDelete);
+      await db.transactions.bulkDelete(idsToDelete);
     });
 
     const affectedAccountIds = new Set<string>();

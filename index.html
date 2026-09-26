@@ -6,43 +6,11 @@
     <link rel="icon" type="image/png" sizes="32x32" href="/favicon-32x32.png" />
     <link rel="icon" type="image/png" sizes="16x16" href="/favicon-16x16.png" />
     <link rel="apple-touch-icon" sizes="180x180" href="/apple-touch-icon.png" />
-    <link rel="manifest" href="/manifest.webmanifest" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
     <meta name="apple-mobile-web-app-capable" content="yes" />
     <meta name="mobile-web-app-capable" content="yes" />
     <meta name="theme-color" media="(prefers-color-scheme: light)" content="#f9fafb" />
     <meta name="theme-color" media="(prefers-color-scheme: dark)" content="#09090b" />
-    <style>
-      html { background-color: #f9fafb; }
-      html.dark { background-color: #09090b; }
-      body { margin: 0; background-color: transparent; }
-    </style>
-    <script>
-      (() => {
-        const lightBackground = '#f9fafb';
-        const darkBackground = '#09090b';
-
-        try {
-          const rawTheme = localStorage.getItem('finora-theme');
-          const savedTheme = rawTheme ? JSON.parse(rawTheme)?.state?.theme : 'system';
-          const prefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
-          const useDark = savedTheme === 'dark' || (savedTheme !== 'light' && prefersDark);
-          const color = useDark ? darkBackground : lightBackground;
-
-          if (useDark) {
-            document.documentElement.classList.add('dark');
-          }
-
-          document
-            .querySelectorAll('meta[name="theme-color"]')
-            .forEach(meta => {
-              meta.content = color;
-            });
-        } catch {
-          // Keep the static metadata if localStorage is unavailable.
-        }
-      })();
-    </script>
     <title>Finora Budget</title>
   </head>
   <body>

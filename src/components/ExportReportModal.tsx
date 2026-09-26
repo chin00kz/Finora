@@ -250,4 +250,3 @@ export default function ExportReportModal({ isOpen, onClose, defaultPeriod = 'cu
   );
 }
 
-

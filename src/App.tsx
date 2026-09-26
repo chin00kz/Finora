@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import { db } from './db/db';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { IDENTITY_ROLLOUT_CUTOFF } from './config';
-import { BrowserRouter, Routes, Route, Link, useLocation, useNavigate, Navigate } from 'react-router-dom';
+import { BrowserRouter, Routes, Route, Link, useLocation, useNavigate } from 'react-router-dom';
 import {
   Home,
   List,
@@ -41,8 +41,6 @@ import Dashboard from './pages/Dashboard';
 import Accounts from './pages/Accounts';
 import Activity from './pages/Activity';
 import Debts from './pages/Debts';
-import Shared from './pages/Shared';
-import Relationship from './pages/Relationship';
 import Settings from './pages/Settings';
 import Connections from './pages/Connections';
 import Notifications from './pages/Notifications';
@@ -70,31 +68,17 @@ function ThemeInitializer() {
 
   useEffect(() => {
     const root = document.documentElement;
-    const lightBackground = '#f9fafb';
-    const darkBackground = '#09090b';
-
-    const setThemeColor = (color: string) => {
-      document
-        .querySelectorAll<HTMLMetaElement>('meta[name="theme-color"]')
-        .forEach(meta => {
-          meta.content = color;
-        });
-    };
 
     const applyTheme = () => {
       if (theme === 'dark') {
         root.classList.add('dark');
-        setThemeColor(darkBackground);
       } else if (theme === 'light') {
         root.classList.remove('dark');
-        setThemeColor(lightBackground);
       } else {
         if (window.matchMedia('(prefers-color-scheme: dark)').matches) {
           root.classList.add('dark');
-          setThemeColor(darkBackground);
         } else {
           root.classList.remove('dark');
-          setThemeColor(lightBackground);
         }
       }
     };
@@ -123,14 +107,13 @@ function DesktopSidebar({ syncStatus }: { syncStatus: 'idle' | 'syncing' | 'erro
   const { isMasked, toggleMask } = usePrivacyStore();
 
   const navItems = [
-    { to: '/home', label: 'Home', icon: Home },
+    { to: '/', label: 'Home', icon: Home },
     { to: '/accounts', label: 'Accounts', icon: PieChart },
     { to: '/activity', label: 'Activity', icon: List },
     { to: '/analytics', label: 'Analytics', icon: BarChart3 },
     { to: '/goals', label: 'Savings Goals', icon: Target },
     { to: '/recurring', label: 'Recurring', icon: Repeat },
     { to: '/debts', label: 'IOUs & Debts', icon: Users },
-    { to: '/shared', label: 'Shared', icon: Users },
     { to: '/statements', label: 'Statement Reader', icon: FileText },
     { to: '/connections', label: 'Friends & Connections', icon: Users },
     { to: '/notifications', label: 'Notifications', icon: Bell },
@@ -262,8 +245,6 @@ function getNavIcon(id: NavItemId) {
     case 'activity':
       return List;
     case 'debts':
-      return Users;
-    case 'shared':
       return Users;
     case 'analytics':
       return BarChart3;
@@ -443,7 +424,6 @@ function MobileBottomNav({ syncStatus }: { syncStatus: 'idle' | 'syncing' | 'err
               <Link
                 key={id}
                 to={item.to}
-                onClick={() => setIsMoreOpen(false)}
                 className={`flex flex-col items-center justify-center w-full h-full ${
                   active ? 'text-foreground' : 'text-muted-foreground'
                 }`}
@@ -505,18 +485,6 @@ function MobileBottomNav({ syncStatus }: { syncStatus: 'idle' | 'syncing' | 'err
       </nav>
     </>
   );
-}
-
-function StartPageRedirector() {
-  const { startPage } = usePrivacyStore();
-  
-  if (startPage === 'shared') {
-    return <Navigate to="/shared" replace />;
-  }
-  if (startPage === 'activity') {
-    return <Navigate to="/activity" replace />;
-  }
-  return <Navigate to="/home" replace />;
 }
 
 // ── Main App Shell (Full Application) ───────────────────────────────────────
@@ -600,9 +568,8 @@ function MainAppShell() {
       <main className="flex-1 min-w-0 min-h-[100dvh] overflow-y-auto">
         <div className="w-full min-h-[100dvh]">
           <Routes>
-            <Route path="/" element={<StartPageRedirector />} />
             <Route
-              path="/home"
+              path="/"
               element={
                 <>
                   <MigrateLocalDataBanner />
@@ -616,8 +583,6 @@ function MainAppShell() {
             <Route path="/goals" element={<Goals />} />
             <Route path="/recurring" element={<Recurring />} />
             <Route path="/debts" element={<Debts />} />
-            <Route path="/shared" element={<Shared />} />
-            <Route path="/shared/:identityKey" element={<Relationship />} />
             <Route path="/connections" element={<Connections />} />
             <Route path="/notifications" element={<Notifications />} />
               <Route path="/settings" element={<Settings />} />
@@ -710,7 +675,6 @@ function App() {
 }
 
 export default App;
-
 
 
 

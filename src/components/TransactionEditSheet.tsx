@@ -192,17 +192,9 @@ export default function TransactionEditSheet({ transaction, onClose }: Props) {
     });
     if (!ok) return;
     try {
-      await db.transaction('rw', db.transactions, db.accounts, db.transactionProvenance, async () => {
+      await db.transaction('rw', db.transactions, db.accounts, async () => {
         await reverseBalance();
-        // Preserve provenance
-          if (transaction.isShared && transaction.splitDetails && transaction.splitStatus === 'synced') {
-            await db.transactionProvenance.put({
-              id: transaction.id,
-              transactionSnapshot: transaction,
-              archivedAt: Date.now()
-            });
-          }
-          await db.transactions.delete(transaction.id);
+        await db.transactions.delete(transaction.id);
       });
       if (transaction.type === 'debt_settlement') {
         await syncSettlementFromTransactionDelete(transaction);

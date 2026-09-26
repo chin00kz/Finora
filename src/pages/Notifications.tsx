@@ -29,7 +29,7 @@ export default function Notifications() {
     }
 
     if (n.entity_type === 'shared_iou') {
-      navigate('/shared', { state: { sharedIouId: n.entity_id } });
+      navigate('/debts', { state: { sharedIouId: n.entity_id } });
     } else if (n.entity_type === 'connection') {
       navigate('/connections');
     }
