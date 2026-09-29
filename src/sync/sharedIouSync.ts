@@ -31,6 +31,7 @@ export async function syncSharedIous(): Promise<{ success: boolean; error?: stri
       currency: row.currency,
       description: row.description || undefined,
       status: row.status,
+      status_reason: row.status_reason || undefined,
       created_at: Number(row.created_at),
       accepted_at: row.accepted_at ? Number(row.accepted_at) : undefined,
       updated_at: Number(row.updated_at)
@@ -86,6 +87,73 @@ export async function syncSharedIouSettlements(): Promise<{ success: boolean; er
         await db.cacheSharedIouSettlements.bulkPut(normalized);
       }
     });
+    
+    // Process local outbox
+    const authStore = (await import('../store/authStore')).useAuthStore.getState();
+    const currentUid = authStore.user?.id;
+    if (currentUid) {
+      const outboxEntries = await db.pendingAccountOutbox.toArray();
+      for (const outbox of outboxEntries) {
+        if (outbox.uid !== currentUid) continue;
+        
+        const cloudRow = normalized.find(r => r.id === outbox.id);
+        if (!cloudRow || cloudRow.status === 'pending') continue;
+        
+        if (cloudRow.status === 'rejected') {
+          await db.pendingAccountOutbox.delete(outbox.id);
+          continue;
+        }
+        
+        if (cloudRow.status === 'confirmed') {
+          let appliedTxnId: string | null = null;
+          let appliedAccountId: string | null = null;
+
+          await db.transaction('rw', [db.accounts, db.transactions, db.pendingAccountOutbox], async () => {
+            const existing = await db.transactions.where('debtSettlementId').equals(outbox.id).first();
+            if (existing) {
+              await db.pendingAccountOutbox.delete(outbox.id);
+              return;
+            }
+            
+            const acc = await db.accounts.get(outbox.accountId);
+            if (!acc) {
+              console.warn('Account deleted before payment confirmed. Skipping local transaction.');
+              await db.pendingAccountOutbox.delete(outbox.id);
+              return;
+            }
+            
+            await db.accounts.update(acc.id, {
+              balance: acc.balance - outbox.amount,
+              updatedAt: Date.now()
+            });
+            
+            const { createId } = await import('../utils/createId');
+            const txnId = createId('txn');
+            await db.transactions.add({
+              id: txnId,
+              type: 'debt_settlement',
+              amount: outbox.amount,
+              date: Date.now(),
+              accountId: acc.id,
+              notes: 'Shared IOU Payment',
+              debtDirection: 'iOweThem',
+              debtSettlementId: outbox.id,
+              updatedAt: Date.now()
+            });
+            
+            await db.pendingAccountOutbox.delete(outbox.id);
+            appliedTxnId = txnId;
+            appliedAccountId = acc.id;
+          });
+
+          if (appliedTxnId && appliedAccountId) {
+            const { triggerSync } = await import('./syncEngine');
+            triggerSync('accounts', appliedAccountId);
+            triggerSync('transactions', appliedTxnId);
+          }
+        }
+      }
+    }
 
     console.log(`[SharedIOU Settlement Sync] Atomically cached ${normalized.length} settlements.`);
     return { success: true };
@@ -94,3 +162,4 @@ export async function syncSharedIouSettlements(): Promise<{ success: boolean; er
     return { success: false, error: err.message };
   }
 }
+

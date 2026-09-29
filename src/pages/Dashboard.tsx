@@ -28,6 +28,7 @@ import { computeSafeToSpendSync } from '../utils/safeToSpendEngine';
 import SafeToSpendCard from '../components/SafeToSpendCard';
 import { usePrivacyStore } from '../store/privacyStore';
 import MaskedAmount from '../components/MaskedAmount';
+import NotificationBell from '../components/NotificationBell';
 
 /**
  * Resolves a restrained, professional Lucide icon for a transaction row.
@@ -197,6 +198,7 @@ export default function Dashboard() {
           <span className="text-sm font-medium text-muted-foreground">Available</span>
 
           <div className="flex items-center gap-1 -mr-2">
+            <NotificationBell />
             {/* Safe-to-Spend Status Shield Icon */}
             {showSafeToSpendHome && (
               <button

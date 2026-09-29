@@ -424,6 +424,7 @@ function MobileBottomNav({ syncStatus }: { syncStatus: 'idle' | 'syncing' | 'err
               <Link
                 key={id}
                 to={item.to}
+                onClick={() => setIsMoreOpen(false)}
                 className={`flex flex-col items-center justify-center w-full h-full ${
                   active ? 'text-foreground' : 'text-muted-foreground'
                 }`}

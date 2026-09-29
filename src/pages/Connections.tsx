@@ -1,4 +1,4 @@
-﻿import { useState, useEffect } from 'react';
+import { useState, useEffect } from 'react';
 import { useAuthStore } from '../store/authStore';
 import { supabase } from '../lib/supabase';
 import { Search, Check, X, Clock, ArrowLeft } from 'lucide-react';
@@ -7,14 +7,15 @@ import type { CacheProfile, CacheConnection, Person } from '../db/db';
 import { syncConnections } from '../sync/connectionSync';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { Link } from 'react-router-dom';
-import { triggerSync } from '../sync/syncEngine';
+import NotificationBell from '../components/NotificationBell';
+import FriendDetailSheet from '../components/FriendDetailSheet';
 
 export default function Connections() {
   const { user } = useAuthStore();
   const [profile, setProfile] = useState<CacheProfile | null>(null);
   const [loading, setLoading] = useState(true);
-  const [expandedFriendId, setExpandedFriendId] = useState<string | null>(null);
-  const [selectedPersonId, setSelectedPersonId] = useState<string | undefined>(undefined);
+  const [selectedConnectionId, setSelectedConnectionId] = useState<string | null>(null);
+
 
   // Search State
   const [searchQuery, setSearchQuery] = useState('');
@@ -132,11 +133,14 @@ export default function Connections() {
 
   return (
     <div className="flex-1 w-full max-w-md mx-auto relative pb-24 md:pb-8 pt-6 px-4 space-y-6">
-      <div className="flex items-center gap-3">
-        <Link to="/" className="p-2 -ml-2 rounded-full hover:bg-muted text-foreground transition-colors">
-          <ArrowLeft className="w-5 h-5" />
-        </Link>
-        <h1 className="text-xl font-bold tracking-tight text-foreground">Friends & Connections</h1>
+      <div className="flex items-center justify-between gap-3">
+        <div className="flex items-center gap-3">
+          <Link to="/" className="p-2 -ml-2 rounded-full hover:bg-muted text-foreground transition-colors">
+            <ArrowLeft className="w-5 h-5" />
+          </Link>
+          <h1 className="text-xl font-bold tracking-tight text-foreground">Friends & Connections</h1>
+        </div>
+        <NotificationBell />
       </div>
 
       {/* Find People */}
@@ -236,67 +240,28 @@ export default function Connections() {
                     </div>
                     <div className="flex items-center gap-2">
                       <button
-                        onClick={() => {
-                            setExpandedFriendId(expandedFriendId === conn.id ? null : conn.id);
-                            setSelectedPersonId(undefined);
-                          }}
+                        onClick={() => setSelectedConnectionId(conn.id)}
                         className="text-[11px] px-2 py-1 bg-secondary text-secondary-foreground rounded font-medium hover:bg-secondary/80"
                       >
-                        {expandedFriendId === conn.id ? 'Close' : (linkedPerson ? 'Manage Link' : 'Link Person...')}
+                        Details
                       </button>
                       <span className="text-xs px-3 py-1 bg-green-500/10 text-green-500 rounded-md font-medium">Connected</span>
                     </div>
                   </div>
-                  {expandedFriendId === conn.id && (<div className="pt-2 border-t border-border/50 animate-in slide-in-from-top-2 duration-200">
-                    <label className="block text-xs font-medium text-muted-foreground mb-1.5">Link local Person record (optional)</label>                      <div className="flex gap-2">
-                        <select
-                          className="flex-1 bg-background text-sm text-foreground border border-border/50 rounded-lg px-3 py-2 outline-none focus:ring-1 focus:ring-primary"
-                          value={selectedPersonId !== undefined ? selectedPersonId : (people.find((p: Person) => p.connection_id === conn.id)?.id || '')}
-                          onChange={(e) => setSelectedPersonId(e.target.value)}
-                        >
-                          <option value="">Match Person / Link existing person...</option>
-                          {people.map((p: Person) => (
-                            <option key={p.id} value={p.id}>{p.name}</option>
-                          ))}
-                        </select>
-                        {selectedPersonId !== undefined && selectedPersonId !== (people.find((p: Person) => p.connection_id === conn.id)?.id || '') && (
-                          <button
-                            onClick={async () => {
-                              try {
-                                const now = Date.now();
-                                const linkedPerson = people.find((p: Person) => p.connection_id === conn.id);
-
-                                if (!selectedPersonId) {
-                                  if (linkedPerson) {
-                                    await db.people.update(linkedPerson.id, { connection_id: null as any, updatedAt: now });
-                                    triggerSync('people', linkedPerson.id);
-                                  }
-                                } else {
-                                  if (linkedPerson && linkedPerson.id !== selectedPersonId) {
-                                    await db.people.update(linkedPerson.id, { connection_id: null as any, updatedAt: now });
-                                    triggerSync('people', linkedPerson.id);
-                                  }
-                                  await db.people.update(selectedPersonId, { connection_id: conn.id, updatedAt: now });
-                                  triggerSync('people', selectedPersonId);
-                                }
-                                setSelectedPersonId(undefined);
-                              } catch (err) {
-                                console.error("Failed to link person", err);
-                              }
-                            }}
-                            className="px-4 py-2 bg-primary text-primary-foreground text-sm font-medium rounded-lg"
-                          >
-                            Save
-                          </button>
-                        )}
-                      </div>
-                  </div>)}
                 </div>
               );
             })}
           </div>
         </div>
       )}
+
+      <FriendDetailSheet
+        isOpen={selectedConnectionId !== null}
+        onClose={() => setSelectedConnectionId(null)}
+        connection={cachedConnections.find(c => c.id === selectedConnectionId) || null}
+        profile={cachedProfiles.find(p => p.id === (cachedConnections.find(c => c.id === selectedConnectionId)?.user_a === user?.id ? cachedConnections.find(c => c.id === selectedConnectionId)?.user_b : cachedConnections.find(c => c.id === selectedConnectionId)?.user_a)) || null}
+        currentUserId={user?.id}
+      />
     </div>
   );
 }

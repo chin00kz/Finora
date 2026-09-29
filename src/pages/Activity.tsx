@@ -27,6 +27,7 @@ import { useUIStore } from '../store/uiStore';
 import { usePrivacyStore } from '../store/privacyStore';
 import MaskedAmount from '../components/MaskedAmount';
 import { useConfirm } from '../components/ConfirmDialog';
+import NotificationBell from '../components/NotificationBell';
 
 export default function Activity() {
   const { confirmDialog, requestConfirm } = useConfirm();
@@ -374,6 +375,7 @@ export default function Activity() {
         </div>
 
         <div className="flex items-center gap-2">
+          <NotificationBell />
           {/* Search bar with / indicator */}
           <div className="relative flex-1 sm:w-64">
             <Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />

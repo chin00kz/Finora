@@ -1,4 +1,5 @@
 import { createId } from '../utils/createId';
+import NotificationBell from '../components/NotificationBell';
 import { useState, useMemo } from 'react';
 import type { ReactNode } from 'react';
 import { useLiveQuery } from 'dexie-react-hooks';
@@ -532,7 +533,10 @@ export default function FloatTools() {
         <span>/</span>
         <span>Credit &amp; Float Tools</span>
       </div>
-      <h2 className="text-2xl font-medium text-foreground mb-6">Credit &amp; Float Tools</h2>
+      <div className="flex items-center justify-between mb-6">
+        <h2 className="text-2xl font-medium text-foreground">Credit &amp; Float Tools</h2>
+        <NotificationBell />
+      </div>
 
       <div className="flex items-center gap-1 mb-6 overflow-x-auto pb-1">
         {TABS.map(tab => (

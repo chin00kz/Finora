@@ -19,6 +19,7 @@ import { createId } from '../utils/createId';
 import { formatMoney } from '../utils/formatters';
 import { useConfirm } from '../components/ConfirmDialog';
 import MaskedAmount from '../components/MaskedAmount';
+import NotificationBell from '../components/NotificationBell';
 
 const GOAL_COLORS = [
   '#10b981', // emerald
@@ -162,13 +163,16 @@ export default function Goals() {
             Track targets, emergency funds, and major milestones
           </p>
         </div>
-        <button
-          onClick={openAddModal}
-          className="flex items-center gap-1.5 px-3.5 py-2 bg-accent text-accent-foreground rounded-xl text-xs font-medium active:scale-95 transition-transform shadow-sm"
-        >
-          <Plus size={16} />
-          <span>New Goal</span>
-        </button>
+        <div className="flex items-center gap-2">
+          <NotificationBell />
+          <button
+            onClick={openAddModal}
+            className="flex items-center gap-1.5 px-3.5 py-2 bg-accent text-accent-foreground rounded-xl text-xs font-medium active:scale-95 transition-transform shadow-sm"
+          >
+            <Plus size={16} />
+            <span>New Goal</span>
+          </button>
+        </div>
       </div>
 
       {goals.length === 0 ? (

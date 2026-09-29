@@ -10,6 +10,7 @@ import { getBudgetStatus } from '../utils/budgetUtils';
 import ExportReportModal from '../components/ExportReportModal';
 import { useConfirm } from '../components/ConfirmDialog';
 import MaskedAmount from '../components/MaskedAmount';
+import NotificationBell from '../components/NotificationBell';
 
 export default function BudgetDetail() {
   const navigate = useNavigate();
@@ -85,13 +86,16 @@ export default function BudgetDetail() {
           </button>
           <h2 className="text-xl font-medium text-foreground ml-1">Budget</h2>
         </div>
-        <button
-          onClick={() => setIsExportOpen(true)}
-          className="flex items-center gap-1.5 px-3 py-1.5 bg-card border border-border hover:bg-muted text-xs font-medium rounded-xl text-foreground transition-colors shadow-xs"
-        >
-          <Download size={14} />
-          <span>Export Report</span>
-        </button>
+        <div className="flex items-center gap-2">
+          <NotificationBell />
+          <button
+            onClick={() => setIsExportOpen(true)}
+            className="flex items-center gap-1.5 px-3 py-1.5 bg-card border border-border hover:bg-muted text-xs font-medium rounded-xl text-foreground transition-colors shadow-xs"
+          >
+            <Download size={14} />
+            <span>Export Report</span>
+          </button>
+        </div>
       </div>
 
       <div className="p-6 space-y-6">

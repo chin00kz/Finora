@@ -24,6 +24,7 @@ import {
 import ExportReportModal from '../components/ExportReportModal';
 import MonthlyDigestModal from '../components/MonthlyDigestModal';
 import MaskedAmount from '../components/MaskedAmount';
+import NotificationBell from '../components/NotificationBell';
 
 export default function Analytics() {
   const budgets = useLiveQuery(() => db.budgets.toArray()) || [];
@@ -233,6 +234,7 @@ export default function Analytics() {
         </div>
 
         <div className="flex items-center gap-2">
+          <NotificationBell />
           {/* Period Selector */}
           <div className="relative">
             <select

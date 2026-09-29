@@ -1,4 +1,4 @@
-﻿// src/utils/sharedIouSettlementEngine.ts
+// src/utils/sharedIouSettlementEngine.ts
 import type { CacheSharedIouSettlement } from '../db/db';
 
 export interface SharedIouFinancials {
@@ -33,7 +33,7 @@ export function getSharedIouSettlementStatus(iouAmount: number, settlements: Cac
 
 export function canProposePayment(
   source: 'local' | 'shared',
-  status: 'active' | 'settled' | 'pending',
+  status: 'active' | 'settled' | 'pending' | 'cancelled' | 'rejected',
   direction: 'theyOweMe' | 'iOweThem',
   availableToPropose: number
 ): boolean {
@@ -47,7 +47,7 @@ export function canProposePayment(
 
 export function canReviewPayment(
   source: 'local' | 'shared',
-  status: 'active' | 'settled' | 'pending',
+  status: 'active' | 'settled' | 'pending' | 'cancelled' | 'rejected',
   direction: 'theyOweMe' | 'iOweThem'
 ): boolean {
   return (

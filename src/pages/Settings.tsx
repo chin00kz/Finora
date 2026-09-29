@@ -16,6 +16,7 @@ import Logo from '../components/Logo';
 import { createId } from '../utils/createId';
 import { useConfirm } from '../components/ConfirmDialog';
 import FinoraProfileWidget from '../components/FinoraProfileWidget';
+import NotificationBell from '../components/NotificationBell';
 
 export default function Settings() {
   const { confirmDialog, requestConfirm } = useConfirm();
@@ -189,7 +190,10 @@ export default function Settings() {
   return (
     <div className="p-6 pb-28 max-w-5xl mx-auto">
       {confirmDialog}
-      <h2 className="text-2xl font-medium text-foreground mb-6">Settings</h2>
+      <div className="flex items-center justify-between mb-6">
+        <h2 className="text-2xl font-medium text-foreground">Settings</h2>
+        <NotificationBell />
+      </div>
 
       {/* ── Account ─────────────────────────────────────────────────────────── */}
       <section className="bg-card rounded-2xl border border-border shadow-sm overflow-hidden mb-6">

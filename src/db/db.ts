@@ -343,6 +343,7 @@ const db = new Dexie('FinoraDB') as Dexie & {
     cacheSharedIous: EntityTable<CacheSharedIou, 'id'>;
     cacheSharedIouSettlements: EntityTable<CacheSharedIouSettlement, 'id'>;
     cacheNotifications: EntityTable<CacheNotification, 'id'>;
+    pendingAccountOutbox: EntityTable<PendingAccountOutbox, 'id'>;
 };
 
 
@@ -437,6 +438,8 @@ export interface CacheConnection {
   status: 'pending' | 'accepted' | 'declined' | 'blocked';
   action_user_id: string;
   blocked_by_user_id?: string;
+  user_a_auto_accepts_ious?: boolean;
+  user_b_auto_accepts_ious?: boolean;
   created_at: number;
   updatedAt?: number;
 }
@@ -463,12 +466,20 @@ export interface CacheNotification {
   created_at: number;
 }
 
+export interface PendingAccountOutbox {
+  id: string;
+  uid: string;
+  accountId: string;
+  amount: number;
+}
+
 export interface CacheSharedIouSettlement {
   id: string;
   shared_iou_id: string;
   amount: number;
   proposed_by: string;
   status: 'pending' | 'confirmed' | 'rejected';
+  note?: string;
   created_at: number;
   confirmed_at?: number;
   confirmed_by?: string;
@@ -483,6 +494,7 @@ export interface CacheSharedIou {
   currency: string;
   description?: string;
   status: string;
+  status_reason?: string;
   created_at: number;
   accepted_at?: number;
   updated_at: number;
@@ -505,6 +517,12 @@ db.version(12).stores({
   cacheNotifications: "id, read_at, created_at"
 });
 
+db.version(13).stores({
+  pendingAccountOutbox: "id",
+  transactions: "id, type, date, accountId, categoryId, debtId, debtSettlementId, updatedAt"
+});
+
 export { db };
+
 
 

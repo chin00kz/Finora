@@ -7,6 +7,7 @@ import { triggerSync, deleteFromCloud } from '../sync/syncEngine';
 import { createId } from '../utils/createId';
 import { useConfirm } from '../components/ConfirmDialog';
 import MaskedAmount from '../components/MaskedAmount';
+import NotificationBell from '../components/NotificationBell';
 
 const ACCOUNT_TYPES: { id: AccountType; label: string; icon: string }[] = [
   { id: 'cash', label: 'Cash', icon: '💵' },
@@ -100,12 +101,15 @@ export default function Accounts() {
     <div className="p-6 pb-28 max-w-5xl mx-auto">
       <div className="flex justify-between items-center mb-6">
         <h2 className="text-2xl font-medium text-foreground">Accounts</h2>
-        <button 
-          onClick={() => openModal()}
-          className="bg-muted text-foreground px-3 py-2 rounded-xl text-sm font-medium flex items-center active:scale-95 transition-transform"
-        >
-          <Plus size={16} className="mr-1" /> Add
-        </button>
+        <div className="flex items-center gap-2">
+          <NotificationBell />
+          <button 
+            onClick={() => openModal()}
+            className="bg-muted text-foreground px-3 py-2 rounded-xl text-sm font-medium flex items-center active:scale-95 transition-transform"
+          >
+            <Plus size={16} className="mr-1" /> Add
+          </button>
+        </div>
       </div>
       
       <div className="bg-card rounded-2xl p-6 border border-border shadow-sm mb-8">

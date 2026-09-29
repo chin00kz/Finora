@@ -16,6 +16,7 @@ import { formatMoney } from '../utils/formatters';
 import { useAuthStore } from '../store/authStore';
 import { supabase } from '../lib/supabase';
 import { syncSharedIous, syncSharedIouSettlements } from '../sync/sharedIouSync';
+import NotificationBell from '../components/NotificationBell';
 
 type FilterTab = 'all' | 'owed_to_me' | 'i_owe' | 'settled';
 
@@ -28,9 +29,11 @@ export interface UnifiedIou {
   currency: string;
   direction: 'theyOweMe' | 'iOweThem';
   description?: string;
-  status: 'active' | 'settled' | 'pending';
+  status: 'active' | 'settled' | 'pending' | 'cancelled' | 'rejected';
   date: number;
   isShared: boolean;
+  statusReason?: string;
+  creatorId?: string;
   rawDebt?: Debt;
   availableToPropose?: number;
   pendingTotal?: number;
@@ -157,7 +160,7 @@ export default function Debts() {
 
       for (const iou of sharedIous) {
         const isAccepted = iou.status === 'accepted' || actionedIous[iou.id] === 'accepted';
-        const isSettled = iou.status === 'settled';
+        const isSettled = iou.status === 'settled' || iou.status === 'cancelled' || iou.status === 'rejected';
         const isOutgoingPending = iou.status === 'pending' && iou.creator_id === user?.id && !actionedIous[iou.id];
 
         if (isAccepted || isSettled || isOutgoingPending) {
@@ -178,9 +181,11 @@ export default function Debts() {
             currency: iou.currency,
             direction: iou.creditor_id === user?.id ? 'theyOweMe' : 'iOweThem',
             description: iou.description,
-            status: (isSettled || (isAccepted && remainingAmount === 0)) ? 'settled' : (isAccepted ? 'active' : 'pending'),
+            status: iou.status === 'cancelled' || iou.status === 'rejected' ? iou.status : ((iou.status === 'settled' || (isAccepted && remainingAmount === 0)) ? 'settled' : (isAccepted ? 'active' : 'pending')),
             date: iou.created_at || 0,
             isShared: true,
+            creatorId: iou.creator_id,
+            statusReason: iou.status_reason,
             availableToPropose,
             pendingTotal,
             pendingSettlements,
@@ -263,7 +268,7 @@ export default function Debts() {
         } else if (activeTab === 'i_owe') {
           if (iou.direction !== 'iOweThem' || iou.status === 'settled') return false;
         } else if (activeTab === 'settled') {
-          if (iou.status !== 'settled') return false;
+          if (iou.status !== 'settled' && iou.status !== 'cancelled' && iou.status !== 'rejected') return false;
         }
 
         return true;
@@ -289,13 +294,16 @@ export default function Debts() {
             Manage money owed between people
           </p>
         </div>
-        <button
-          onClick={() => setIsAddModalOpen(true)}
-          className="inline-flex items-center justify-center gap-1.5 px-3 py-1.5 bg-accent text-accent-foreground rounded-xl text-sm font-medium shadow-sm hover:opacity-90 active:scale-95 transition-all"
-        >
-          <Plus size={16} />
-          <span>Record</span>
-        </button>
+        <div className="flex items-center gap-2">
+          <NotificationBell />
+          <button
+            onClick={() => setIsAddModalOpen(true)}
+            className="inline-flex items-center justify-center gap-1.5 px-3 py-1.5 bg-accent text-accent-foreground rounded-xl text-sm font-medium shadow-sm hover:opacity-90 active:scale-95 transition-all"
+          >
+            <Plus size={16} />
+            <span>Record</span>
+          </button>
+        </div>
       </div>
 
       {/* ONE Financial Summary Card */}
@@ -421,8 +429,9 @@ export default function Debts() {
           {filteredIous.map(iou => {
             const isTheyOweMe = iou.direction === 'theyOweMe';
             const isSettled = iou.status === 'settled';
+            const isCancelled = iou.status === 'cancelled' || iou.status === 'rejected';
             const isPending = iou.status === 'pending';
-            const amountColor = isSettled ? 'text-muted-foreground' : isTheyOweMe ? 'text-emerald-500' : 'text-amber-500';
+            const amountColor = (isSettled || isCancelled) ? 'text-muted-foreground' : isTheyOweMe ? 'text-emerald-500' : 'text-amber-500';
 
             return (
               <div
@@ -438,7 +447,7 @@ export default function Debts() {
               >
                 <div className="flex items-start justify-between gap-4 w-full">
                   <div className="flex-1 min-w-0 pt-0.5">
-                  <p className={`text-base font-medium truncate mb-0.5 ${isSettled ? 'text-muted-foreground line-through' : 'text-foreground'}`}>
+                  <p className={`text-base font-medium truncate mb-0.5 ${(isSettled || isCancelled) ? 'text-muted-foreground line-through' : 'text-foreground'}`}>
                     {iou.personName}
                   </p>
 
@@ -468,7 +477,7 @@ export default function Debts() {
 
                 <div className="text-right shrink-0 flex flex-col items-end">
                   <p className={`text-xl sm:text-2xl font-medium tracking-tight ${amountColor}`}>
-                    <MaskedAmount amount={iou.amount} prefix={`${iou.currency} `} />
+                    <MaskedAmount amount={(isSettled || isCancelled) && iou.originalAmount !== undefined ? iou.originalAmount : iou.amount} prefix={`${iou.currency} `} />
                   </p>
                   {canProposePayment(iou.source, iou.status, iou.direction, iou.availableToPropose || 0) && (
                     <button
