@@ -467,11 +467,19 @@ export interface CacheNotification {
 }
 
 export interface PendingAccountOutbox {
-  id: string;
+  id: string;        // settlement ID — used as idempotency key via debtSettlementId
   uid: string;
   accountId: string;
   amount: number;
+  /**
+   * 'debit'  = debtor paying out (existing behavior, default when absent)
+   * 'credit' = creditor receiving deposit (added for MarkPaid flow)
+   */
+  direction?: 'debit' | 'credit';
+  error?: string; // Persistent failure state if recovery fails
+  timestamp: number; // For detecting pre-RPC crash zombie intents
 }
+
 
 export interface CacheSharedIouSettlement {
   id: string;

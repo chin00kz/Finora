@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { Modal } from './Modal';
 import { formatMoney } from '../utils/formatters';
 import { supabase } from '../lib/supabase';
-import { syncSharedIouSettlements } from '../sync/sharedIouSync';
+import { syncSharedIouSettlements, syncSharedIous } from '../sync/sharedIouSync';
 import { db } from '../db/db';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { useAuthStore } from '../store/authStore';
@@ -83,42 +83,66 @@ export default function ProposePaymentModal({
     }
 
     setIsSubmitting(true);
+
+    const { createId } = await import('../utils/createId');
+    const settlementId = createId('stl');
+    let outboxWritten = false;
+
+    if (payFromAccount && accountId && user) {
+      try {
+        await db.pendingAccountOutbox.put({
+          id: settlementId,
+          uid: user.id,
+          accountId,
+          amount: numDeposit,
+          direction: 'debit',
+          timestamp: Date.now()
+        });
+        outboxWritten = true;
+      } catch (localErr: any) {
+        console.error('Failed to write to local outbox:', localErr);
+        setError("Failed to locally prepare the account deduction. Please check storage limits and try again.");
+        setIsSubmitting(false);
+        return;
+      }
+    }
+
     try {
-      const { data, error: rpcError } = await supabase.rpc('propose_iou_payment', {
+      const { error: rpcError } = await supabase.rpc('propose_iou_payment', {
         p_iou_id: iouId,
         p_amount: numAmount,
-        p_note: note.trim() || undefined
+        p_note: note.trim() || undefined,
+        p_settlement_id: settlementId
       });
 
       if (rpcError) {
-        setError(rpcError.message || 'Payment proposal failed. Please ensure you are online.');
-        setIsSubmitting(false);
-        syncSharedIouSettlements().catch(console.error);
-        return;
-      }
+        // Did the server definitely NOT create the settlement?
+        const definitelyFailed = ['invalid_iou_status', 'iou_already_settled', 'iou_not_found', 'not_authorized', 'invalid_amount', 'settlement_id_conflict'].some(e => rpcError.message?.includes(e));
 
-      if (payFromAccount && accountId && user && data?.id) {
-        try {
-          await db.pendingAccountOutbox.add({
-            id: data.id,
-            uid: user.id,
-            accountId,
-            amount: numDeposit
-          });
-        } catch (localErr: any) {
-          console.error('Failed to write to local outbox:', localErr);
-          setError("Payment was proposed, but Finora couldn't queue the account deduction. If the payment is confirmed, record it manually in your account.");
-          setIsProposed(true);
+        if (definitelyFailed) {
+          if (outboxWritten) {
+            await db.pendingAccountOutbox.delete(settlementId);
+          }
+          let humanMsg = rpcError.message || 'Payment proposal failed. Please ensure you are online.';
+          if (rpcError.message?.includes('invalid_iou_status') || rpcError.message?.includes('iou_already_settled')) {
+            humanMsg = 'This IOU has already been updated. Please close and check the current status.';
+          } else if (rpcError.message?.includes('iou_not_found')) {
+            humanMsg = 'This IOU could not be found. It may have been removed.';
+          }
+          setError(humanMsg);
           setIsSubmitting(false);
-          syncSharedIouSettlements().catch(console.error);
+          Promise.all([syncSharedIouSettlements(), syncSharedIous()]).catch(console.error);
           return;
         }
+
+        // For ambiguous errors (like network timeouts), DO NOT delete the outbox intent.
+        throw new Error(rpcError.message);
       }
 
-      syncSharedIouSettlements().catch(console.error);
+      Promise.all([syncSharedIouSettlements(), syncSharedIous()]).catch(console.error);
       onClose();
     } catch (err: any) {
-      setError(err.message || 'Network error.');
+      setError(err.message || 'Network error. Please try again.');
       setIsSubmitting(false);
     }
   };

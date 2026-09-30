@@ -5,8 +5,6 @@ import { syncSharedIouSettlements, syncSharedIous } from '../sync/sharedIouSync'
 import type { CacheSharedIouSettlement } from '../db/db';
 import { db } from '../db/db';
 import { useLiveQuery } from 'dexie-react-hooks';
-import { createId } from '../utils/createId';
-import { triggerSync } from '../sync/syncEngine';
 
 interface Props {
   settlement: CacheSharedIouSettlement;
@@ -25,6 +23,22 @@ export default function CreditorSettlementReview({ settlement, currency, remaini
   const [isConfirmed, setIsConfirmed] = useState(false);
 
   const accounts = useLiveQuery(() => db.accounts.toArray()) || [];
+
+  const mapSettlementRpcError = (msg: string): string => {
+    if (msg.includes('settlement_not_pending')) {
+      return 'This payment has already been reviewed. Refreshing…';
+    }
+    if (msg.includes('invalid_iou_status') || msg.includes('iou_already_settled')) {
+      return 'This IOU has already been updated. Refreshing…';
+    }
+    if (msg.includes('settlement_not_found') || msg.includes('iou_not_found')) {
+      return 'The payment record could not be found. It may have been removed.';
+    }
+    if (msg.includes('not_authorized')) {
+      return 'You are not authorised to perform this action.';
+    }
+    return msg;
+  };
 
   const handleAction = async (action: 'confirm' | 'reject') => {
     setError('');
@@ -47,70 +61,63 @@ export default function CreditorSettlementReview({ settlement, currency, remaini
     }
 
     setActioning(action);
+    let outboxWritten = false;
+
+    // Persist durable intent BEFORE confirming the RPC
+    if (action === 'confirm' && depositToAccount && numDepositAmount > 0) {
+      try {
+        const { useAuthStore } = await import('../store/authStore');
+        const uid = useAuthStore.getState().user?.id ?? '';
+        await db.pendingAccountOutbox.put({
+          id: settlement.id,
+          uid,
+          accountId,
+          amount: numDepositAmount,
+          direction: 'credit',
+          timestamp: Date.now()
+        });
+        outboxWritten = true;
+      } catch (localErr: any) {
+        console.error('[CreditorSettlement] Failed to write deposit to outbox:', localErr);
+        setError("Failed to locally prepare the account deposit. Please check storage limits and try again.");
+        setActioning(null);
+        return;
+      }
+    }
+
     try {
       const rpcName = action === 'confirm' ? 'confirm_iou_payment' : 'reject_iou_payment';
       const { error: rpcError } = await supabase.rpc(rpcName, { p_settlement_id: settlement.id });
 
       if (rpcError) {
-        setError(rpcError.message || `Failed to ${action} payment.`);
-        setActioning(null);
-        // Fire a background refresh just in case it's a stale state error
-        syncSharedIouSettlements().catch(console.error);
-        syncSharedIous().catch(console.error);
-        return;
-      }
+        // Did the server definitely NOT modify the settlement?
+        const definitelyFailed = ['settlement_not_pending', 'invalid_iou_status', 'iou_already_settled', 'settlement_not_found', 'iou_not_found', 'not_authorized'].some(e => rpcError.message?.includes(e));
 
-      // Success on RPC! Now handle local Dexie deposit if requested.
-      let localError = '';
-      if (action === 'confirm' && depositToAccount && numDepositAmount > 0) {
-        try {
-          const now = Date.now();
-          const txnId = createId('txn');
-          
-          await db.transaction('rw', [db.accounts, db.transactions], async () => {
-            const acc = await db.accounts.get(accountId);
-            if (!acc) throw new Error('Account not found locally.');
-            
-            await db.accounts.update(accountId, {
-              balance: acc.balance + numDepositAmount,
-              updatedAt: now
-            });
-            
-            await db.transactions.add({
-              id: txnId,
-              type: 'debt_settlement',
-              amount: numDepositAmount,
-              date: now,
-              accountId,
-              notes: `Settlement from ${personName}`,
-              debtDirection: 'theyOweMe', // Meaning money came in
-              updatedAt: now
-            });
-          });
-          
-          triggerSync('accounts', accountId);
-          triggerSync('transactions', txnId);
-        } catch (e: any) {
-          console.error('Local deposit failed:', e);
-          const selectedAccount = accounts.find(a => a.id === accountId);
-          const accountName = selectedAccount ? selectedAccount.name : 'account';
-          localError = `Payment confirmed, but could not record the deposit of ${formatMoney(numDepositAmount, currency)} to ${accountName}. Please add it manually.`;
+        if (definitelyFailed) {
+          if (outboxWritten) {
+            await db.pendingAccountOutbox.delete(settlement.id);
+          }
+          const humanMsg = mapSettlementRpcError(rpcError.message || '');
+          setError(humanMsg);
+          setActioning(null);
+          Promise.all([syncSharedIouSettlements(), syncSharedIous()]).catch(console.error);
+          return;
         }
+
+        // For ambiguous errors (like network timeouts), we DO NOT delete the outbox intent.
+        throw new Error(rpcError.message);
       }
 
       Promise.all([
         syncSharedIouSettlements(),
         syncSharedIous()
       ]).catch(console.error);
-      
-      if (localError) {
-        setError(localError);
-        setActioning(null);
-        setIsConfirmed(true);
-      }
+
+      setIsConfirmed(true);
+      setActioning(null);
       
     } catch (err: any) {
-      setError(err.message || 'Network error.');
+      setError(err.message || 'Network error. Please try again.');
       setActioning(null);
     }
   };

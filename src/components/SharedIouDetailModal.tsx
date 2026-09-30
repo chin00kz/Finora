@@ -29,16 +29,42 @@ export default function SharedIouDetailModal({ isOpen, onClose, iou, onProposePa
     (a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
   );
 
+  // Maps RPC error codes to human-readable messages for expected conflict states.
+  const mapIouRpcError = (msg: string): string => {
+    if (msg.includes('invalid_state_transition') || msg.includes('invalid_iou_status') || msg.includes('iou_already_settled')) {
+      return 'This IOU has already been updated. Refreshing…';
+    }
+    if (msg.includes('iou_not_found')) {
+      return 'This IOU could not be found. It may have been removed.';
+    }
+    if (msg.includes('cannot_cancel_with_confirmed_payments')) {
+      return 'This IOU has confirmed payments and can no longer be cancelled.';
+    }
+    if (msg.includes('not_authorized')) {
+      return 'You are not authorised to perform this action.';
+    }
+    return msg;
+  };
+
   const handleCancel = async () => {
     if (!confirm('Are you sure you want to cancel this IOU?')) return;
     setIsCancelling(true);
     try {
-      await supabase.rpc('cancel_shared_iou', { p_iou_id: iou.id });
+      const { error: rpcError } = await supabase.rpc('cancel_shared_iou', { p_iou_id: iou.id });
+      if (rpcError) {
+        const humanMsg = mapIouRpcError(rpcError.message || '');
+        alert(humanMsg);
+        // Refresh so UI reflects actual cloud state
+        await Promise.all([syncSharedIous(), syncSharedIouSettlements()]);
+        // Close the modal — IOU state has changed and action surface is stale
+        onClose();
+        return;
+      }
       await Promise.all([syncSharedIous(), syncSharedIouSettlements()]);
       onClose();
-    } catch (e) {
+    } catch (e: any) {
       console.error('Failed to cancel IOU:', e);
-      alert('Failed to cancel IOU. Please try again.');
+      alert('Failed to cancel IOU. Please check your connection and try again.');
     } finally {
       setIsCancelling(false);
     }
@@ -49,12 +75,19 @@ export default function SharedIouDetailModal({ isOpen, onClose, iou, onProposePa
     if (reason === null) return;
     setIsRejecting(true);
     try {
-      await supabase.rpc('reject_shared_iou', { p_iou_id: iou.id, p_reason: reason.trim() || null });
+      const { error: rpcError } = await supabase.rpc('reject_shared_iou', { p_iou_id: iou.id, p_reason: reason.trim() || null });
+      if (rpcError) {
+        const humanMsg = mapIouRpcError(rpcError.message || '');
+        alert(humanMsg);
+        await Promise.all([syncSharedIous(), syncSharedIouSettlements()]);
+        onClose();
+        return;
+      }
       await Promise.all([syncSharedIous(), syncSharedIouSettlements()]);
       onClose();
     } catch (e: any) {
       console.error('Failed to reject IOU:', e);
-      alert(e.message || 'Failed to reject IOU. Please try again.');
+      alert(e.message || 'Failed to reject IOU. Please check your connection and try again.');
     } finally {
       setIsRejecting(false);
     }

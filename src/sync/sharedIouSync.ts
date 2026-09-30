@@ -88,59 +88,92 @@ export async function syncSharedIouSettlements(): Promise<{ success: boolean; er
       }
     });
     
-    // Process local outbox
+    // Process local account outbox (debit for payers, credit for creditors)
     const authStore = (await import('../store/authStore')).useAuthStore.getState();
     const currentUid = authStore.user?.id;
     if (currentUid) {
       const outboxEntries = await db.pendingAccountOutbox.toArray();
       for (const outbox of outboxEntries) {
+        // Never process another user's outbox intent
         if (outbox.uid !== currentUid) continue;
-        
+
         const cloudRow = normalized.find(r => r.id === outbox.id);
+        // Settlement not visible yet or still pending — wait
         if (!cloudRow || cloudRow.status === 'pending') continue;
-        
+
         if (cloudRow.status === 'rejected') {
+          // Settlement was rejected — discard the pending account intent silently
           await db.pendingAccountOutbox.delete(outbox.id);
           continue;
         }
-        
+
         if (cloudRow.status === 'confirmed') {
+          const isCredit = outbox.direction === 'credit';
           let appliedTxnId: string | null = null;
           let appliedAccountId: string | null = null;
 
           await db.transaction('rw', [db.accounts, db.transactions, db.pendingAccountOutbox], async () => {
+            // Idempotency: skip if a transaction for this settlement already exists
             const existing = await db.transactions.where('debtSettlementId').equals(outbox.id).first();
             if (existing) {
               await db.pendingAccountOutbox.delete(outbox.id);
               return;
             }
-            
+
             const acc = await db.accounts.get(outbox.accountId);
             if (!acc) {
-              console.warn('Account deleted before payment confirmed. Skipping local transaction.');
-              await db.pendingAccountOutbox.delete(outbox.id);
+              // Account was deleted before the settlement was processed.
+              // Mark as failed instead of silently discarding, so the user can manually recover.
+              console.warn(`[Outbox] Account ${outbox.accountId} not found for settlement ${outbox.id}. Marking as failed.`);
+              if (!outbox.error) {
+                await db.pendingAccountOutbox.put({
+                  ...outbox,
+                  error: `Account deleted. Please record this ${outbox.amount} transaction manually.`
+                });
+              }
               return;
             }
-            
-            await db.accounts.update(acc.id, {
-              balance: acc.balance - outbox.amount,
-              updatedAt: Date.now()
-            });
-            
+
             const { createId } = await import('../utils/createId');
             const txnId = createId('txn');
-            await db.transactions.add({
-              id: txnId,
-              type: 'debt_settlement',
-              amount: outbox.amount,
-              date: Date.now(),
-              accountId: acc.id,
-              notes: 'Shared IOU Payment',
-              debtDirection: 'iOweThem',
-              debtSettlementId: outbox.id,
-              updatedAt: Date.now()
-            });
-            
+            const now = Date.now();
+
+            if (isCredit) {
+              // Creditor: deposit confirmed payment into their account
+              await db.accounts.update(acc.id, {
+                balance: acc.balance + outbox.amount,
+                updatedAt: now
+              });
+              await db.transactions.add({
+                id: txnId,
+                type: 'debt_settlement',
+                amount: outbox.amount,
+                date: now,
+                accountId: acc.id,
+                notes: 'Shared IOU Payment Received',
+                debtDirection: 'theyOweMe',
+                debtSettlementId: outbox.id,
+                updatedAt: now
+              });
+            } else {
+              // Debtor: deduct payment from their account
+              await db.accounts.update(acc.id, {
+                balance: acc.balance - outbox.amount,
+                updatedAt: now
+              });
+              await db.transactions.add({
+                id: txnId,
+                type: 'debt_settlement',
+                amount: outbox.amount,
+                date: now,
+                accountId: acc.id,
+                notes: 'Shared IOU Payment',
+                debtDirection: 'iOweThem',
+                debtSettlementId: outbox.id,
+                updatedAt: now
+              });
+            }
+
             await db.pendingAccountOutbox.delete(outbox.id);
             appliedTxnId = txnId;
             appliedAccountId = acc.id;

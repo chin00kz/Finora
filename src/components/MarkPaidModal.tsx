@@ -4,7 +4,7 @@ import { supabase } from '../lib/supabase';
 import { db } from '../db/db';
 import { syncSharedIous, syncSharedIouSettlements } from '../sync/sharedIouSync';
 import { useLiveQuery } from 'dexie-react-hooks';
-import { createId } from '../utils/createId';
+import { useAuthStore } from '../store/authStore';
 
 interface Props {
   isOpen: boolean;
@@ -25,6 +25,7 @@ export default function MarkPaidModal({ isOpen, onClose, iouId, remainingAmount,
   const [isProposed, setIsProposed] = useState(false);
 
   const accounts = useLiveQuery(() => db.accounts.toArray()) || [];
+  const user = useAuthStore(state => state.user);
 
   useEffect(() => {
     if (isOpen) {
@@ -64,71 +65,67 @@ export default function MarkPaidModal({ isOpen, onClose, iouId, remainingAmount,
         return;
       }
     }
+    const { createId } = await import('../utils/createId');
+    const settlementId = createId('stl');
+    let outboxWritten = false;
+
+    // Persist durable intent BEFORE making the RPC call
+    if (depositToAccount && accountId && numDeposit > 0 && user) {
+      try {
+        await db.pendingAccountOutbox.put({
+          id: settlementId,
+          uid: user.id,
+          accountId,
+          amount: numDeposit,
+          direction: 'credit',
+          timestamp: Date.now()
+        });
+        outboxWritten = true;
+      } catch (localErr: any) {
+        console.error('[MarkPaid] Failed to write deposit intent to outbox:', localErr);
+        setError("Failed to locally prepare the account deposit. Please check storage limits and try again.");
+        setIsSubmitting(false);
+        return;
+      }
+    }
 
     try {
-      const { data, error: rpcError } = await supabase.rpc('mark_iou_paid', {
+      const { error: rpcError } = await supabase.rpc('mark_iou_paid', {
         p_iou_id: iouId,
-        p_note: note.trim() || null
+        p_note: note.trim() || null,
+        p_settlement_id: settlementId
       });
 
-      if (rpcError) throw new Error(rpcError.message);
+      if (rpcError) {
+        // Did the server definitely NOT create the settlement?
+        // Validation errors and state conflicts mean it rolled back.
+        const definitelyFailed = ['invalid_iou_status', 'iou_already_settled', 'iou_not_found', 'not_authorized', 'settlement_id_conflict'].some(e => rpcError.message?.includes(e));
 
-      // Successfully marked paid in cloud. Handle local deposit.
-      let localError = '';
-      if (depositToAccount && accountId && numDeposit > 0) {
-        try {
-          const now = Date.now();
-          const txnId = createId('txn');
-          
-          await db.transaction('rw', [db.accounts, db.transactions], async () => {
-            const acc = await db.accounts.get(accountId);
-            if (!acc) throw new Error('Account not found locally.');
-            
-            await db.accounts.update(accountId, {
-              balance: acc.balance + numDeposit,
-              updatedAt: now
-            });
-            
-            await db.transactions.add({
-              id: txnId,
-              type: 'debt_settlement',
-              amount: numDeposit,
-              date: now,
-              accountId,
-              notes: 'Marked IOU as Paid',
-              debtDirection: 'theyOweMe', // Incoming deposit
-              debtSettlementId: data.id,
-              updatedAt: now
-            });
-          });
-          
-          // @ts-ignore
-          const { triggerSync: triggerCoreSync } = await import('../sync/syncEngine');
-          triggerCoreSync('accounts', accountId);
-          triggerCoreSync('transactions', txnId);
-        } catch (localErr: any) {
-          console.error('Local deposit failed:', localErr);
-          const selectedAccount = accounts.find(a => a.id === accountId);
-          const accountName = selectedAccount ? selectedAccount.name : 'account';
-          localError = `Payment confirmed, but could not record the deposit of ${currency} ${numDeposit} to ${accountName}. Please add it manually.`;
+        if (definitelyFailed) {
+          // It's safe to clean up the local outbox intent since the cloud rejected the operation
+          if (outboxWritten) {
+            await db.pendingAccountOutbox.delete(settlementId);
+          }
+          setError('This IOU has already been updated or the action was invalid. The screen will refresh.');
+          Promise.all([syncSharedIous(), syncSharedIouSettlements()]).catch(console.error);
+          setIsSubmitting(false);
+          return;
         }
+
+        // For ambiguous errors (like network timeouts), we DO NOT delete the outbox intent.
+        // It remains durable. If the RPC actually succeeded server-side, it will be recovered.
+        throw new Error(rpcError.message);
       }
 
+      // Immediately attempt to process the outbox
       Promise.all([
         syncSharedIouSettlements(),
         syncSharedIous()
       ]).catch(console.error);
 
-      if (localError) {
-        setError(localError);
-        setIsSubmitting(false);
-        setIsProposed(true);
-        return;
-      }
-
       onClose();
     } catch (err: any) {
-      setError(err.message || 'Network error.');
+      setError(err.message || 'Network error. Please try again.');
       setIsSubmitting(false);
     }
   };

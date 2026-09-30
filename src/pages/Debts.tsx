@@ -65,6 +65,23 @@ export default function Debts() {
   const [actionError, setActionError] = useState<string | null>(null);
   const [actionedIous, setActionedIous] = useState<Record<string, string>>({});
 
+  const outboxErrors = useLiveQuery(() => 
+    db.pendingAccountOutbox.filter(o => !!o.error).toArray()
+  ) || [];
+
+  const outboxZombies = useLiveQuery(async () => {
+    const allOutbox = await db.pendingAccountOutbox.filter(o => !o.error).toArray();
+    const zombies = [];
+    const now = Date.now();
+    for (const o of allOutbox) {
+      if (now - o.timestamp > 60000) {
+        const stl = await db.cacheSharedIouSettlements.get(o.id);
+        if (!stl) zombies.push(o);
+      }
+    }
+    return zombies;
+  }) || [];
+
   useEffect(() => {
     reconcileSharedExpenses();
   }, []);
@@ -283,6 +300,24 @@ export default function Debts() {
         return b.date - a.date;
       });
   }, [unifiedIous, activeTab, searchQuery]);
+  const handleCancelZombie = async (intentId: string) => {
+    try {
+      const res = await syncSharedIouSettlements();
+      if (!res.success) {
+        alert("Cannot verify status because Finora couldn't reach the server. Please check your connection and try again.");
+        return;
+      }
+      
+      const stl = await db.cacheSharedIouSettlements.get(intentId);
+      if (stl) {
+        alert("Good news: the payment was actually confirmed! It has now been processed.");
+      } else {
+        await db.pendingAccountOutbox.delete(intentId);
+      }
+    } catch (err) {
+      alert("An error occurred while verifying the payment status.");
+    }
+  };
 
   return (
     <div className="p-6 pb-28 max-w-3xl mx-auto space-y-8">
@@ -332,6 +367,40 @@ export default function Debts() {
           </p>
         </div>
       </div>
+
+      {outboxErrors.length > 0 && (
+        <div className="bg-amber-500/10 border border-amber-500/20 text-amber-700 p-3 rounded-xl text-sm flex flex-col gap-2">
+          {outboxErrors.map(err => (
+            <div key={err.id} className="flex items-center justify-between">
+              <span className="flex-1 mr-3 leading-snug">{err.error}</span>
+              <button 
+                onClick={() => db.pendingAccountOutbox.delete(err.id)} 
+                className="shrink-0 text-amber-700 font-medium px-2.5 py-1 bg-amber-500/20 hover:bg-amber-500/30 rounded-lg transition-colors"
+              >
+                Dismiss
+              </button>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {outboxZombies.length > 0 && (
+        <div className="bg-amber-500/10 border border-amber-500/20 text-amber-700 p-3 rounded-xl text-sm flex flex-col gap-2">
+          {outboxZombies.map(z => (
+            <div key={z.id} className="flex items-center justify-between">
+              <span className="flex-1 mr-3 leading-snug">
+                An automated transaction is pending. If your payment failed, you can cancel this intent.
+              </span>
+              <button 
+                onClick={() => handleCancelZombie(z.id)} 
+                className="shrink-0 text-amber-700 font-medium px-2.5 py-1 bg-amber-500/20 hover:bg-amber-500/30 rounded-lg transition-colors"
+              >
+                Cancel
+              </button>
+            </div>
+          ))}
+        </div>
+      )}
 
       {/* Phase 2D: Shared IOU Requests (Compact Cards) */}
       {incomingRequests.length > 0 && (
