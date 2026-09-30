@@ -285,14 +285,16 @@ function MobileBottomNav({ syncStatus }: { syncStatus: 'idle' | 'syncing' | 'err
   return (
     <>
       {/* Floating Quick Add FAB on Mobile - Mathematically centered to viewport */}
-      <button
-        onClick={() => setAddTransactionModalOpen(true)}
-        style={{ bottom: 'calc(env(safe-area-inset-bottom) + 5rem)' }}
-          className="md:hidden fixed left-1/2 -translate-x-1/2 z-40 pointer-events-auto w-14 h-14 rounded-full bg-foreground text-background shadow-xl hover:opacity-90 active:scale-95 transition-transform flex items-center justify-center"
-        title="Add transaction"
-      >
-        <Plus size={24} strokeWidth={2.25} />
-      </button>
+      {!isActive('/notifications') && (
+        <button
+          onClick={() => setAddTransactionModalOpen(true)}
+          style={{ bottom: 'calc(env(safe-area-inset-bottom) + 5rem)' }}
+            className="md:hidden fixed left-1/2 -translate-x-1/2 z-40 pointer-events-auto w-14 h-14 rounded-full bg-foreground text-background shadow-xl hover:opacity-90 active:scale-95 transition-transform flex items-center justify-center"
+          title="Add transaction"
+        >
+          <Plus size={24} strokeWidth={2.25} />
+        </button>
+      )}
 
       {/* Mobile "More" Drawer for hidden items */}
       {isMoreOpen && (
