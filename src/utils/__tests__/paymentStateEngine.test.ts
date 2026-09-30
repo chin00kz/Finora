@@ -1,5 +1,10 @@
-import assert from 'assert';
 import { calculateMainAmountChange } from '../paymentStateEngine';
+
+function assertEqual(actual: string, expected: string, message: string) {
+  if (actual !== expected) {
+    throw new Error(`${message}: expected ${expected}, received ${actual}`);
+  }
+}
 
 function runTests() {
   console.log("Running automated regression test for partial payment explicit override bug...");
@@ -14,8 +19,8 @@ function runTests() {
 
   let result = calculateMainAmountChange(newAmount, currentDepositAmount, isDepositOverridden);
 
-  assert.strictEqual(result.nextAmount, "300", "Submitted shared settlement amount must be 300");
-  assert.strictEqual(result.nextDepositAmount, "300", "Queued local account transaction/outbox amount must also be 300 (synced)");
+  assertEqual(result.nextAmount, "300", "Submitted shared settlement amount must be 300");
+  assertEqual(result.nextDepositAmount, "300", "Queued local account transaction/outbox amount must also be 300 (synced)");
   
   console.log("? Scenario 1 passed: Modifying main amount correctly cascades to untouched deposit amount.");
 
@@ -28,8 +33,8 @@ function runTests() {
 
   result = calculateMainAmountChange(newAmount, currentDepositAmount, isDepositOverridden);
 
-  assert.strictEqual(result.nextAmount, "400", "Submitted shared settlement amount updates to 400");
-  assert.strictEqual(result.nextDepositAmount, "450", "Queued local outbox amount MUST NOT be overwritten if intentionally overridden");
+  assertEqual(result.nextAmount, "400", "Submitted shared settlement amount updates to 400");
+  assertEqual(result.nextDepositAmount, "450", "Queued local outbox amount MUST NOT be overwritten if intentionally overridden");
 
   console.log("? Scenario 2 passed: Intentional deposit amount override is preserved.");
 
