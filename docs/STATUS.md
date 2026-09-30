@@ -1,115 +1,49 @@
 # Finora Project Status
 
-This document tracks temporary/current information, active phases, feature branches, and unresolved bugs.
+This document tracks the current state of Finora, deployed features, known limitations, and parked future ideas.
 
 ## Current Repository State
-- **`main` branch:** Contains the most recent UI reliability fixes.
-- **`feature/shared-ious` branch:** Phase 2 implementation complete and successfully merged into main.
+- **`main` branch:** Stable production. Contains complete local-first personal finance capabilities, plus Cloud-authoritative Shared IOUs, Settlements, and Semantic Notifications.
+- **`staging` branch:** The active release-candidate branch.
 
-## Phase Roadmap
-- **Phase 1 � Identity & Connections:** COMPLETE
-- **Phase 2 — Shared IOUs:** COMPLETE
-  - 2A Cloud schema + security: complete
-  - 2B Local read cache: complete
-  - 2C Create Shared IOU: complete
-  - 2D Recipient handshake: complete
-  - 2E UI: complete
-- **Phase 3 — Settlements:** COMPLETE
-  - 3A Cloud Settlement Logic: complete (*Note: The unrelated-user settlement SELECT RLS test was skipped during automated testing because disposable signup hit Supabase free-tier auth limits. Other RLS rules were indirectly verified via permissions.*)
-  - 3B Settlement read cache + balance derivation: complete
-  - 3C Debtor payment proposal: complete
-  - 3D Creditor Confirm/Reject: complete
-  - 3E Detail/history + settlement UX polish: complete
-  - *Real two-account E2E settlement test passed:* proposal, multiple pending claims, partial confirmation, rejection, restored proposal capacity, final confirmation, settled transition.
-- **Phase 4 — Notifications & Shared UX: COMPLETE**
-  - [x] 4A In-app notification foundation (COMPLETE)
-  - Real Production Verification:
-    - Notification fetch/render: PASS
-    - Unread state: PASS
-    - Mark-one-read: PASS
-    - Realtime global discovery: PASS x2
-    - App-start hydration: PASS
-    - Two-account realtime isolation: PASS x2
-    - Production realtime migration applied
-  - Lower-level automated security/RLS assertions (A-K) skipped (test credentials unavailable in environment)
-  - Cloud-authoritative cache isolation confirmed
+## 🟢 Live / Implemented
 
-  - [x] 4B Connection notifications (COMPLETE / primary production E2E verified)
-    - PASS: Friend request notification (realtime global discovery, correct content)
-    - PASS: Notification deep-link to Connections (correct pending state)
-    - PASS: Acceptance notification (realtime delivery back to requester)
-    - DEFERRED: manual edge-case test for decline -> legitimate re-request -> new notification
+**Personal Finance (Local-First)**
+- Accounts, Transactions, Categories, and Tags
+- Budgets and Safe-to-Spend forecasting
+- Savings Goals
+- Recurring Payments
+- Personal IOUs (offline tracking with non-users)
+- Offline support and background dirty sync to Supabase
+- Statement reading/parsing (e.g., Combank PDFs)
+- JSON Backup/Import/Export
 
-  - [x] 4C Shared IOU notifications (COMPLETE / primary production E2E verified)
-    - Production migration manually applied successfully.
-    - PASS: Shared IOU request notification (realtime global discovery, exact request deep-link to /debts).
-    - PASS: Acceptance notification (realtime delivery back to creator, exact deep-link to detail modal).
-    - DEFERRED: manual E2E for decline and cancel notifications.
-  - [x] 4D Settlement notifications (COMPLETE / primary production E2E verified)
-    - Production migration manually applied successfully.
-    - PASS: Partial payment proposal notification & exact deep-link.
-    - PASS: Partial payment confirmation notification.
-    - PASS: Final exact-remainder proposal & confirmation notifications.
-    - PASS: Parent IOU settled transition & final notification wording.
-    - PASS: 701b48b modal reconciliation fix production verified (no page refresh required).
-    - DEFERRED: manual E2E for settlement rejection notifications.
-  - [x] 4E Shared UX polish / final E2E (COMPLETE / production UX verified)
-    - PASS: SharedIouDetailModal explicit X close button (visible, properly positioned, tap closes normally).
-    - PASS: Friends & Connections incoming request UI (Accept is primary, Decline is secondary, mobile layout fits, display name readable).
-    - DEFERRED: "Remove Friend" capability. Investigation revealed that deleting a connection row prevents that user's profile from syncing into the local cache on fresh installs. Until a dedicated `syncMissingProfiles(uuid[])` pipeline is added to safely hydrate historical IOUs, removing connections would break historical display names.
+**Shared Finances (Cloud-Authoritative)**
+- **Identity & Connections:** User profiles and secure friend connections.
+- **Shared IOUs:** Authoritative cross-user debts.
+- **Lifecycle Controls:** Accept, decline, and cancel flows.
+- **Trusted Friend Auto-Accept (Phase 8):** Directional opt-in to automatically accept IOUs where you owe a trusted friend.
+- **Settlements:** Propose partial or full payments. Creditors confirm or reject.
+- **Account-Linked Recording:** Payers can record payments directly from local accounts; creditors can deposit directly into local accounts.
+- **Overpayments:** Handled gracefully, optionally resulting in opposite obligations.
+- **Global Semantic Notifications:** Real-time push notification feed.
+- **NotificationBell & Badges:** Global bell with a priority-colored semantic badge indicating the highest-urgency unread event (Red > Amber > Cyan > Emerald).
 
-- **Phase 5 — Shared Expenses / Split Transactions: NEXT — DESIGN PASS ONLY**
-  *(Note: Phase 5 is a major/core workflow and requires a dedicated PRODUCT + ARCHITECTURE DESIGN PASS before any implementation)*
+## 🟡 Currently Being Refined / Known Technical Debt
+- **Mobile White-Bar Issue:** An intermittent visual bug on some mobile browsers. Difficult to reproduce consistently.
+- **Transaction Edit Date/Time:** Layout was improved for narrow screens, but historically had intermittent disappearance reports.
+- **Connection Removal:** Removing a connection currently breaks historical display names because there is no robust `syncMissingProfiles(uuid[])` pipeline to safely hydrate historical offline IOUs.
+- **Notification Deletion:** Swipe-to-delete is deferred because the backend currently only supports `mark_read`; a formal archive/delete lifecycle is pending.
 
-  **Intent:**
-  - extremely fast expense splitting
-  - equal splits
-  - unequal/custom personal amounts
-  - automatically shared remainder such as delivery/service fees
-  - Finora Friends + local People
-  - repeated participant combinations
-  - recent participant suggestions
-  - optional saved groups
-  - accumulated balances across days/weeks
-  - per-person financial activity/history
-  - repayments and partial repayments
-  - clear explanation of why someone owes the current amount
-  - user-selectable Start Page so users primarily interested in IOUs/shared money can open Finora directly into that area
+## 🔴 Parked / Future Possibilities
 
-  **Core Product Principle:** "Using Finora to split a real shared expense should require less thought and effort than calculating and tracking it manually."
+**Phase 5 — Shared Expenses / Bulk Splits**
+*Status: Parked / Requires deep product & architecture design.*
+- The original concept of complex multi-way expense splitting ("who paid what" across N people) has been paused.
+- Any future implementation must adhere to the principle: "Using Finora to split a real shared expense should require less thought and effort than calculating and tracking it manually."
+- Any old architecture references to bulk shared expenses should be treated as abandoned proposals unless re-evaluated.
 
-  *(DO NOT design schemas, tables, RPCs, components, or implementation details yet)*
-
-- **Phase 6 — Advanced Sharing / Future Enhancements: FUTURE**
-
-
-## Known Unresolved/Intermittent Bugs
-**Do not claim root cause solved on these without strict reproduction and evidence.**
-
-1. **Mobile White-Bar Issue**
-   - Remains OPEN / intermittent.
-   - Recent testing did not reproduce it.
-   - Avoid speculative CSS changes without reproduction/evidence.
-
-2. **Transaction Edit Date/Time Disappearance**
-   - Historical intermittent report.
-   - Remains OPEN.
-   - Current testing confirmed Date/Time is visible and persists normally, and layout was improved for narrow screens.
-
-## Reliability Verification
-Some reliability behaviors remain unverified or partially verified.
-
-**Deferred Verification:**
+**Advanced Sharing / Future Enhancements**
 - Export Report period reset
-- Profile/network failure behavior
-- Budget date defaults
-- Safe-to-Spend forecast setting
-- Statement Reader with real statement content
-
-**Recently Verified:**
-- Transaction category integrity
-- Stale/deleted account reconciliation
-- Activity/Recurring editor navigation
-- Transaction Date/Time persistence
-- Mobile modal scrolling
-- Mobile safe-area geometry (central transaction + action / More drawer)
+- Profile/network failure resilience testing
+- Safe-to-Spend forecast customization
