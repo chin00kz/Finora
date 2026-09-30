@@ -18,6 +18,8 @@ interface Props {
   currency: string;
 }
 
+import { calculateMainAmountChange } from '../utils/paymentStateEngine';
+
 export default function ProposePaymentModal({
   isOpen,
   onClose,
@@ -35,6 +37,7 @@ export default function ProposePaymentModal({
   const [payFromAccount, setPayFromAccount] = useState(false);
   const [accountId, setAccountId] = useState('');
   const [depositAmount, setDepositAmount] = useState('');
+  const [isDepositOverridden, setIsDepositOverridden] = useState(false);
   const [isProposed, setIsProposed] = useState(false);
 
   const accounts = useLiveQuery(() => db.accounts.toArray()) || [];
@@ -49,6 +52,7 @@ export default function ProposePaymentModal({
       setPayFromAccount(false);
       setAccountId('');
       setDepositAmount(String(availableToPropose));
+      setIsDepositOverridden(false);
       setIsProposed(false);
     }
   }, [isOpen, availableToPropose]);
@@ -176,7 +180,7 @@ export default function ProposePaymentModal({
                 min="0.01"
                 inputMode="decimal"
                 value={amount}
-                onChange={e => setAmount(e.target.value)}
+                onChange={e => { const { nextAmount, nextDepositAmount } = calculateMainAmountChange(e.target.value, depositAmount, isDepositOverridden); setAmount(nextAmount); setDepositAmount(nextDepositAmount); }}
                 className="w-full bg-background border border-border/60 rounded-xl px-4 py-2.5 pl-12 
 text-foreground font-medium focus:outline-none focus:ring-2 focus:ring-accent focus:border-transparent transition-all"
                 placeholder="0.00"
@@ -232,7 +236,7 @@ text-foreground font-medium focus:outline-none focus:ring-2 focus:ring-accent fo
                       max={amount}
                       inputMode="decimal"
                       value={depositAmount}
-                      onChange={(e) => setDepositAmount(e.target.value)}
+                      onChange={(e) => { setDepositAmount(e.target.value); setIsDepositOverridden(true); }}
                       disabled={isSubmitting}
                       className="w-full bg-background border border-border/60 rounded-lg pl-12 pr-3 py-2 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-accent focus:border-transparent transition-all"
                       placeholder="0.00"
