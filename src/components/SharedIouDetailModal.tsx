@@ -9,7 +9,18 @@ import {
   canReviewPayment,
   resolveMarkPaidRemainingAmount,
 } from '../utils/sharedIouSettlementEngine';
-import { cancelSharedIou, rejectSharedIou } from '../sync/sharedCloudMutations';
+import {
+  canAcknowledgeSharedIou,
+  canRejectSharedIou,
+  getAwaitingAcknowledgementLabel,
+  resolveDebtorRejectRpc,
+} from '../utils/sharedIouLifecycle';
+import {
+  acceptSharedIou,
+  cancelSharedIou,
+  declineSharedIou,
+  rejectSharedIou,
+} from '../sync/sharedCloudMutations';
 import { syncSharedIous, syncSharedIouSettlements } from '../sync/sharedIouSync';
 import MarkPaidModal from './MarkPaidModal';
 import { useAuthStore } from '../store/authStore';
@@ -24,6 +35,7 @@ interface Props {
 export default function SharedIouDetailModal({ isOpen, onClose, iou, onProposePayment }: Props) {
   const [isCancelling, setIsCancelling] = useState(false);
   const [isRejecting, setIsRejecting] = useState(false);
+  const [isAcknowledging, setIsAcknowledging] = useState(false);
   const [isMarkPaidOpen, setIsMarkPaidOpen] = useState(false);
   const user = useAuthStore(state => state.user);
 
@@ -44,7 +56,10 @@ export default function SharedIouDetailModal({ isOpen, onClose, iou, onProposePa
     if (msg.includes('cannot_cancel_with_confirmed_payments')) {
       return 'This IOU has confirmed payments and can no longer be cancelled.';
     }
-    if (msg.includes('not_authorized')) {
+    if (msg.includes('cannot_reject_with_payments')) {
+      return 'This IOU has confirmed payments and cannot be rejected.';
+    }
+    if (msg.includes('not_authorized') || msg.includes('unauthorized')) {
       return 'You are not authorised to perform this action.';
     }
     return msg;
@@ -74,12 +89,49 @@ export default function SharedIouDetailModal({ isOpen, onClose, iou, onProposePa
     }
   };
 
+  const handleAcknowledge = async () => {
+    setIsAcknowledging(true);
+    try {
+      const { error: rpcError } = await acceptSharedIou(iou.id);
+      if (rpcError) {
+        alert(mapIouRpcError(rpcError.message || ''));
+        await Promise.all([syncSharedIous(), syncSharedIouSettlements()]);
+        return;
+      }
+      await Promise.all([syncSharedIous(), syncSharedIouSettlements()]);
+    } catch (e: any) {
+      console.error('Failed to acknowledge IOU:', e);
+      alert(e.message || 'Failed to acknowledge IOU. Please try again.');
+    } finally {
+      setIsAcknowledging(false);
+    }
+  };
+
   const handleReject = async () => {
-    const reason = prompt('Are you sure you want to reject this IOU?\n\nOptional reason:');
-    if (reason === null) return;
+    const confirmedPaid = (iou.allSettlements || [])
+      .filter(s => s.status === 'confirmed')
+      .reduce((sum, s) => sum + s.amount, 0);
+    if (confirmedPaid > 0) {
+      alert('This IOU has confirmed payments and cannot be rejected.');
+      return;
+    }
+
+    const rpc = resolveDebtorRejectRpc(iou.status);
+    let reason: string | null = null;
+    if (rpc === 'decline_shared_iou') {
+      if (!confirm('Decline this IOU request?')) return;
+    } else {
+      const entered = prompt('Reject this IOU if it is incorrect?\n\nOptional reason:');
+      if (entered === null) return;
+      reason = entered.trim() || null;
+    }
+
     setIsRejecting(true);
     try {
-      const { error: rpcError } = await rejectSharedIou(iou.id, reason.trim() || null);
+      const { error: rpcError } =
+        rpc === 'decline_shared_iou'
+          ? await declineSharedIou(iou.id)
+          : await rejectSharedIou(iou.id, reason);
       if (rpcError) {
         const humanMsg = mapIouRpcError(rpcError.message || '');
         alert(humanMsg);
@@ -101,10 +153,24 @@ export default function SharedIouDetailModal({ isOpen, onClose, iou, onProposePa
   const isSettled = iou.status === 'settled';
   const isCancelled = iou.status === 'cancelled';
   const isRejected = iou.status === 'rejected';
+  const awaitingAck = Boolean(iou.awaitingAcknowledgement);
 
   const confirmedTotal = (iou.allSettlements || [])
     .filter(s => s.status === 'confirmed')
     .reduce((sum, s) => sum + s.amount, 0);
+
+  const cloudStatusForGates =
+    iou.status === 'active' ? 'accepted' : iou.status === 'pending' ? 'pending' : iou.status;
+  const showAcknowledge = canAcknowledgeSharedIou({
+    status: cloudStatusForGates,
+    isDebtor,
+    recipientAcknowledged: Boolean(iou.recipientAcknowledged),
+  });
+  const showReject = canRejectSharedIou({
+    status: cloudStatusForGates,
+    isDebtor,
+    confirmedPaymentTotal: confirmedTotal,
+  }) && !isSettled && !isCancelled && !isRejected;
   
   const originalAmt = iou.originalAmount !== undefined ? iou.originalAmount : iou.amount;
   const calculatedRemaining = originalAmt - confirmedTotal;
@@ -135,6 +201,14 @@ export default function SharedIouDetailModal({ isOpen, onClose, iou, onProposePa
           <p className="text-sm font-medium mt-1">
             {isDebtor ? 'I owe them' : 'They owe me'}
           </p>
+          {awaitingAck && !isSettled && !isCancelled && !isRejected && (
+            <span className="inline-block mt-2 text-[11px] font-medium px-2.5 py-1 rounded-md bg-amber-500/15 text-amber-700 dark:text-amber-400">
+              {getAwaitingAcknowledgementLabel()}
+            </span>
+          )}
+          {iou.recipientAcknowledged && iou.status === 'active' && (
+            <p className="text-[11px] text-muted-foreground mt-2">Acknowledged by recipient</p>
+          )}
         </div>
 
         {/* Financial Summary */}
@@ -168,6 +242,11 @@ export default function SharedIouDetailModal({ isOpen, onClose, iou, onProposePa
               <div className="inline-block px-2 py-1 bg-red-500/10 text-red-500 text-xs font-medium rounded">
                 Rejected
               </div>
+              {confirmedTotal > 0 && (
+                <p className="text-xs text-amber-600 dark:text-amber-400 text-center mt-1">
+                  Confirmed payments ({formatMoney(confirmedTotal, iou.currency)}) were preserved. No automatic refund.
+                </p>
+              )}
               {iou.statusReason && (
                 <p className="text-xs text-muted-foreground text-center mt-1">
                   Reason: {iou.statusReason}
@@ -194,6 +273,16 @@ export default function SharedIouDetailModal({ isOpen, onClose, iou, onProposePa
         {/* Actions */}
         {(!isSettled && !isCancelled && !isRejected) && (
           <div className="space-y-3">
+            {showAcknowledge && (
+              <button
+                onClick={handleAcknowledge}
+                disabled={isAcknowledging}
+                className="w-full py-2.5 bg-emerald-500/15 text-emerald-700 dark:text-emerald-400 font-medium rounded-xl hover:bg-emerald-500/25 transition-colors disabled:opacity-50"
+              >
+                {isAcknowledging ? 'Acknowledging...' : 'Acknowledge IOU'}
+              </button>
+            )}
+
             {!isDebtor && iou.source === 'shared' && (
               <button
                 onClick={() => setIsMarkPaidOpen(true)}
@@ -203,7 +292,7 @@ export default function SharedIouDetailModal({ isOpen, onClose, iou, onProposePa
               </button>
             )}
 
-            {iou.source === 'shared' && iou.creatorId === user?.id && (
+            {iou.source === 'shared' && iou.creatorId === user?.id && confirmedTotal === 0 && (
               <button
                 onClick={handleCancel}
                 disabled={isCancelling}
@@ -213,7 +302,7 @@ export default function SharedIouDetailModal({ isOpen, onClose, iou, onProposePa
               </button>
             )}
 
-            {iou.source === 'shared' && isDebtor && iou.status === 'active' && confirmedTotal === 0 && (
+            {showReject && (
               <button
                 onClick={handleReject}
                 disabled={isRejecting}

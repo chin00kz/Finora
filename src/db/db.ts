@@ -531,6 +531,12 @@ export interface CacheSharedIou {
   created_at: number;
   accepted_at?: number;
   updated_at: number;
+  /**
+   * Debtor acknowledgement timestamp.
+   * null = awaiting acknowledgement (operationally active when status=accepted);
+   * undefined = legacy cache row without the column.
+   */
+  recipient_acknowledged_at?: number | null;
 }
 
 

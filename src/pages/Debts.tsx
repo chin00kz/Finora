@@ -15,10 +15,15 @@ import MaskedAmount from '../components/MaskedAmount';
 import { formatMoney } from '../utils/formatters';
 import { useAuthStore } from '../store/authStore';
 import { supabase } from '../lib/supabase';
-import { acceptSharedIou, declineSharedIou } from '../sync/sharedCloudMutations';
+import { acceptSharedIou, declineSharedIou, rejectSharedIou } from '../sync/sharedCloudMutations';
 import { syncSharedIous, syncSharedIouSettlements } from '../sync/sharedIouSync';
 import { isRestoreIsolated } from '../sync/restoreIsolation';
 import NotificationBell from '../components/NotificationBell';
+import {
+  getAwaitingAcknowledgementLabel,
+  getSharedIouAckUiState,
+  isRecipientAcknowledged,
+} from '../utils/sharedIouLifecycle';
 
 type FilterTab = 'all' | 'owed_to_me' | 'i_owe' | 'settled';
 
@@ -41,8 +46,12 @@ export interface UnifiedIou {
   pendingTotal?: number;
   pendingSettlements?: CacheSharedIouSettlement[];
   allSettlements?: CacheSharedIouSettlement[];
-
-  originalAmount?: number;}
+  originalAmount?: number;
+  /** Debtor has acknowledged (distinct from operationally active). */
+  recipientAcknowledged?: boolean;
+  /** True when active/pending but debtor has not acknowledged. */
+  awaitingAcknowledgement?: boolean;
+}
 
 export default function Debts() {
   const debts = useLiveQuery(() => db.debts.toArray()) || [];
@@ -63,7 +72,7 @@ export default function Debts() {
   const [selectedSharedIou, setSelectedSharedIou] = useState<UnifiedIou | null>(null);
 
   const [highlightedIouId, setHighlightedIouId] = useState<string | null>(null);
-  const [actioning, setActioning] = useState<{id: string, action: 'accepted' | 'declined'} | null>(null);
+  const [actioning, setActioning] = useState<{ id: string; action: 'acknowledged' | 'rejected' } | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
   const [actionedIous, setActionedIous] = useState<Record<string, string>>({});
 
@@ -127,16 +136,22 @@ export default function Debts() {
     }
   }, [user]);
 
-  const handleActionSharedIou = async (iouId: string, action: 'accepted' | 'declined') => {
+  const handleActionSharedIou = async (iouId: string, action: 'acknowledged' | 'rejected') => {
     if (!user || actioning) return;
     setActioning({ id: iouId, action });
     setActionError(null);
 
     try {
-      const { error } =
-        action === 'accepted'
-          ? await acceptSharedIou(iouId)
-          : await declineSharedIou(iouId);
+      const cloud = sharedIous.find(i => i.id === iouId);
+      let error: { message: string } | null = null;
+      if (action === 'acknowledged') {
+        ({ error } = await acceptSharedIou(iouId));
+      } else if (cloud?.status === 'pending') {
+        // Legacy pending rows still use decline → declined
+        ({ error } = await declineSharedIou(iouId));
+      } else {
+        ({ error } = await rejectSharedIou(iouId, null));
+      }
       if (error) throw error;
       setActionedIous(prev => ({ ...prev, [iouId]: action }));
       const res = await syncSharedIous();
@@ -145,16 +160,20 @@ export default function Debts() {
       }
     } catch (err: any) {
       console.error(`Failed to ${action} shared IOU`, err);
-      setActionError(err.message || `Failed to ${action} request. Please try again.`);
+      setActionError(err.message || `Failed to ${action} IOU. Please try again.`);
     } finally {
       setActioning(null);
     }
   };
 
+  /** Debtor needs to acknowledge or reject — does not block creator usability. */
   const incomingRequests = useMemo(() => {
-    return sharedIous.filter(
-      iou => iou.status === 'pending' && iou.debtor_id === user?.id && !actionedIous[iou.id]
-    );
+    return sharedIous.filter(iou => {
+      if (iou.debtor_id !== user?.id || actionedIous[iou.id]) return false;
+      if (iou.status === 'pending') return true;
+      if (iou.status === 'accepted' && !isRecipientAcknowledged(iou)) return true;
+      return false;
+    });
   }, [sharedIous, user, actionedIous]);
 
   const unifiedIous = useMemo(() => {
@@ -179,17 +198,52 @@ export default function Debts() {
     }
 
       for (const iou of sharedIous) {
-        const isAccepted = iou.status === 'accepted' || actionedIous[iou.id] === 'accepted';
-        const isSettled = iou.status === 'settled' || iou.status === 'cancelled' || iou.status === 'rejected';
-        const isOutgoingPending = iou.status === 'pending' && iou.creator_id === user?.id && !actionedIous[iou.id];
+        const locallyAcked = actionedIous[iou.id] === 'acknowledged';
+        const locallyRejected = actionedIous[iou.id] === 'rejected';
+        const isOperational =
+          iou.status === 'accepted' ||
+          (iou.status === 'pending' && iou.creator_id === user?.id) ||
+          locallyAcked;
+        const isTerminal =
+          iou.status === 'settled' ||
+          iou.status === 'cancelled' ||
+          iou.status === 'rejected' ||
+          iou.status === 'declined' ||
+          locallyRejected;
 
-        if (isAccepted || isSettled || isOutgoingPending) {
+        // Debtor unacked rows also appear in the main list (not only the review cards)
+        const isDebtorUnacked =
+          iou.debtor_id === user?.id &&
+          (iou.status === 'accepted' || iou.status === 'pending') &&
+          !isRecipientAcknowledged(iou) &&
+          !locallyAcked &&
+          !locallyRejected;
+
+        if (isOperational || isTerminal || isDebtorUnacked) {
           const otherId = iou.creditor_id === user?.id ? iou.debtor_id : iou.creditor_id;
           const otherProf = cachedProfiles.find(p => p.id === otherId);
 
           const iouSettlements = cacheSharedIouSettlements.filter(s => s.shared_iou_id === iou.id);
           const { remainingAmount, availableToPropose, pendingTotal } = getSharedIouSettlementStatus(iou.amount, iouSettlements);
           const pendingSettlements = iouSettlements.filter(s => s.status === 'pending');
+
+          const ackFields = {
+            status: locallyRejected ? 'rejected' : locallyAcked && iou.status === 'pending' ? 'accepted' : iou.status,
+            recipient_acknowledged_at: locallyAcked
+              ? (iou.recipient_acknowledged_at ?? Date.now())
+              : iou.recipient_acknowledged_at,
+          };
+          const recipientAcknowledged = isRecipientAcknowledged(ackFields);
+          const ackUi = getSharedIouAckUiState(ackFields);
+          const awaitingAcknowledgement = ackUi === 'awaiting_acknowledgement' || ackUi === 'legacy_pending';
+
+          let uiStatus: UnifiedIou['status'];
+          if (locallyRejected || iou.status === 'rejected') uiStatus = 'rejected';
+          else if (iou.status === 'cancelled') uiStatus = 'cancelled';
+          else if (iou.status === 'declined') uiStatus = 'rejected';
+          else if (iou.status === 'settled' || (iou.status === 'accepted' && remainingAmount === 0)) uiStatus = 'settled';
+          else if (iou.status === 'pending' && !locallyAcked) uiStatus = 'pending';
+          else uiStatus = 'active';
 
           list.push({
             id: iou.id,
@@ -201,15 +255,17 @@ export default function Debts() {
             currency: iou.currency,
             direction: iou.creditor_id === user?.id ? 'theyOweMe' : 'iOweThem',
             description: iou.description,
-            status: iou.status === 'cancelled' || iou.status === 'rejected' ? iou.status : ((iou.status === 'settled' || (isAccepted && remainingAmount === 0)) ? 'settled' : (isAccepted ? 'active' : 'pending')),
+            status: uiStatus,
             date: iou.created_at || 0,
             isShared: true,
             creatorId: iou.creator_id,
             statusReason: iou.status_reason,
-            availableToPropose,
+            availableToPropose: uiStatus === 'active' ? availableToPropose : 0,
             pendingTotal,
-            pendingSettlements,
-            allSettlements: iouSettlements
+            pendingSettlements: uiStatus === 'active' ? pendingSettlements : [],
+            allSettlements: iouSettlements,
+            recipientAcknowledged,
+            awaitingAcknowledgement,
           });
         }
       }
@@ -418,13 +474,16 @@ export default function Debts() {
         </div>
       )}
 
-      {/* Phase 2D: Shared IOU Requests (Compact Cards) */}
+      {/* Review cards: acknowledge or reject — creator is already unblocked */}
       {incomingRequests.length > 0 && (
         <div className="space-y-3">
           <div className="flex items-center gap-2 mb-1">
-            <h4 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Requests</h4>
-            <span className="text-[10px] font-medium bg-muted/60 text-muted-foreground px-1.5 py-0.5 rounded-full">{incomingRequests.length}</span>
+            <h4 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Needs your review</h4>
+            <span className="text-[10px] font-medium bg-amber-500/15 text-amber-700 dark:text-amber-400 px-1.5 py-0.5 rounded-full">{incomingRequests.length}</span>
           </div>
+          <p className="text-[11px] text-muted-foreground leading-relaxed">
+            These IOUs were created by someone else. Review each one — acknowledge if correct, or decline/reject if not. New active IOUs may already be settleable by the creator; older pending requests still need your response before settlements.
+          </p>
           {actionError && <p className="text-sm text-red-500 mb-2">{actionError}</p>}
           <div className="grid gap-3">
             {incomingRequests.map(iou => {
@@ -435,13 +494,16 @@ export default function Debts() {
                 const isHighlighted = highlightedIouId === iou.id;
 
               return (
-                  <div id={`iou-request-${iou.id}`} key={iou.id} className={`bg-card rounded-2xl p-4 border shadow-sm flex flex-col gap-4 ${isProcessing ? 'opacity-60 pointer-events-none' : ''} ${isHighlighted ? 'border-primary ring-2 ring-primary/20' : 'border-border/60'}`}>
+                  <div id={`iou-request-${iou.id}`} key={iou.id} className={`bg-card rounded-2xl p-4 border shadow-sm flex flex-col gap-4 ${isProcessing ? 'opacity-60 pointer-events-none' : ''} ${isHighlighted ? 'border-amber-500/50 ring-2 ring-amber-500/20' : 'border-amber-500/30'}`}>
                   <div className="flex items-start justify-between gap-4">
                     <div className="flex-1 min-w-0">
                       <p className="text-base font-medium text-foreground truncate">{name}</p>
                       <p className="text-xs text-muted-foreground truncate mt-0.5">
                         {username}{iou.description ? ` · ${iou.description}` : ''}
                       </p>
+                      <span className="inline-block mt-1.5 text-[10px] font-medium px-2 py-0.5 rounded-md bg-amber-500/15 text-amber-700 dark:text-amber-400">
+                        Not yet acknowledged by you
+                      </span>
                     </div>
                     <div className="text-right shrink-0">
                       <p className="text-lg font-medium text-foreground tracking-tight">
@@ -451,18 +513,18 @@ export default function Debts() {
                   </div>
                   <div className="grid grid-cols-2 gap-3">
                     <button
-                      onClick={() => handleActionSharedIou(iou.id, 'declined')}
+                      onClick={() => handleActionSharedIou(iou.id, 'rejected')}
                       disabled={isProcessing}
                       className="px-4 py-2.5 bg-red-500/10 text-red-600 dark:text-red-400 text-xs rounded-xl font-medium active:scale-95 transition-all border border-red-500/20"
                     >
-                      {isProcessing && actioning?.action === 'declined' ? 'Declining...' : 'Decline'}
+                      {isProcessing && actioning?.action === 'rejected' ? 'Rejecting...' : 'Reject'}
                     </button>
                     <button
-                      onClick={() => handleActionSharedIou(iou.id, 'accepted')}
+                      onClick={() => handleActionSharedIou(iou.id, 'acknowledged')}
                       disabled={isProcessing}
                       className="px-4 py-2.5 bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 text-xs rounded-xl font-medium active:scale-95 transition-all border border-emerald-500/20"
                     >
-                      {isProcessing && actioning?.action === 'accepted' ? 'Accepting...' : 'Accept'}
+                      {isProcessing && actioning?.action === 'acknowledged' ? 'Saving...' : 'Acknowledge'}
                     </button>
                   </div>
                 </div>
@@ -543,16 +605,20 @@ export default function Debts() {
                   )}
 
                   <p className="text-[11px] sm:text-xs text-muted-foreground truncate">
-                    {isPending ? (
-                      `Waiting for ${iou.username ? `@${iou.username}` : iou.personName} · Pending`
-                    ) : (
-                      <>
-                        {isTheyOweMe ? 'They owe me' : 'I owe them'}
-                        {iou.isShared ? ' · Shared' : ''}
-                        {iou.date > 0 ? ` · ${new Date(iou.date).toLocaleDateString()}` : ''}
-                      </>
-                    )}
+                    {isTheyOweMe ? 'They owe me' : 'I owe them'}
+                    {iou.isShared ? ' · Shared' : ''}
+                    {iou.date > 0 ? ` · ${new Date(iou.date).toLocaleDateString()}` : ''}
                   </p>
+                  {iou.awaitingAcknowledgement && !isSettled && !isCancelled && (
+                    <span className="inline-block mt-1 text-[10px] font-medium px-2 py-0.5 rounded-md bg-amber-500/15 text-amber-700 dark:text-amber-400">
+                      {getAwaitingAcknowledgementLabel()}
+                    </span>
+                  )}
+                  {isPending && !iou.awaitingAcknowledgement && (
+                    <span className="inline-block mt-1 text-[10px] font-medium px-2 py-0.5 rounded-md bg-amber-500/15 text-amber-700 dark:text-amber-400">
+                      Pending
+                    </span>
+                  )}
                   {iou.pendingTotal !== undefined && iou.pendingTotal > 0 && (
                     <p className="text-[11px] sm:text-xs text-amber-500 font-medium truncate mt-0.5">
                       Payment pending · {formatMoney(iou.pendingTotal, iou.currency)}

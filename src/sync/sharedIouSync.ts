@@ -27,20 +27,29 @@ export async function syncSharedIous(): Promise<{ success: boolean; error?: stri
 
     // 2. Normalize the cloud rows safely to the local Dexie schema
     const rows = data ?? [];
-    const normalized: CacheSharedIou[] = rows.map((row: any) => ({
-      id: row.id,
-      creator_id: row.creator_id,
-      creditor_id: row.creditor_id,
-      debtor_id: row.debtor_id,
-      amount: Number(row.amount),
-      currency: row.currency,
-      description: row.description || undefined,
-      status: row.status,
-      status_reason: row.status_reason || undefined,
-      created_at: Number(row.created_at),
-      accepted_at: row.accepted_at ? Number(row.accepted_at) : undefined,
-      updated_at: Number(row.updated_at)
-    }));
+    const normalized: CacheSharedIou[] = rows.map((row: any) => {
+      const hasAckColumn = Object.prototype.hasOwnProperty.call(row, 'recipient_acknowledged_at');
+      return {
+        id: row.id,
+        creator_id: row.creator_id,
+        creditor_id: row.creditor_id,
+        debtor_id: row.debtor_id,
+        amount: Number(row.amount),
+        currency: row.currency,
+        description: row.description || undefined,
+        status: row.status,
+        status_reason: row.status_reason || undefined,
+        created_at: Number(row.created_at),
+        accepted_at: row.accepted_at ? Number(row.accepted_at) : undefined,
+        updated_at: Number(row.updated_at),
+        // Preserve explicit null (unacked) vs missing column (legacy)
+        recipient_acknowledged_at: hasAckColumn
+          ? (row.recipient_acknowledged_at == null
+              ? null
+              : Number(row.recipient_acknowledged_at))
+          : undefined,
+      };
+    });
 
     // 3. Atomically replace the cache after successful fetch
     await db.transaction('rw', db.cacheSharedIous, async () => {

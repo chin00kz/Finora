@@ -399,10 +399,14 @@ CREATE TABLE IF NOT EXISTS public.shared_ious (
   amount NUMERIC NOT NULL CHECK (amount > 0),
   currency TEXT NOT NULL CHECK (currency ~ '^[A-Z]{3,5}$'),
   description TEXT CHECK (description IS NULL OR char_length(description) <= 255),
-  status TEXT NOT NULL CHECK (status IN ('pending', 'accepted', 'declined', 'cancelled', 'settled')),
+  -- Phase 8+ also allows 'rejected'. Prefer migrations for live upgrades.
+  status TEXT NOT NULL CHECK (status IN ('pending', 'accepted', 'declined', 'cancelled', 'settled', 'rejected')),
   created_at BIGINT NOT NULL,
   accepted_at BIGINT,
   updated_at BIGINT NOT NULL,
+  -- Phase 9: NULL = awaiting debtor acknowledgement while status may be 'accepted' (active).
+  recipient_acknowledged_at BIGINT,
+  status_reason TEXT CHECK (status_reason IS NULL OR char_length(status_reason) <= 255),
 
   -- V1 Invariants
   CONSTRAINT creator_is_creditor CHECK (creator_id = creditor_id),
@@ -712,8 +716,10 @@ BEGIN
     END IF;
     v_note_desc := left(v_note_desc, 255);
 
+    -- Phase 9 A2: confirming creditor becomes reverse debtor; confirm = acknowledgement.
     INSERT INTO public.shared_ious (
-      id, creator_id, creditor_id, debtor_id, amount, currency, description, status, created_at, accepted_at, updated_at
+      id, creator_id, creditor_id, debtor_id, amount, currency, description, status,
+      created_at, accepted_at, updated_at, recipient_acknowledged_at
     ) VALUES (
       v_new_iou_id,
       v_parent_iou.debtor_id,
@@ -723,6 +729,7 @@ BEGIN
       v_parent_iou.currency,
       v_note_desc,
       'accepted',
+      v_now,
       v_now,
       v_now,
       v_now
