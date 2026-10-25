@@ -1,0 +1,41 @@
+-- ==============================================================================
+-- Choice A batch 04: security / concurrency scenario notes (NOT executable CI)
+-- Review checklist when applying 01→03 on a disposable clone. Do not run on
+-- shared staging/production without explicit approval.
+-- ==============================================================================
+--
+-- A) Legacy client at epoch = 0
+--    - Direct PostgREST upsert/delete must succeed (triggers allow).
+--    - upsert_personal_rows / delete_personal_rows must raise
+--      finora_use_direct_sync_at_epoch_zero.
+--
+-- B) After Choice A (epoch > 0) — legacy client fail-closed
+--    - Direct authenticated upsert/delete must raise finora_dataset_epoch_required
+--      (current_user = session_user).
+--    - Message must mention upgrade / reconcile path.
+--
+-- C) Omitted-column upsert attack (epoch > 0)
+--    - PostgREST UPDATE omitting dataset_epoch is blocked entirely by B.
+--    - RPC upsert_personal_rows always forces dataset_epoch = p_epoch and
+--      user_id = auth.uid() via finora_force_row_identity — spoofed user_id ignored.
+--
+-- D) Cross-user access
+--    - replace / upsert with another user's row id → finora_id_collision or
+--      RLS-equivalent rejection; never mutate other user's rows.
+--    - get_personal_dataset_meta / get_personal_dataset_operation scoped to auth.uid().
+--
+-- E) Concurrency
+--    - finora_personal_lock serializes per-user personal dataset mutations.
+--    - Stale expected fingerprint → status aborted_stale (no wipe).
+--    - Same client_operation_id + same request_hash → idempotent committed replay.
+--    - Same client_operation_id + different hash → finora_operation_id_reuse_conflict.
+--
+-- F) session_replication_role
+--    - Must remain unset / not used by these migrations.
+--    - Privilege split uses current_user IS DISTINCT FROM session_user instead.
+--
+-- G) Shared IOUs / settlements
+--    - These migrations must not alter shared_ious, settlements, connections,
+--      notifications, or their RLS/RPC surfaces.
+-- ==============================================================================
+SELECT 'choice-a-security-scenarios-doc-only' AS note;

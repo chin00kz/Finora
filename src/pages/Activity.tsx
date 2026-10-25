@@ -23,10 +23,20 @@ import { triggerSync, deleteFromCloud } from '../sync/syncEngine';
 import { createId } from '../utils/createId';
 import { formatMoney } from '../utils/formatters';
 import { syncSettlementFromTransactionDelete } from '../utils/debtSettlementEngine';
+import { computeBulkDeleteBalanceDeltas } from '../utils/bulkDeleteBalanceReversal';
+import { applyAccountBalanceDeltas, prepareApplyBalance } from '../utils/accountBalanceEffects';
+import {
+  isBalanceHistoryType,
+  transactionAmountClassName,
+  transactionAmountPrefix,
+  transactionDisplayAmount,
+  transactionFallbackTitle,
+} from '../utils/transactionPresentation';
 import { useUIStore } from '../store/uiStore';
 import { usePrivacyStore } from '../store/privacyStore';
 import MaskedAmount from '../components/MaskedAmount';
 import { useConfirm } from '../components/ConfirmDialog';
+import NotificationBell from '../components/NotificationBell';
 
 export default function Activity() {
   const { confirmDialog, requestConfirm } = useConfirm();
@@ -83,11 +93,20 @@ export default function Activity() {
   const handleRepeatTransaction = async (txn: Transaction, e: React.MouseEvent) => {
     e.stopPropagation();
 
-    // Check account validity
+    // Check account validity — balance history / transfers / settlements are not one-tap repeatable
     const acc = accounts.find(a => a.id === txn.accountId);
-    const canOneTap = oneTapLogMode && acc && txn.type !== 'transfer' && (txn.type as string) !== 'debt_settlement';
+    const canOneTap =
+      oneTapLogMode &&
+      acc &&
+      txn.type !== 'transfer' &&
+      txn.type !== 'debt_settlement' &&
+      !isBalanceHistoryType(txn.type);
 
     if (!canOneTap) {
+      if (isBalanceHistoryType(txn.type) || txn.type === 'transfer' || txn.type === 'debt_settlement') {
+        setSelectedTxn(txn);
+        return;
+      }
       setPrefillData({
         notes: txn.notes,
         amount: txn.amount,
@@ -107,23 +126,34 @@ export default function Activity() {
       const id = createId('txn');
       const now = Date.now();
 
-      await db.transactions.add({
-        id,
-        amount: txn.amount,
-        type: txn.type,
-        categoryId: txn.categoryId,
-        accountId: txn.accountId,
-        date: now,
-        notes: txn.notes,
-        tagIds: txn.tagIds,
-        excludeFromBudget: txn.excludeFromBudget,
-        updatedAt: now,
-      });
+      await db.transaction('rw', [db.transactions, db.accounts, db.categories], async () => {
+        if (txn.categoryId) {
+          const cat = await db.categories.get(txn.categoryId);
+          if (!cat) {
+            throw new Error('Category no longer exists.');
+          }
+        }
 
-      const delta = txn.type === 'expense' ? -txn.amount : txn.amount;
-      await db.accounts.update(acc.id, {
-        balance: acc.balance + delta,
-        updatedAt: now,
+        const deltas = await prepareApplyBalance({
+          type: txn.type,
+          amount: txn.amount,
+          accountId: txn.accountId,
+        });
+
+        await db.transactions.add({
+          id,
+          amount: txn.amount,
+          type: txn.type,
+          categoryId: txn.categoryId,
+          accountId: txn.accountId,
+          date: now,
+          notes: txn.notes,
+          tagIds: txn.tagIds,
+          excludeFromBudget: txn.excludeFromBudget,
+          updatedAt: now,
+        });
+
+        await applyAccountBalanceDeltas(deltas, { now, requireAllAccounts: true });
       });
 
       triggerSync('transactions', id);
@@ -182,7 +212,11 @@ export default function Activity() {
       if (!match) return false;
     }
 
-    if (filterType !== 'all' && txn.type !== filterType) return false;
+    if (filterType === 'balance') {
+      if (!isBalanceHistoryType(txn.type)) return false;
+    } else if (filterType !== 'all' && txn.type !== filterType) {
+      return false;
+    }
     if (filterBudgetStatus === 'budgeted' && (txn.type !== 'expense' || txn.excludeFromBudget)) return false;
     if (filterBudgetStatus === 'out_of_budget' && (txn.type !== 'expense' || !txn.excludeFromBudget)) return false;
 
@@ -271,6 +305,12 @@ export default function Activity() {
 
   const handleBulkDelete = async () => {
     if (selectedIds.size === 0) return;
+    const { getPersonalFinanceEditBlockError } = await import('../sync/restoreIsolation');
+    const editBlock = getPersonalFinanceEditBlockError();
+    if (editBlock) {
+      alert(editBlock.message);
+      return;
+    }
     const ok = await requestConfirm({
       title: `Permanently delete ${selectedIds.size} transaction${selectedIds.size > 1 ? 's' : ''}?`,
       body: 'Account balances will be reversed.',
@@ -282,24 +322,10 @@ export default function Activity() {
     const txnsToDelete = transactions.filter(t => idsToDelete.includes(t.id));
 
     await db.transaction('rw', [db.transactions, db.accounts], async () => {
-      // Revert account balances
-      for (const txn of txnsToDelete) {
-        const acc = await db.accounts.get(txn.accountId);
-        if (acc) {
-          const delta =
-            txn.type === 'expense'
-              ? txn.amount
-              : txn.type === 'income'
-              ? -txn.amount
-              : txn.type === 'debt_settlement'
-              ? (txn.debtDirection === 'theyOweMe' ? -txn.amount : txn.amount)
-              : 0;
-          await db.accounts.update(txn.accountId, {
-            balance: acc.balance + delta,
-            updatedAt: Date.now(),
-          });
-        }
-      }
+      // Net per-account reversals; skip missing accounts so transfers can reverse the remaining side
+      const deltas = computeBulkDeleteBalanceDeltas(txnsToDelete);
+      const now = Date.now();
+      await applyAccountBalanceDeltas(deltas, { now, requireAllAccounts: false });
       await db.transactions.bulkDelete(idsToDelete);
     });
 
@@ -374,6 +400,7 @@ export default function Activity() {
         </div>
 
         <div className="flex items-center gap-2">
+          <NotificationBell />
           {/* Search bar with / indicator */}
           <div className="relative flex-1 sm:w-64">
             <Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
@@ -548,11 +575,12 @@ export default function Activity() {
                   { key: 'income', label: 'Income' },
                   { key: 'transfer', label: 'Transfer' },
                   { key: 'debt_settlement', label: 'Settlement' },
+                  { key: 'balance', label: 'Balance' },
                 ].map(t => (
                   <button
                     key={t.key}
                     onClick={() => setFilterType(t.key)}
-                    className={`flex-1 py-1.5 text-xs font-medium rounded-lg capitalize transition-colors ${
+                    className={`flex-1 py-1.5 text-xs font-medium rounded-lg transition-colors ${
                       filterType === t.key ? 'bg-card shadow-sm text-foreground' : 'text-muted-foreground'
                     }`}
                   >
@@ -752,7 +780,7 @@ export default function Activity() {
                         </div>
                       </td>
                       <td className="p-3.5 font-medium text-foreground max-w-xs truncate">
-                        {txn.notes || (txn.type === 'debt_settlement' ? 'Debt Settlement' : category?.name) || (txn.type === 'transfer' ? 'Transfer' : 'Transaction')}
+                        {transactionFallbackTitle(txn, category?.name)}
                       </td>
                       <td className="p-3.5">
                         {category ? (
@@ -770,6 +798,14 @@ export default function Activity() {
                           <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-medium bg-purple-500/10 text-purple-600 dark:text-purple-400">
                             <span>🤝</span>
                             <span>Settlement</span>
+                          </span>
+                        ) : txn.type === 'opening_balance' ? (
+                          <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-medium bg-sky-500/10 text-sky-600 dark:text-sky-400">
+                            Opening
+                          </span>
+                        ) : txn.type === 'balance_adjustment' ? (
+                          <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-medium bg-slate-500/10 text-slate-600 dark:text-slate-300">
+                            Adjustment
                           </span>
                         ) : (
                           <span className="text-xs text-muted-foreground">—</span>
@@ -804,32 +840,24 @@ export default function Activity() {
                         </div>
                       </td>
                       <td
-                        className={`p-3.5 pr-5 text-right font-medium whitespace-nowrap ${
-                          txn.type === 'expense' || (txn.type === 'debt_settlement' && txn.debtDirection === 'iOweThem')
-                            ? 'text-foreground'
-                            : txn.type === 'income' || (txn.type === 'debt_settlement' && txn.debtDirection === 'theyOweMe')
-                            ? 'text-emerald-500'
-                            : 'text-muted-foreground'
-                        }`}
+                        className={`p-3.5 pr-5 text-right font-medium whitespace-nowrap ${transactionAmountClassName(txn)}`}
                       >
                         <div className="flex items-center justify-end gap-2">
                           <span>
-                            {txn.type === 'expense' || (txn.type === 'debt_settlement' && txn.debtDirection === 'iOweThem')
-                              ? '−'
-                              : txn.type === 'income' || (txn.type === 'debt_settlement' && txn.debtDirection === 'theyOweMe')
-                              ? '+'
-                              : ''}LKR{' '}
-                            <MaskedAmount amount={txn.amount} />
+                            {transactionAmountPrefix(txn)}LKR{' '}
+                            <MaskedAmount amount={transactionDisplayAmount(txn)} />
                           </span>
 
-                          <button
-                            type="button"
-                            onClick={(e) => handleRepeatTransaction(txn, e)}
-                            className="p-1 rounded-lg text-muted-foreground hover:text-foreground hover:bg-muted transition-colors opacity-60 hover:opacity-100"
-                            title="Log again today"
-                          >
-                            <RotateCcw size={13} />
-                          </button>
+                          {!isBalanceHistoryType(txn.type) && (
+                            <button
+                              type="button"
+                              onClick={(e) => handleRepeatTransaction(txn, e)}
+                              className="p-1 rounded-lg text-muted-foreground hover:text-foreground hover:bg-muted transition-colors opacity-60 hover:opacity-100"
+                              title="Log again today"
+                            >
+                              <RotateCcw size={13} />
+                            </button>
+                          )}
                         </div>
                       </td>
                     </tr>
@@ -875,15 +903,33 @@ export default function Activity() {
                           color: category?.color || 'var(--foreground)',
                         }}
                       >
-                        {txn.type === 'expense' ? '💸' : txn.type === 'income' ? '💰' : txn.type === 'debt_settlement' ? '🤝' : '🔄'}
+                        {txn.type === 'expense'
+                          ? '💸'
+                          : txn.type === 'income'
+                          ? '💰'
+                          : txn.type === 'debt_settlement'
+                          ? '🤝'
+                          : txn.type === 'opening_balance'
+                          ? '🏁'
+                          : txn.type === 'balance_adjustment'
+                          ? '⚖️'
+                          : '🔄'}
                       </div>
                       <div>
                         <p className="font-medium text-foreground text-sm">
-                          {txn.notes || (txn.type === 'debt_settlement' ? 'Debt Settlement' : category?.name) || (txn.type === 'transfer' ? 'Transfer' : 'Transaction')}
+                          {transactionFallbackTitle(txn, category?.name)}
                         </p>
                         <p className="text-xs text-muted-foreground mt-0.5">
                           {format(new Date(txn.date), 'h:mm a')}
-                          {txn.type === 'debt_settlement' ? ' · Settlement' : (category && txn.notes ? ` · ${category.name}` : '')}
+                          {txn.type === 'debt_settlement'
+                            ? ' · Settlement'
+                            : txn.type === 'opening_balance'
+                            ? ' · Opening'
+                            : txn.type === 'balance_adjustment'
+                            ? ' · Adjustment'
+                            : category && txn.notes
+                            ? ` · ${category.name}`
+                            : ''}
                         </p>
                         {txn.tagIds && txn.tagIds.length > 0 && (
                           <div className="flex gap-1 mt-1">
@@ -915,31 +961,21 @@ export default function Activity() {
                       </div>
                     </div>
                     <div className="flex items-center gap-2 shrink-0">
-                      <div
-                        className={`font-medium text-sm text-right ${
-                          txn.type === 'expense' || (txn.type === 'debt_settlement' && txn.debtDirection === 'iOweThem')
-                            ? 'text-foreground'
-                            : txn.type === 'income' || (txn.type === 'debt_settlement' && txn.debtDirection === 'theyOweMe')
-                            ? 'text-emerald-500'
-                            : 'text-muted-foreground'
-                        }`}
-                      >
-                        {txn.type === 'expense' || (txn.type === 'debt_settlement' && txn.debtDirection === 'iOweThem')
-                          ? '−'
-                          : txn.type === 'income' || (txn.type === 'debt_settlement' && txn.debtDirection === 'theyOweMe')
-                          ? '+'
-                          : ''}LKR{' '}
-                        <MaskedAmount amount={txn.amount} />
+                      <div className={`font-medium text-sm text-right ${transactionAmountClassName(txn)}`}>
+                        {transactionAmountPrefix(txn)}LKR{' '}
+                        <MaskedAmount amount={transactionDisplayAmount(txn)} />
                       </div>
 
-                      <button
-                        type="button"
-                        onClick={(e) => handleRepeatTransaction(txn, e)}
-                        className="p-1.5 rounded-lg text-muted-foreground hover:text-foreground hover:bg-muted active:scale-95 transition-all"
-                        title="Log again today"
-                      >
-                        <RotateCcw size={13} />
-                      </button>
+                      {!isBalanceHistoryType(txn.type) && (
+                        <button
+                          type="button"
+                          onClick={(e) => handleRepeatTransaction(txn, e)}
+                          className="p-1.5 rounded-lg text-muted-foreground hover:text-foreground hover:bg-muted active:scale-95 transition-all"
+                          title="Log again today"
+                        >
+                          <RotateCcw size={13} />
+                        </button>
+                      )}
                     </div>
                   </div>
                 );

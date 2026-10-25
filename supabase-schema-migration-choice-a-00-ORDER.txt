@@ -1,0 +1,18 @@
+Finora Choice A — migration execution order (DO NOT auto-apply)
+================================================================
+Shared staging/production Supabase. Apply manually only after explicit approval.
+
+1. supabase-schema-migration-choice-a-01-meta-columns.sql
+2. supabase-schema-migration-choice-a-02-fingerprint.sql
+3. supabase-schema-migration-choice-a-03-triggers-rpcs.sql
+4. supabase-schema-migration-choice-a-04-security-scenarios.sql  (doc-only SELECT; optional)
+
+Privileged write context (avoids custom GUC and session_replication_role):
+  Epoch triggers allow DML when current_user IS DISTINCT FROM session_user
+  (SECURITY DEFINER RPC body). Direct authenticated DML has current_user =
+  session_user and is blocked when epoch > 0.
+
+session_replication_role: AVOIDED (not used).
+
+Choice A UI remains disabled in the app (CHOICE_A_ENABLED = false) until a
+separate enablement decision after DB deploy + verification.

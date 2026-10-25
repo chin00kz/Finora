@@ -1,4 +1,4 @@
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useEffect, useRef } from 'react';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { db } from '../db/db';
 import {
@@ -24,6 +24,13 @@ import {
 import ExportReportModal from '../components/ExportReportModal';
 import MonthlyDigestModal from '../components/MonthlyDigestModal';
 import MaskedAmount from '../components/MaskedAmount';
+import NotificationBell from '../components/NotificationBell';
+import {
+  expensePersonalSpendAmount,
+  sumBudgetSpending,
+  sumGeneralExpenseSpending,
+} from '../utils/spendingAmount';
+import { isBudgetAnalyticsPeriod, resolveActiveBudget } from '../utils/budgetLifecycle';
 
 export default function Analytics() {
   const budgets = useLiveQuery(() => db.budgets.toArray()) || [];
@@ -31,12 +38,28 @@ export default function Analytics() {
   const categories = useLiveQuery(() => db.categories.toArray()) || [];
   const accounts = useLiveQuery(() => db.accounts.toArray()) || [];
 
-  const activeBudget = budgets.find(b => b.status === 'active');
-  const pastBudgets = budgets.filter(b => b.status === 'ended');
+  const activeBudget = resolveActiveBudget(budgets);
+  const pastBudgets = budgets
+    .filter(b => b.status === 'ended')
+    .sort((a, b) => b.endDate - a.endDate);
 
   const [periodKey, setPeriodKey] = useState<string>('current');
   const [isExportModalOpen, setIsExportModalOpen] = useState(false);
   const [isDigestModalOpen, setIsDigestModalOpen] = useState(false);
+  const autoFellBackFromCurrent = useRef(false);
+
+  // Resolve "current" vs calendar month as active budget loads/unloads
+  useEffect(() => {
+    if (periodKey === 'current' && !activeBudget) {
+      setPeriodKey('this_month');
+      autoFellBackFromCurrent.current = true;
+      return;
+    }
+    if (autoFellBackFromCurrent.current && activeBudget && periodKey === 'this_month') {
+      setPeriodKey('current');
+      autoFellBackFromCurrent.current = false;
+    }
+  }, [periodKey, activeBudget]);
 
   // Derive active date range and filter transactions
   const { periodTransactions, periodLabel, dateRangeStr, budgetTarget } = useMemo(() => {
@@ -78,15 +101,25 @@ export default function Analytics() {
     return { periodTransactions: txns, periodLabel: label, dateRangeStr: rangeStr, budgetTarget: target };
   }, [transactions, budgets, activeBudget, periodKey]);
 
-  // Expenses only for spending charts
+  const isBudgetPeriod = isBudgetAnalyticsPeriod(periodKey, !!activeBudget);
+
+  // Expenses for charts: budget periods omit excludeFromBudget so totals match Budget.
+  // Calendar periods include them (general spending, not budget pace).
   const periodExpenses = useMemo(
-    () => periodTransactions.filter(t => t.type === 'expense'),
-    [periodTransactions]
+    () => periodTransactions.filter(t => {
+      if (t.type !== 'expense') return false;
+      if (isBudgetPeriod && t.excludeFromBudget) return false;
+      return true;
+    }),
+    [periodTransactions, isBudgetPeriod]
   );
 
   const totalSpent = useMemo(
-    () => periodExpenses.reduce((sum, t) => sum + (t.personalAmount ?? t.amount), 0),
-    [periodExpenses]
+    () =>
+      isBudgetPeriod
+        ? sumBudgetSpending(periodTransactions)
+        : sumGeneralExpenseSpending(periodTransactions),
+    [periodTransactions, isBudgetPeriod]
   );
 
   const totalIncome = useMemo(
@@ -102,7 +135,7 @@ export default function Analytics() {
     const map = new Map<string, number>();
     for (const t of periodExpenses) {
       const cId = t.categoryId || 'uncat';
-      map.set(cId, (map.get(cId) || 0) + (t.personalAmount ?? t.amount));
+      map.set(cId, (map.get(cId) || 0) + expensePersonalSpendAmount(t));
     }
 
     const catLookup = new Map(categories.map(c => [c.id, c]));
@@ -131,6 +164,17 @@ export default function Analytics() {
     if (periodKey === 'current' && activeBudget) {
       startDate = new Date(activeBudget.startDate);
       endDate = new Date(activeBudget.endDate);
+    } else if (periodKey.startsWith('budget_')) {
+      const bId = periodKey.replace('budget_', '');
+      const b = budgets.find(x => x.id === bId);
+      if (b) {
+        startDate = new Date(b.startDate);
+        endDate = new Date(b.endDate);
+      } else {
+        const dates = periodExpenses.map(t => t.date);
+        startDate = new Date(Math.min(...dates));
+        endDate = new Date(Math.max(...dates));
+      }
     } else if (periodKey === 'this_month') {
       startDate = startOfMonth(new Date());
       endDate = endOfMonth(new Date());
@@ -148,7 +192,7 @@ export default function Analytics() {
       const days = eachDayOfInterval({ start: startDate, end: endDate });
       return days.map(day => {
         const dayTxns = periodExpenses.filter(t => isSameDay(new Date(t.date), day));
-        const amount = dayTxns.reduce((sum, t) => sum + (t.personalAmount ?? t.amount), 0);
+        const amount = dayTxns.reduce((sum, t) => sum + expensePersonalSpendAmount(t), 0);
         return {
           date: day,
           label: format(day, 'MMM dd'),
@@ -159,7 +203,7 @@ export default function Analytics() {
     } catch {
       return [];
     }
-  }, [periodExpenses, periodKey, activeBudget]);
+  }, [periodExpenses, periodKey, activeBudget, budgets]);
 
   const maxDailySpend = useMemo(
     () => Math.max(1, ...dailySpending.map(d => d.amount)),
@@ -176,13 +220,13 @@ export default function Analytics() {
     const lastMonthStart = startOfMonth(lastMonthDate).getTime();
     const lastMonthEnd = endOfMonth(lastMonthDate).getTime();
 
-    const thisMonthSpend = transactions
-      .filter(t => t.type === 'expense' && t.date >= thisMonthStart && t.date <= thisMonthEnd)
-      .reduce((sum, t) => sum + (t.personalAmount ?? t.amount), 0);
+    const thisMonthSpend = sumGeneralExpenseSpending(
+      transactions.filter(t => t.date >= thisMonthStart && t.date <= thisMonthEnd),
+    );
 
-    const lastMonthSpend = transactions
-      .filter(t => t.type === 'expense' && t.date >= lastMonthStart && t.date <= lastMonthEnd)
-      .reduce((sum, t) => sum + (t.personalAmount ?? t.amount), 0);
+    const lastMonthSpend = sumGeneralExpenseSpending(
+      transactions.filter(t => t.date >= lastMonthStart && t.date <= lastMonthEnd),
+    );
 
     const diff = thisMonthSpend - lastMonthSpend;
     const percentDiff =
@@ -206,7 +250,7 @@ export default function Analytics() {
 
     for (const t of periodExpenses) {
       const acc = accMap.get(t.accountId);
-      const amt = t.personalAmount ?? t.amount;
+      const amt = expensePersonalSpendAmount(t);
       if (acc?.type === 'cash' || acc?.type === 'wallet') {
         cashTotal += amt;
       } else {
@@ -233,6 +277,7 @@ export default function Analytics() {
         </div>
 
         <div className="flex items-center gap-2">
+          <NotificationBell />
           {/* Period Selector */}
           <div className="relative">
             <select

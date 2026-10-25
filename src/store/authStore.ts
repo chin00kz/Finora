@@ -3,6 +3,7 @@ import { create } from 'zustand';
 import { supabase } from '../lib/supabase';
 import { db } from '../db/db';
 import { ALL_TABLES } from '../sync/syncEngine';
+import { isRestoreIsolated } from '../sync/restoreIsolation';
 import type { User, Session } from '@supabase/supabase-js';
 
 interface AuthState {
@@ -71,16 +72,27 @@ export const useAuthStore = create<AuthState>((set, get) => ({
 
   signOut: async () => {
     await supabase.auth.signOut();
-    localStorage.removeItem('finora-dirty');
     set({ user: null, session: null, lastSyncedAt: null });
+
+    // While Local-only restored isolation is active, preserve personal data,
+    // Shared IOU caches (view-only / possibly stale), recovery kits, and the
+    // isolation flag itself. Sync remains blocked after sign-in.
+    if (isRestoreIsolated()) {
+      useUIStore.getState().resetProfileIntroState();
+      return;
+    }
+
+    localStorage.removeItem('finora-dirty');
     await Promise.all(ALL_TABLES.map(t => DEXIE_TABLES[t]?.()));
     await db.cacheProfiles.clear();
     await db.cacheConnections.clear();
-      await db.cacheSharedIous.clear();
-      await db.cacheSharedIouSettlements.clear();
-      await db.cacheNotifications.clear();
-      useUIStore.getState().resetProfileIntroState();
-    },
+    await db.cacheSharedIous.clear();
+    await db.cacheSharedIouSettlements.clear();
+    await db.cacheNotifications.clear();
+    await db.pendingAccountOutbox.clear();
+    // Never clear localRestoreKits here — recovery kits must survive sign-out.
+    useUIStore.getState().resetProfileIntroState();
+  },
 
 
   sendPasswordReset: async (email) => {
@@ -93,6 +105,9 @@ export const useAuthStore = create<AuthState>((set, get) => ({
   // Deletes all user data rows from Supabase then signs out.
   // The auth account itself is preserved so they can sign back in.
   deleteAccountData: async () => {
+    if (isRestoreIsolated()) {
+      return 'Cloud account deletion is disabled during Local-only restored isolation.';
+    }
     const user = get().user;
     if (!user) return 'Not logged in.';
     try {
@@ -109,9 +124,10 @@ export const useAuthStore = create<AuthState>((set, get) => ({
       await db.cacheSharedIous.clear();
       await db.cacheSharedIouSettlements.clear();
       await db.cacheNotifications.clear();
-        useUIStore.getState().resetProfileIntroState();
-        return null;
-      } catch (err) {
+      await db.pendingAccountOutbox.clear();
+      useUIStore.getState().resetProfileIntroState();
+      return null;
+    } catch (err) {
       return err instanceof Error ? err.message : 'Unknown error';
     }
   },

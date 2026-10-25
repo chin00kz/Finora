@@ -26,6 +26,19 @@ import { supabase, isSupabaseConfigured } from '../lib/supabase';
 import { db } from '../db/db';
 import { useAuthStore } from '../store/authStore';
 import { createId } from '../utils/createId';
+import {
+  applyUpsertDirtyResult,
+  shouldApplyRemoteUpsert,
+  shouldTombstoneLocalOnPull,
+} from './dirtyProtection';
+import { cloudSyncBlockReason, isCloudSyncBlocked } from './restoreIsolation';
+import { isPaginatedFetchComplete } from './cloudReconciliationCompare';
+import {
+  getLocalDatasetEpoch,
+  isEpochMismatchError,
+  shouldUseEpochGatedRpcSync,
+} from './datasetEpoch';
+import { inferBudgetStatus } from '../utils/budgetLifecycle';
 import type {
   Account,
   Transaction,
@@ -159,6 +172,26 @@ function clearDeletedIds(table: TableName, ids: string[]): void {
   localStorage.setItem(DELETED_KEY, JSON.stringify(map));
 }
 
+/** Snapshot dirty/deleted maps for recovery kits (no cloud I/O). */
+export function snapshotSyncMetadata(): { dirty: DirtyMap; deleted: DeletedMap } {
+  return { dirty: getDirty(), deleted: getDeleted() };
+}
+
+/** Restore dirty/deleted maps from a recovery kit (no cloud I/O). */
+export function restoreSyncMetadataLocalOnly(meta: { dirty?: DirtyMap; deleted?: DeletedMap }): void {
+  localStorage.setItem(DIRTY_KEY, JSON.stringify(meta.dirty ?? {}));
+  localStorage.setItem(DELETED_KEY, JSON.stringify(meta.deleted ?? {}));
+}
+
+/**
+ * Clear live dirty/deleted maps without calling deleteFromCloud.
+ * Used after copying metadata into a recovery kit under restore isolation.
+ */
+export function clearSyncMetadataLocalOnly(): void {
+  localStorage.removeItem(DIRTY_KEY);
+  localStorage.removeItem(DELETED_KEY);
+}
+
 function isTableMissingError(err: any): boolean {
   if (!err) return false;
 
@@ -269,15 +302,17 @@ function toSupabaseBudget(userId: string, b: Budget) {
 }
 
 function fromSupabaseBudget(row: Record<string, unknown>): Budget {
+  const startDate = Number(row.start_date) || Date.now();
+  const endDate = Number(row.end_date) || Date.now();
   return {
     id: String(row.id),
     name: String(row.name),
     amount: Number(row.amount) || 0,
     period: (row.period as Budget['period']) || 'days',
     periodLength: Number(row.period_length) || 1,
-    startDate: Number(row.start_date) || Date.now(),
-    endDate: Number(row.end_date) || Date.now(),
-    status: (row.status as Budget['status']) || 'active',
+    startDate,
+    endDate,
+    status: inferBudgetStatus(row.status, startDate, endDate),
     updatedAt: Number(row.updated_at) || 0,
   };
 }
@@ -772,28 +807,37 @@ async function mergeRemoteRows(
     const remoteIdSet = new Set(remoteRows.map(r => r.id));
     const dirtyIdSet = new Set(getDirty()[table] ?? []);
     const localIds = await dexieTable.toCollection().primaryKeys();
-    const candidateIds = localIds.filter(id => !remoteIdSet.has(id) && !dirtyIdSet.has(id));
-    if (candidateIds.length > 0) {
-      const candidateRows = await dexieTable.bulkGet(candidateIds);
-      const graceThreshold = Date.now() - 60_000; // 60-second backstop for in-flight/recent writes
-      const toDelete = candidateIds.filter((_, i) => {
-        const row = candidateRows[i];
-        if (row && (row.updatedAt ?? 0) > graceThreshold) {
-          return false; // Protect recent local write
-        }
-        return true;
+    const now = Date.now();
+    const absentIds = localIds.filter(id => !remoteIdSet.has(id));
+    if (absentIds.length > 0) {
+      const absentRows = await dexieTable.bulkGet(absentIds);
+      const toDelete = absentIds.filter((id, i) => {
+        const row = absentRows[i];
+        return shouldTombstoneLocalOnPull({
+          presentInRemote: false,
+          isDirty: dirtyIdSet.has(id),
+          updatedAt: row?.updatedAt ?? 0,
+          now,
+        });
       });
       if (toDelete.length > 0) {
         await dexieTable.bulkDelete(toDelete);
       }
     }
 
-    // 2. Upsert changed or new remote rows
+    // 2. Upsert changed or new remote rows (never revive pending local deletes)
     if (remoteRows.length > 0) {
+      const pendingDeleteIds = getDeleted()[table] ?? [];
       const localRows = await dexieTable.bulkGet(remoteRows.map(r => r.id));
       const toWrite = remoteRows.filter((remote, i) => {
         const local = localRows[i];
-        return !local || (remote.updatedAt ?? 0) >= (local.updatedAt ?? 0);
+        return shouldApplyRemoteUpsert({
+          id: remote.id,
+          pendingDeleteIds,
+          hasLocal: !!local,
+          localUpdatedAt: local?.updatedAt ?? 0,
+          remoteUpdatedAt: remote.updatedAt ?? 0,
+        });
       });
       if (toWrite.length > 0) await dexieTable.bulkPut(toWrite);
     }
@@ -856,6 +900,172 @@ async function mergeRemoteRows(
       break;
   }
 }
+
+/** Map raw Supabase rows to local Dexie shapes (no Dexie writes). */
+export function mapSupabaseRowsToLocal(
+  table: TableName,
+  remoteData: Record<string, unknown>[],
+): { id: string }[] {
+  switch (table) {
+    case 'accounts':
+      return remoteData.map(fromSupabaseAccount);
+    case 'transactions':
+      return remoteData.map(fromSupabaseTransaction);
+    case 'budgets':
+      return remoteData.map(fromSupabaseBudget);
+    case 'tags':
+      return remoteData.map(fromSupabaseTag);
+    case 'categories':
+      return remoteData.map(fromSupabaseCategory);
+    case 'recurring_transactions':
+      return remoteData.map(fromSupabaseRecurring);
+    case 'savings_goals':
+      return remoteData.map(fromSupabaseGoal);
+    case 'people':
+      return remoteData.map(fromSupabasePerson);
+    case 'debts':
+      return remoteData.map(fromSupabaseDebt);
+    case 'credit_cards':
+      return remoteData.map(fromSupabaseCreditCard);
+    case 'cash_offset_sources':
+      return remoteData.map(fromSupabaseCashOffsetSource);
+    case 'fixed_deposits':
+      return remoteData.map(fromSupabaseFixedDeposit);
+    case 'money_market_accounts':
+      return remoteData.map(fromSupabaseMMA);
+    case 'installment_plans':
+      return remoteData.map(fromSupabaseInstallmentPlan);
+    case 'card_promos':
+      return remoteData.map(fromSupabaseCardPromo);
+    case 'float_gap_history':
+      return remoteData.map(fromSupabaseFloatGapHistory);
+    case 'reimbursement_ledgers':
+      return remoteData.map(fromSupabaseReimbursementLedger);
+    case 'reimbursement_entries':
+      return remoteData.map(fromSupabaseReimbursementEntry);
+  }
+}
+
+export const CLOUD_FETCH_PAGE_SIZE = 1000;
+
+/**
+ * Read-only paginated fetch of one personal table. Does not write Dexie and does
+ * not participate in merge/tombstone logic. Safe to call while restore-isolated
+ * (reconciliation preview). Ordinary pull/push paths remain gated separately.
+ */
+export async function fetchCloudTableRowsPaginatedReadOnly(
+  table: TableName,
+  userId: string,
+  pageSize: number = CLOUD_FETCH_PAGE_SIZE,
+): Promise<{
+  rows: { id: string }[];
+  expectedCount: number;
+  fetchedCount: number;
+  complete: boolean;
+  error?: string;
+}> {
+  if (!isSupabaseConfigured) {
+    return {
+      rows: [],
+      expectedCount: 0,
+      fetchedCount: 0,
+      complete: false,
+      error: 'Supabase is not configured.',
+    };
+  }
+
+  const rawRows: Record<string, unknown>[] = [];
+  let expectedCount: number | null = null;
+  let from = 0;
+
+  try {
+    while (true) {
+      const to = from + pageSize - 1;
+      const { data, error, count } = await supabase
+        .from(table)
+        .select('*', { count: expectedCount == null ? 'exact' : undefined })
+        .eq('user_id', userId)
+        .order('id', { ascending: true })
+        .range(from, to);
+
+      if (error) {
+        if (isTableMissingError(error)) {
+          return { rows: [], expectedCount: 0, fetchedCount: 0, complete: true };
+        }
+        return {
+          rows: [],
+          expectedCount: expectedCount ?? 0,
+          fetchedCount: 0,
+          complete: false,
+          error: `${table}: ${error.message}`,
+        };
+      }
+
+      if (expectedCount == null) {
+        expectedCount = typeof count === 'number' ? count : null;
+      }
+
+      const chunk = (data ?? []) as Record<string, unknown>[];
+      rawRows.push(...chunk);
+
+      if (chunk.length < pageSize) break;
+      from += pageSize;
+
+      // Safety: avoid infinite loop if API keeps returning full pages incorrectly
+      if (expectedCount != null && rawRows.length > expectedCount + pageSize) {
+        return {
+          rows: [],
+          expectedCount,
+          fetchedCount: rawRows.length,
+          complete: false,
+          error: `${table}: fetch exceeded reported count (incomplete/unstable page results).`,
+        };
+      }
+    }
+
+    if (expectedCount == null) {
+      return {
+        rows: [],
+        expectedCount: 0,
+        fetchedCount: rawRows.length,
+        complete: false,
+        error: `${table}: could not verify row count (exact count unavailable).`,
+      };
+    }
+
+    const complete = isPaginatedFetchComplete(rawRows.length, expectedCount);
+    if (!complete) {
+      return {
+        rows: [],
+        expectedCount,
+        fetchedCount: rawRows.length,
+        complete: false,
+        error: `${table}: incomplete fetch (got ${rawRows.length}, expected ${expectedCount}).`,
+      };
+    }
+
+    return {
+      rows: mapSupabaseRowsToLocal(table, rawRows),
+      expectedCount,
+      fetchedCount: rawRows.length,
+      complete: true,
+    };
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    if (isTableMissingError(err)) {
+      return { rows: [], expectedCount: 0, fetchedCount: 0, complete: true };
+    }
+    return {
+      rows: [],
+      expectedCount: expectedCount ?? 0,
+      fetchedCount: rawRows.length,
+      complete: false,
+      error: `${table}: ${msg}`,
+    };
+  }
+}
+
+export { isPaginatedFetchComplete } from './cloudReconciliationCompare';
 
 // ── Push (Local → Supabase) ──────────────────────────────────────────────────
 
@@ -958,12 +1168,31 @@ function stripUndefinedFields(row: Record<string, unknown>): Record<string, unkn
 /**
  * pushDirtyRecords — push only records marked dirty by triggerSync.
  * This is the normal write path for every user action.
+ *
+ * epoch = 0: direct PostgREST upsert (legacy).
+ * epoch > 0: upsert_personal_rows RPC only.
  */
 export async function pushDirtyRecords(userId: string): Promise<void> {
+  if (isCloudSyncBlocked()) {
+    console.warn('[sync] pushDirtyRecords blocked:', cloudSyncBlockReason());
+    return;
+  }
   if (!isSupabaseConfigured) return;
+
+  // Dynamic import avoids circular init with epochDrift → syncEngine.
+  const { ensureEpochCompatibleBeforePush } = await import('./epochDrift');
+  const gate = await ensureEpochCompatibleBeforePush(userId);
+  if (gate !== 'ok') {
+    console.warn('[sync] pushDirtyRecords aborted: epoch gate =', gate);
+    return;
+  }
+
   const map = getDirty();
   const tables = Object.keys(map) as TableName[];
   if (tables.length === 0) return;
+
+  const localEpoch = getLocalDatasetEpoch(userId);
+  const useRpc = shouldUseEpochGatedRpcSync(localEpoch);
 
   await Promise.all(
     tables.map(async table => {
@@ -976,16 +1205,33 @@ export async function pushDirtyRecords(userId: string): Promise<void> {
           clearDirtyIds(table, ids);
           return;
         }
-        const { error } = await supabase.from(table).upsert(rows.map(stripUndefinedFields), { onConflict: 'id' });
-        if (error) {
-          if (isTableMissingError(error)) {
-            clearDirtyIds(table, ids);
-            return;
-          }
-          console.warn(`[sync] pushDirtyRecords failed for ${table}:`, error);
-          return; // Keep dirty — will retry next time
+        const cleaned = rows.map(stripUndefinedFields);
+        let error: { message?: string } | null = null;
+        if (useRpc) {
+          const withEpoch = cleaned.map(r => ({ ...r, dataset_epoch: localEpoch }));
+          const res = await supabase.rpc('upsert_personal_rows', {
+            p_epoch: localEpoch,
+            p_table: table,
+            p_rows: withEpoch,
+          });
+          error = res.error;
+        } else {
+          const res = await supabase
+            .from(table)
+            .upsert(cleaned, { onConflict: 'id' });
+          error = res.error;
         }
-        clearDirtyIds(table, ids);
+        // Failed upserts (including missing-table) must never clear dirty IDs.
+        // Pull skips missing tables; when the table later exists, dirty still
+        // protects unsynced local rows from tombstone deletion.
+        const dirtyAction = applyUpsertDirtyResult(error, () => clearDirtyIds(table, ids));
+        if (dirtyAction === 'retained') {
+          console.warn(`[sync] pushDirtyRecords failed for ${table}:`, error);
+          if (isEpochMismatchError(error?.message)) {
+            const again = await ensureEpochCompatibleBeforePush(userId);
+            console.warn('[sync] epoch mismatch on push; gate=', again);
+          }
+        }
       } catch (err) {
         console.warn(`[sync] pushDirtyRecords exception for ${table}:`, err);
       }
@@ -1003,6 +1249,9 @@ export async function pullTable(
   table: TableName,
   userId: string,
 ): Promise<{ success: boolean; error?: string; skipped?: boolean }> {
+  if (isCloudSyncBlocked()) {
+    return { success: false, error: cloudSyncBlockReason(), skipped: true };
+  }
   if (!isSupabaseConfigured) return { success: true, skipped: true };
   try {
     const { data, error } = await supabase.from(table).select('*').eq('user_id', userId);
@@ -1027,6 +1276,7 @@ export async function pullTable(
  * sees new transactions and balance changes quickly without pulling all 18 tables.
  */
 export async function pullLiveActivity(userId: string): Promise<void> {
+  if (isCloudSyncBlocked()) return;
   await Promise.all([pullTable('accounts', userId), pullTable('transactions', userId)]);
 }
 
@@ -1035,6 +1285,9 @@ export async function pullLiveActivity(userId: string): Promise<void> {
  * Called on login, focus, and visibility change. Does NOT push first.
  */
 export async function pullAll(userId: string): Promise<{ success: boolean; error?: string }> {
+  if (isCloudSyncBlocked()) {
+    return { success: false, error: cloudSyncBlockReason() };
+  }
   const results = await Promise.all(ALL_TABLES.map(t => pullTable(t, userId)));
   const failed = results.find(r => !r.success && !r.skipped);
   if (failed) return { success: false, error: failed.error };
@@ -1045,6 +1298,10 @@ export async function pullAll(userId: string): Promise<{ success: boolean; error
 // ── Delete from Supabase ────────────────────────────────────────────────────
 
 export async function deleteFromCloud(table: TableName, id: string): Promise<void> {
+  if (isCloudSyncBlocked()) {
+    console.warn('[sync] deleteFromCloud blocked:', cloudSyncBlockReason());
+    return;
+  }
   // Always queue in offline deletion tracker (and clear any pending dirty write)
   markDeleted(table, id);
 
@@ -1053,7 +1310,23 @@ export async function deleteFromCloud(table: TableName, id: string): Promise<voi
   if (!user) return;
 
   try {
-    const { error } = await supabase.from(table).delete().eq('id', id).eq('user_id', user.id);
+    const { ensureEpochCompatibleBeforePush } = await import('./epochDrift');
+    const gate = await ensureEpochCompatibleBeforePush(user.id);
+    if (gate !== 'ok') return;
+
+    const localEpoch = getLocalDatasetEpoch(user.id);
+    let error: { message?: string } | null = null;
+    if (shouldUseEpochGatedRpcSync(localEpoch)) {
+      const res = await supabase.rpc('delete_personal_rows', {
+        p_epoch: localEpoch,
+        p_table: table,
+        p_ids: [id],
+      });
+      error = res.error;
+    } else {
+      const res = await supabase.from(table).delete().eq('id', id).eq('user_id', user.id);
+      error = res.error;
+    }
     if (error) {
       console.warn(`[sync] Delete failed for ${table}/${id}:`, error.message);
       return;
@@ -1066,17 +1339,37 @@ export async function deleteFromCloud(table: TableName, id: string): Promise<voi
 
 /** Retry any deletions that failed while offline */
 export async function drainDeletedRecords(userId: string): Promise<void> {
+  if (isCloudSyncBlocked()) return;
   if (!isSupabaseConfigured) return;
+
+  const { ensureEpochCompatibleBeforePush } = await import('./epochDrift');
+  const gate = await ensureEpochCompatibleBeforePush(userId);
+  if (gate !== 'ok') return;
+
   const map = getDeleted();
   const tables = Object.keys(map) as TableName[];
   if (tables.length === 0) return;
+
+  const localEpoch = getLocalDatasetEpoch(userId);
+  const useRpc = shouldUseEpochGatedRpcSync(localEpoch);
 
   await Promise.all(
     tables.map(async table => {
       const ids = map[table];
       if (!ids || ids.length === 0) return;
       try {
-        const { error } = await supabase.from(table).delete().in('id', ids).eq('user_id', userId);
+        let error: { message?: string } | null = null;
+        if (useRpc) {
+          const res = await supabase.rpc('delete_personal_rows', {
+            p_epoch: localEpoch,
+            p_table: table,
+            p_ids: ids,
+          });
+          error = res.error;
+        } else {
+          const res = await supabase.from(table).delete().in('id', ids).eq('user_id', userId);
+          error = res.error;
+        }
         if (!error) {
           clearDeletedIds(table, ids);
         }
@@ -1100,7 +1393,16 @@ async function upsertSingleRemoteRow(
     item: T,
   ) {
     const local = await dexieTable.get(item.id);
-    if (!local || (item.updatedAt ?? 0) >= (local.updatedAt ?? 0)) {
+    const pendingDeleteIds = getDeleted()[table] ?? [];
+    if (
+      shouldApplyRemoteUpsert({
+        id: item.id,
+        pendingDeleteIds,
+        hasLocal: !!local,
+        localUpdatedAt: local?.updatedAt ?? 0,
+        remoteUpdatedAt: item.updatedAt ?? 0,
+      })
+    ) {
       await dexieTable.put(item);
     }
   }
@@ -1136,6 +1438,7 @@ export async function applyRealtimeChange(
   newRow: Record<string, unknown> | null,
   oldRow: Record<string, unknown> | null,
 ): Promise<void> {
+  if (isCloudSyncBlocked()) return;
   if (eventType === 'DELETE') {
     const id = oldRow?.id ? String(oldRow.id) : null;
     if (!id) return;
@@ -1171,6 +1474,9 @@ export async function applyRealtimeChange(
 // Previously a 73-line copy of pullTable's switch. Now just calls pullTable.
 
 export async function hydrateFromCloud(userId: string): Promise<{ restoredCount: number }> {
+  if (isCloudSyncBlocked()) {
+    return { restoredCount: 0 };
+  }
   await migrateLegacyIds();
   const results = await Promise.all(ALL_TABLES.map(t => pullTable(t, userId)));
   const count = results.filter(r => r.success && !r.skipped).length;
@@ -1183,6 +1489,9 @@ export async function hydrateFromCloud(userId: string): Promise<{ restoredCount:
 export async function purgeAndRepushCloud(
   userId: string,
 ): Promise<{ success: boolean; error?: string }> {
+  if (isCloudSyncBlocked()) {
+    return { success: false, error: cloudSyncBlockReason() };
+  }
   try {
     for (const table of ALL_TABLES) {
       const { error } = await supabase.from(table).delete().eq('user_id', userId);
@@ -1241,6 +1550,9 @@ async function migrateLegacyIds(): Promise<void> {
 // ── Full Two-Way Sync (used by purgeAndRepush and manual "Sync Now") ──────────
 
 export async function syncAll(userId: string): Promise<{ success: boolean; error?: string }> {
+  if (isCloudSyncBlocked()) {
+    return { success: false, error: cloudSyncBlockReason() };
+  }
   await migrateLegacyIds();
   await pushDirtyRecords(userId);
   return pullAll(userId);
@@ -1249,6 +1561,13 @@ export async function syncAll(userId: string): Promise<{ success: boolean; error
 // ── Debounced Trigger Helper ─────────────────────────────────────────────────
 
 let syncTimer: ReturnType<typeof setTimeout> | null = null;
+
+export function cancelPendingSyncTimer(): void {
+  if (syncTimer) {
+    clearTimeout(syncTimer);
+    syncTimer = null;
+  }
+}
 
 /**
  * triggerSync — mark a single record dirty and schedule a push.
@@ -1260,6 +1579,9 @@ let syncTimer: ReturnType<typeof setTimeout> | null = null;
  * The push is debounced 1.5 s so rapid writes batch into one network request.
  */
 export function triggerSync(table: TableName, id: string, immediate = false): void {
+  // Isolation: do not queue dirty IDs or schedule pushes (restored snapshot must stay local-only).
+  if (isCloudSyncBlocked()) return;
+
   // Always mark dirty immediately to protect the record from remote deletion sweeps,
   // even if the user session is still resolving or currently offline.
   markDirty(table, id);
@@ -1286,6 +1608,7 @@ export function hasPendingDirty(tables?: TableName[]): boolean {
 
 /** Retry any records or deletions that failed while offline (called on reconnect). */
 export async function drainPendingSync(userId: string): Promise<void> {
+  if (isCloudSyncBlocked()) return;
   await drainDeletedRecords(userId);
   const map = getDirty();
   const hasAny = Object.values(map).some(ids => ids && ids.length > 0);

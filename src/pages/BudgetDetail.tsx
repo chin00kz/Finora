@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { db } from '../db/db';
 import { differenceInDays } from 'date-fns';
@@ -7,9 +7,13 @@ import { useNavigate } from 'react-router-dom';
 import { useUIStore } from '../store/uiStore';
 import { triggerSync } from '../sync/syncEngine';
 import { getBudgetStatus } from '../utils/budgetUtils';
+import { resolveActiveBudget, patchForEndingBudget } from '../utils/budgetLifecycle';
+import { healMultipleActiveBudgets } from '../utils/budgetHeal';
+import { expensePersonalSpendAmount, sumBudgetSpending } from '../utils/spendingAmount';
 import ExportReportModal from '../components/ExportReportModal';
 import { useConfirm } from '../components/ConfirmDialog';
 import MaskedAmount from '../components/MaskedAmount';
+import NotificationBell from '../components/NotificationBell';
 
 export default function BudgetDetail() {
   const navigate = useNavigate();
@@ -19,7 +23,11 @@ export default function BudgetDetail() {
   const budgets = useLiveQuery(() => db.budgets.toArray()) || [];
   const transactions = useLiveQuery(() => db.transactions.toArray()) || [];
 
-  const activeBudget = budgets.find(b => b.status === 'active');
+  useEffect(() => {
+    void healMultipleActiveBudgets();
+  }, []);
+
+  const activeBudget = resolveActiveBudget(budgets);
   const pastBudgets = budgets
     .filter(b => b.status === 'ended')
     .sort((a, b) => b.endDate - a.endDate);
@@ -36,16 +44,15 @@ export default function BudgetDetail() {
 
   if (activeBudget) {
     const today = Date.now();
-    const periodTxns = transactions.filter(
-      t => t.type === 'expense' && !t.excludeFromBudget && t.date >= activeBudget.startDate && t.date <= activeBudget.endDate
-    );
-    const outOfBudgetTxns = transactions.filter(
-      t => t.type === 'expense' && t.excludeFromBudget && t.date >= activeBudget.startDate && t.date <= activeBudget.endDate
-    );
-    spentThisPeriod = periodTxns.reduce((sum, t) => sum + (t.isShared && t.personalAmount ? t.personalAmount : t.amount), 0);
-    outOfBudgetSpent = outOfBudgetTxns.reduce((sum, t) => sum + (t.isShared && t.personalAmount ? t.personalAmount : t.amount), 0);
+    const range = { startDate: activeBudget.startDate, endDate: activeBudget.endDate };
+    spentThisPeriod = sumBudgetSpending(transactions, range);
+    outOfBudgetSpent = transactions.reduce((sum, t) => {
+      if (t.type !== 'expense' || !t.excludeFromBudget) return sum;
+      if (t.date < range.startDate || t.date > range.endDate) return sum;
+      return sum + expensePersonalSpendAmount(t);
+    }, 0);
     daysLeft = Math.max(0, differenceInDays(activeBudget.endDate, today));
-    budgetStatus = getBudgetStatus(spentThisPeriod, activeBudget.amount);
+    budgetStatus = getBudgetStatus(spentThisPeriod, activeBudget.amount, range);
   }
 
   const startRename = () => {
@@ -69,7 +76,8 @@ export default function BudgetDetail() {
        danger: true,
     });
     if (ok) {
-      await db.budgets.update(activeBudget.id, { status: 'ended', endDate: Date.now(), updatedAt: Date.now() });
+      const now = Date.now();
+      await db.budgets.update(activeBudget.id, patchForEndingBudget(activeBudget, now));
       triggerSync('budgets', activeBudget.id);
     }
   };
@@ -85,13 +93,16 @@ export default function BudgetDetail() {
           </button>
           <h2 className="text-xl font-medium text-foreground ml-1">Budget</h2>
         </div>
-        <button
-          onClick={() => setIsExportOpen(true)}
-          className="flex items-center gap-1.5 px-3 py-1.5 bg-card border border-border hover:bg-muted text-xs font-medium rounded-xl text-foreground transition-colors shadow-xs"
-        >
-          <Download size={14} />
-          <span>Export Report</span>
-        </button>
+        <div className="flex items-center gap-2">
+          <NotificationBell />
+          <button
+            onClick={() => setIsExportOpen(true)}
+            className="flex items-center gap-1.5 px-3 py-1.5 bg-card border border-border hover:bg-muted text-xs font-medium rounded-xl text-foreground transition-colors shadow-xs"
+          >
+            <Download size={14} />
+            <span>Export Report</span>
+          </button>
+        </div>
       </div>
 
       <div className="p-6 space-y-6">
@@ -138,7 +149,7 @@ export default function BudgetDetail() {
                       </>
                     ) : (
                       <>
-                        of LKR <MaskedAmount amount={activeBudget.amount} /> remaining
+                        LKR <MaskedAmount amount={activeBudget.amount} /> total budget
                       </>
                     )}
                   </p>
@@ -212,13 +223,10 @@ export default function BudgetDetail() {
             <h3 className="text-xs font-medium text-muted-foreground uppercase tracking-wider mb-3">Past Periods</h3>
             <div className="bg-card rounded-2xl border border-border shadow-sm divide-y divide-border overflow-hidden">
               {pastBudgets.map(budget => {
-                const periodTxns = transactions.filter(
-                  t => t.type === 'expense' && !t.excludeFromBudget && t.date >= budget.startDate && t.date <= budget.endDate
-                );
-                const spent = periodTxns.reduce(
-                  (sum, t) => sum + (t.isShared && t.personalAmount ? t.personalAmount : t.amount),
-                  0
-                );
+                const spent = sumBudgetSpending(transactions, {
+                  startDate: budget.startDate,
+                  endDate: budget.endDate,
+                });
                 const status = getBudgetStatus(spent, budget.amount);
 
                 return (

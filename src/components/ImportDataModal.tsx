@@ -33,6 +33,7 @@ export default function ImportDataModal({ isOpen, onClose, onSuccess }: ImportDa
   const [adjustBalances, setAdjustBalances] = useState(true);
   const [importResult, setImportResult] = useState<{
     importedTransactionsCount: number;
+    skippedDuplicateCount: number;
     createdAccountsCount: number;
     createdCategoriesCount: number;
     createdTagsCount: number;
@@ -68,10 +69,13 @@ export default function ImportDataModal({ isOpen, onClose, onSuccess }: ImportDa
     try {
       const text = await file.text();
       const parsedAnalysis = await analyzeCSV(text);
+      setAnalysis(parsedAnalysis);
       if (parsedAnalysis.validRows.length === 0) {
-        setError('No valid transactions could be found in this CSV file.');
-      } else {
-        setAnalysis(parsedAnalysis);
+        setError(
+          parsedAnalysis.skippedRows.length > 0
+            ? 'No rows could be imported. See skipped-row reasons below.'
+            : 'No valid transactions could be found in this CSV file.',
+        );
       }
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to parse CSV file.');
@@ -98,10 +102,13 @@ export default function ImportDataModal({ isOpen, onClose, onSuccess }: ImportDa
     try {
       const text = await file.text();
       const parsedAnalysis = await analyzeCSV(text);
+      setAnalysis(parsedAnalysis);
       if (parsedAnalysis.validRows.length === 0) {
-        setError('No valid transactions could be found in this CSV file.');
-      } else {
-        setAnalysis(parsedAnalysis);
+        setError(
+          parsedAnalysis.skippedRows.length > 0
+            ? 'No rows could be imported. See skipped-row reasons below.'
+            : 'No valid transactions could be found in this CSV file.',
+        );
       }
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to parse CSV file.');
@@ -163,7 +170,10 @@ export default function ImportDataModal({ isOpen, onClose, onSuccess }: ImportDa
             <div className="space-y-1">
               <h3 className="text-lg font-semibold text-foreground">Import Completed Successfully!</h3>
               <p className="text-xs text-muted-foreground max-w-sm mx-auto">
-                Your transactions and financial accounts have been restored and synced to the cloud.
+                Imported transactions were written locally
+                {importResult.skippedDuplicateCount > 0
+                  ? ` (${importResult.skippedDuplicateCount} duplicate row${importResult.skippedDuplicateCount === 1 ? '' : 's'} skipped on retry).`
+                  : '.'}
               </p>
             </div>
 
@@ -253,30 +263,55 @@ export default function ImportDataModal({ isOpen, onClose, onSuccess }: ImportDa
                 </div>
 
                 {/* Metrics Grid */}
-                <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5">
+                <div className="grid grid-cols-2 sm:grid-cols-5 gap-2.5">
                   <div className="p-3 bg-card border border-border rounded-xl">
-                    <p className="text-[10px] uppercase font-semibold text-muted-foreground">Transactions</p>
+                    <p className="text-[10px] uppercase font-semibold text-muted-foreground">Will import</p>
                     <p className="text-base font-semibold text-foreground">{analysis.validRows.length}</p>
+                    <p className="text-[10px] text-muted-foreground mt-0.5">
+                      of {analysis.totalRows} rows
+                    </p>
                   </div>
                   <div className="p-3 bg-card border border-border rounded-xl">
-                    <p className="text-[10px] uppercase font-semibold text-muted-foreground">Total Expenses</p>
+                    <p className="text-[10px] uppercase font-semibold text-muted-foreground">Skipped</p>
+                    <p className="text-base font-semibold text-amber-600 dark:text-amber-400">
+                      {analysis.skippedRows.length}
+                    </p>
+                  </div>
+                  <div className="p-3 bg-card border border-border rounded-xl">
+                    <p className="text-[10px] uppercase font-semibold text-muted-foreground">Transfers</p>
+                    <p className="text-base font-semibold text-foreground">{analysis.transferCount}</p>
+                  </div>
+                  <div className="p-3 bg-card border border-border rounded-xl">
+                    <p className="text-[10px] uppercase font-semibold text-muted-foreground">Expenses</p>
                     <p className="text-base font-semibold text-red-500">
                       {formatMoney(analysis.totalExpenseAmount)}
                     </p>
                   </div>
                   <div className="p-3 bg-card border border-border rounded-xl">
-                    <p className="text-[10px] uppercase font-semibold text-muted-foreground">Total Income</p>
+                    <p className="text-[10px] uppercase font-semibold text-muted-foreground">Income</p>
                     <p className="text-base font-semibold text-emerald-500">
                       {formatMoney(analysis.totalIncomeAmount)}
                     </p>
                   </div>
-                  <div className="p-3 bg-card border border-border rounded-xl">
-                    <p className="text-[10px] uppercase font-semibold text-muted-foreground">New Accounts</p>
-                    <p className="text-base font-semibold text-foreground">
-                      {analysis.accountsToCreate.length}
-                    </p>
-                  </div>
                 </div>
+
+                {analysis.skippedRows.length > 0 && (
+                  <div className="p-3 bg-amber-500/10 border border-amber-500/20 rounded-xl text-xs space-y-1.5 max-h-36 overflow-y-auto">
+                    <p className="font-semibold text-foreground">
+                      Skipped rows ({analysis.skippedRows.length})
+                    </p>
+                    {analysis.skippedRows.slice(0, 12).map(s => (
+                      <p key={`${s.rowNumber}-${s.reason}`} className="text-[11px] text-muted-foreground">
+                        Row {s.rowNumber + 1}: {s.reason}
+                      </p>
+                    ))}
+                    {analysis.skippedRows.length > 12 && (
+                      <p className="text-[11px] text-muted-foreground">
+                        …and {analysis.skippedRows.length - 12} more
+                      </p>
+                    )}
+                  </div>
+                )}
 
                 {/* Auto-Creation Notice */}
                 {(analysis.accountsToCreate.length > 0 || analysis.categoriesToCreate.length > 0) && (
@@ -317,6 +352,7 @@ export default function ImportDataModal({ isOpen, onClose, onSuccess }: ImportDa
                             <th className="p-2">Type</th>
                             <th className="p-2">Category</th>
                             <th className="p-2">Account</th>
+                            <th className="p-2">To</th>
                             <th className="p-2">Notes</th>
                             <th className="p-2 pr-3 text-right">Amount</th>
                           </tr>
@@ -334,6 +370,8 @@ export default function ImportDataModal({ isOpen, onClose, onSuccess }: ImportDa
                                       ? 'bg-red-500/10 text-red-500'
                                       : row.type === 'income'
                                       ? 'bg-emerald-500/10 text-emerald-500'
+                                      : row.type === 'transfer'
+                                      ? 'bg-sky-500/10 text-sky-600 dark:text-sky-400'
                                       : 'bg-muted text-muted-foreground'
                                   }`}
                                 >
@@ -345,6 +383,9 @@ export default function ImportDataModal({ isOpen, onClose, onSuccess }: ImportDa
                               </td>
                               <td className="p-2 text-muted-foreground truncate max-w-[90px]">
                                 {row.accountName}
+                              </td>
+                              <td className="p-2 text-muted-foreground truncate max-w-[90px]">
+                                {row.toAccountName || '—'}
                               </td>
                               <td className="p-2 text-muted-foreground truncate max-w-[120px]">
                                 {row.notes || '—'}
@@ -370,10 +411,11 @@ export default function ImportDataModal({ isOpen, onClose, onSuccess }: ImportDa
                   />
                   <div>
                     <span className="font-medium text-foreground">
-                      Recalculate account balances from imported transactions
+                      Adjust account balances from imported transactions
                     </span>
                     <p className="text-[11px] text-muted-foreground mt-0.5">
-                      Updates account balances based on net income and expenses in the file.
+                      When on: expenses debit, income credits, transfers debit source and credit
+                      destination once. When off: history is imported without changing balances.
                     </p>
                   </div>
                 </label>
@@ -389,7 +431,7 @@ export default function ImportDataModal({ isOpen, onClose, onSuccess }: ImportDa
                   </button>
                   <button
                     onClick={handleStartImport}
-                    disabled={isImporting}
+                    disabled={isImporting || analysis.validRows.length === 0}
                     className="flex items-center gap-2 px-5 py-2.5 bg-accent text-accent-foreground rounded-xl text-xs font-semibold hover:opacity-90 active:scale-95 transition-all shadow-sm disabled:opacity-60"
                   >
                     {isImporting ? (

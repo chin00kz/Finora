@@ -45,7 +45,7 @@ export function Modal({
           withCard
             ? `bg-card border border-border ${
                 isSheet
-                  ? 'rounded-t-2xl sm:rounded-2xl w-full sm:max-w-md'
+                  ? 'rounded-t-2xl sm:rounded-2xl w-full sm:max-w-md pb-safe'
                   : 'rounded-2xl w-full max-w-md'
               } shadow-xl ${className}`
             : className

@@ -9,6 +9,7 @@ import { useUIStore } from '../store/uiStore';
 import { triggerSync } from '../sync/syncEngine';
 import { createId } from '../utils/createId';
 import { formatMoney } from '../utils/formatters';
+import { applyAccountBalanceDeltas, prepareApplyBalance } from '../utils/accountBalanceEffects';
 import QuickAddChips from './QuickAddChips';
 import { useVisualViewport } from '../hooks/useVisualViewport';
 
@@ -246,8 +247,15 @@ export default function TransactionModal() {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (isSubmitting) return;
+    const { getPersonalFinanceEditBlockError } = await import('../sync/restoreIsolation');
+    const editBlock = getPersonalFinanceEditBlockError();
+    if (editBlock) {
+      console.warn('[TransactionModal]', editBlock.message);
+      return;
+    }
     if (accounts.length === 0 || !accountId) return;
     if (!amount || isNaN(Number(amount)) || Number(amount) <= 0) return;
+    if (type === 'transfer' && (!toAccountId || toAccountId === accountId)) return;
 
     // Strict submit-time validation for data integrity
     if (type !== 'transfer') {
@@ -268,7 +276,17 @@ export default function TransactionModal() {
         tagsToProcess.push(tagInput.trim());
       }
 
+      const balanceTxn = {
+        type,
+        amount: numAmount,
+        accountId,
+        toAccountId: type === 'transfer' ? toAccountId : undefined,
+      };
+
       await db.transaction('rw', [db.transactions, db.accounts, db.tags, db.debts, db.people], async () => {
+        // Validate accounts exist before writing — failure rolls back the Dexie transaction
+        const balanceDeltas = await prepareApplyBalance(balanceTxn);
+
         const resolvedTagIds: string[] = [];
         for (const tagName of tagsToProcess) {
           const allTags = await db.tags.toArray();
@@ -345,21 +363,8 @@ export default function TransactionModal() {
           }
         }
 
-        // 3. Update account balances
-        const fromAcc = await db.accounts.get(accountId);
-        if (fromAcc) {
-          if (type === 'expense') {
-            await db.accounts.update(accountId, { balance: fromAcc.balance - numAmount, updatedAt: now });
-          } else if (type === 'income') {
-            await db.accounts.update(accountId, { balance: fromAcc.balance + numAmount, updatedAt: now });
-          } else if (type === 'transfer' && toAccountId) {
-            const toAcc = await db.accounts.get(toAccountId);
-            if (toAcc) {
-              await db.accounts.update(accountId, { balance: fromAcc.balance - numAmount, updatedAt: now });
-              await db.accounts.update(toAccountId, { balance: toAcc.balance + numAmount, updatedAt: now });
-            }
-          }
-        }
+        // 3. Apply account balance effects (atomic with txn write)
+        await applyAccountBalanceDeltas(balanceDeltas, { now, requireAllAccounts: true });
       });
 
       // Trigger cloud sync for this specific record

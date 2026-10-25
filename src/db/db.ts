@@ -1,8 +1,17 @@
 import Dexie from 'dexie';
 import type { EntityTable } from 'dexie';
+import { personalFinanceMutationBlockReason } from '../sync/personalFinanceWriteGate';
 
 export type AccountType = 'cash' | 'bank' | 'card' | 'savings' | 'wallet' | 'other';
-export type TransactionType = 'expense' | 'income' | 'transfer' | 'debt_settlement';
+export type TransactionType =
+  | 'expense'
+  | 'income'
+  | 'transfer'
+  | 'debt_settlement'
+  /** History-backed opening cash; amount is signed (credit positive). */
+  | 'opening_balance'
+  /** Manual balance correction; amount is signed (new − old). */
+  | 'balance_adjustment';
 export type PeriodType = 'days' | 'weeks' | 'months';
 
 export interface Account {
@@ -343,7 +352,18 @@ const db = new Dexie('FinoraDB') as Dexie & {
     cacheSharedIous: EntityTable<CacheSharedIou, 'id'>;
     cacheSharedIouSettlements: EntityTable<CacheSharedIouSettlement, 'id'>;
     cacheNotifications: EntityTable<CacheNotification, 'id'>;
+    pendingAccountOutbox: EntityTable<PendingAccountOutbox, 'id'>;
+    /** Pre-replace recovery kits for local-only restore isolation (not synced). */
+    localRestoreKits: EntityTable<LocalRestoreKit, 'id'>;
 };
+
+/** Stored only on-device; never uploaded to Supabase. */
+export interface LocalRestoreKit {
+  id: string;
+  createdAt: number;
+  /** Full recovery JSON string (personal tables + sync metadata). */
+  payload: string;
+}
 
 
 db.version(1).stores({
@@ -437,6 +457,8 @@ export interface CacheConnection {
   status: 'pending' | 'accepted' | 'declined' | 'blocked';
   action_user_id: string;
   blocked_by_user_id?: string;
+  user_a_auto_accepts_ious?: boolean;
+  user_b_auto_accepts_ious?: boolean;
   created_at: number;
   updatedAt?: number;
 }
@@ -463,12 +485,34 @@ export interface CacheNotification {
   created_at: number;
 }
 
+export interface PendingAccountOutbox {
+  id: string;        // settlement ID — used as idempotency key via debtSettlementId
+  uid: string;
+  accountId: string;
+  amount: number;
+  /**
+   * 'debit'  = debtor paying out (existing behavior, default when absent)
+   * 'credit' = creditor receiving deposit (added for MarkPaid flow)
+   */
+  direction?: 'debit' | 'credit';
+  error?: string; // Persistent failure state if recovery fails
+  timestamp: number; // For detecting pre-RPC crash zombie intents
+  /**
+   * When set, settlement sync must not auto-apply this intent.
+   * Used after restore reconciliation so outbox survives for manual review.
+   */
+  quarantinedAt?: number;
+  quarantineReason?: string;
+}
+
+
 export interface CacheSharedIouSettlement {
   id: string;
   shared_iou_id: string;
   amount: number;
   proposed_by: string;
   status: 'pending' | 'confirmed' | 'rejected';
+  note?: string;
   created_at: number;
   confirmed_at?: number;
   confirmed_by?: string;
@@ -483,6 +527,7 @@ export interface CacheSharedIou {
   currency: string;
   description?: string;
   status: string;
+  status_reason?: string;
   created_at: number;
   accepted_at?: number;
   updated_at: number;
@@ -505,6 +550,64 @@ db.version(12).stores({
   cacheNotifications: "id, read_at, created_at"
 });
 
+db.version(13).stores({
+  pendingAccountOutbox: "id",
+  transactions: "id, type, date, accountId, categoryId, debtId, debtSettlementId, updatedAt"
+});
+
+db.version(14).stores({
+  localRestoreKits: 'id, createdAt',
+});
+
+// v15 — heal multi-active budgets left by v3's "mark all active" upgrade.
+// Keep the newest active (by startDate); clip-end the rest as ended.
+db.version(15).stores({}).upgrade(async tx => {
+  const table = tx.table('budgets');
+  const all = await table.toArray();
+  const actives = all.filter((b: { status?: string }) => b.status === 'active');
+  if (actives.length <= 1) return;
+  actives.sort(
+    (a: { startDate?: number; updatedAt?: number }, b: { startDate?: number; updatedAt?: number }) => {
+      const sd = (b.startDate ?? 0) - (a.startDate ?? 0);
+      if (sd !== 0) return sd;
+      return (b.updatedAt ?? 0) - (a.updatedAt ?? 0);
+    },
+  );
+  const now = Date.now();
+  for (const b of actives.slice(1)) {
+    const clip = Math.min(Number(b.endDate) || now, now - 1);
+    const endDate = Math.max(Number(b.startDate) || 0, clip);
+    await table.update(b.id, { status: 'ended', endDate, updatedAt: now });
+  }
+  // actives[0] remains status: 'active'
+});
+
+// Block personal-finance table mutations while restoreIsolation.phase === 'reconciling'
+// (unless a system write is active for Choice B / internal repair).
+db.use({
+  stack: 'dbcore',
+  name: 'personalFinanceReconcilingWriteGate',
+  create(downlevelDatabase) {
+    return {
+      ...downlevelDatabase,
+      table(tableName) {
+        const downlevelTable = downlevelDatabase.table(tableName);
+        return {
+          ...downlevelTable,
+          mutate(req) {
+            const reason = personalFinanceMutationBlockReason(tableName);
+            if (reason) {
+              return Promise.reject(new Error(reason));
+            }
+            return downlevelTable.mutate(req);
+          },
+        };
+      },
+    };
+  },
+});
+
 export { db };
+
 
 

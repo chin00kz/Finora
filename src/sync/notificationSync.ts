@@ -1,8 +1,10 @@
 ﻿import { supabase } from '../lib/supabase';
 import { db } from '../db/db';
 import type { CacheNotification } from '../db/db';
+import { isCloudSyncBlocked } from './restoreIsolation';
 
 export async function syncNotifications() {
+  if (isCloudSyncBlocked()) return;
   const { data: session } = await supabase.auth.getSession();
   if (!session?.session?.user) return;
 
@@ -39,6 +41,7 @@ export async function syncNotifications() {
 }
 
 export async function markNotificationRead(id: string) {
+  if (isCloudSyncBlocked()) return;
   try {
     // Cloud mutate first (authoritative)
     const { error } = await supabase.rpc('mark_notification_read', { p_notification_id: id });
@@ -52,6 +55,7 @@ export async function markNotificationRead(id: string) {
 }
 
 export async function markAllNotificationsRead() {
+  if (isCloudSyncBlocked()) return;
   try {
     // Cloud mutate first (authoritative)
     const { error } = await supabase.rpc('mark_all_notifications_read');

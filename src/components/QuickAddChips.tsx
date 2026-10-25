@@ -7,6 +7,7 @@ import { computeQuickCandidates, type QuickCandidate } from '../utils/quickLogEn
 import { triggerSync } from '../sync/syncEngine';
 import { createId } from '../utils/createId';
 import { formatMoney } from '../utils/formatters';
+import { applyAccountBalanceDeltas, prepareApplyBalance } from '../utils/accountBalanceEffects';
 import MaskedAmount from './MaskedAmount';
 import { AlertCircle, Pin, Sparkles } from 'lucide-react';
 
@@ -80,30 +81,38 @@ export default function QuickAddChips({
     try {
       const id = createId('txn');
       const now = Date.now();
+      const accountId = candidate.accountId!;
 
-      await db.transactions.add({
-        id,
-        amount: candidate.amount,
-        type: candidate.type,
-        categoryId: candidate.categoryId,
-        accountId: candidate.accountId!,
-        date: now,
-        notes: candidate.canonicalNote,
-        tagIds: candidate.tagIds,
-        updatedAt: now,
-      });
+      await db.transaction('rw', [db.transactions, db.accounts, db.categories], async () => {
+        if (candidate.categoryId) {
+          const cat = await db.categories.get(candidate.categoryId);
+          if (!cat) {
+            throw new Error('Category no longer exists. Open the form to pick another.');
+          }
+        }
 
-      // Update account balance
-      const acc = await db.accounts.get(candidate.accountId!);
-      if (acc) {
-        const delta = candidate.type === 'expense' ? -candidate.amount : candidate.amount;
-        await db.accounts.update(acc.id, {
-          balance: acc.balance + delta,
+        const deltas = await prepareApplyBalance({
+          type: candidate.type,
+          amount: candidate.amount,
+          accountId,
+        });
+
+        await db.transactions.add({
+          id,
+          amount: candidate.amount,
+          type: candidate.type,
+          categoryId: candidate.categoryId,
+          accountId,
+          date: now,
+          notes: candidate.canonicalNote,
+          tagIds: candidate.tagIds,
           updatedAt: now,
         });
-        triggerSync('accounts', acc.id);
-      }
 
+        await applyAccountBalanceDeltas(deltas, { now, requireAllAccounts: true });
+      });
+
+      triggerSync('accounts', accountId);
       triggerSync('transactions', id);
 
       // Launch Global Undo Toast

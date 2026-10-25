@@ -1,16 +1,115 @@
-﻿import { useEffect } from 'react';
+import { useEffect } from 'react';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { db } from '../db/db';
 import { syncNotifications, markNotificationRead, markAllNotificationsRead } from '../sync/notificationSync';
 import { useAuthStore } from '../store/authStore';
-import { ArrowLeft, Bell, CheckCircle2 } from 'lucide-react';
+import { ArrowLeft, Bell, CheckCircle2, XCircle, UserPlus, FileText, Banknote } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
+
+import { getNotificationSemantics, getColorClass } from '../utils/notificationSemantics';
+import type { FinancialDirection } from '../utils/notificationSemantics';
+
+const getIconForType = (eventKey: string, direction: FinancialDirection, isRead: boolean) => {
+  const colorClass = `${getColorClass(direction, isRead)} opacity-90`;
+  switch(eventKey) {
+    case 'shared_iou_request':
+      return <FileText size={16} className={colorClass} />;
+    case 'shared_iou_payment_proposed':
+      return <Banknote size={16} className={colorClass} />;
+    case 'shared_iou_payment_confirmed':
+    case 'shared_iou_accepted':
+    case 'shared_iou_auto_accepted':
+    case 'connection_accepted':
+      return <CheckCircle2 size={16} className={colorClass} />;
+    case 'shared_iou_rejected':
+    case 'shared_iou_declined':
+    case 'shared_iou_cancelled':
+    case 'shared_iou_payment_rejected':
+      return <XCircle size={16} className={colorClass} />;
+    case 'connection_request':
+      return <UserPlus size={16} className={colorClass} />;
+    default:
+      return <Bell size={16} className={colorClass} />;
+  }
+};
+
+const highlightKeywords = (text: string, direction: FinancialDirection, isRead: boolean) => {
+  if (direction !== 'destructive') {
+    return <span className={isRead ? 'text-foreground/70' : 'text-foreground/90'}>{text}</span>;
+  }
+
+  const keywords = ['rejected', 'declined', 'cancelled'];
+  
+  let matchedKeyword = '';
+  for (const kw of keywords) {
+    if (text.includes(kw)) {
+      matchedKeyword = kw;
+      break;
+    }
+  }
+
+  if (matchedKeyword) {
+    const parts = text.split(matchedKeyword);
+    const colorClass = getColorClass(direction, isRead);
+    return (
+      <span className={isRead ? 'text-foreground/70' : 'text-foreground/90'}>
+        {parts[0]}
+        <span className={`font-semibold ${colorClass}`}>{matchedKeyword}</span>
+        {parts.slice(1).join(matchedKeyword)}
+      </span>
+    );
+  }
+  return <span className={isRead ? 'text-foreground/70' : 'text-foreground/90'}>{text}</span>;
+};
+
+const formatTitle = (title: string, direction: FinancialDirection, isRead: boolean) => {
+  const verbs = [' added', ' sent', ' rejected', ' declined', ' confirmed', ' says', ' accepted', ' cancelled', ' marked'];
+  let name = title;
+  let rest = '';
+  for (const verb of verbs) {
+    const idx = title.indexOf(verb);
+    if (idx > 0) {
+      name = title.substring(0, idx);
+      rest = title.substring(idx);
+      break;
+    }
+  }
+  if (!rest) {
+    const parts = title.split(' ');
+    name = parts[0];
+    rest = ' ' + parts.slice(1).join(' ');
+  }
+  
+  const nameColor = isRead ? 'text-cyan-600/70 dark:text-cyan-400/70' : 'text-cyan-600 dark:text-cyan-400';
+  
+  return (
+    <>
+      <span className={`font-medium ${nameColor}`}>{name}</span>
+      {highlightKeywords(rest, direction, isRead)}
+    </>
+  );
+};
+
+const formatBody = (body: string, direction: FinancialDirection, isRead: boolean) => {
+  const parts = body.split(/((?:[A-Z]{3}|[$£€¥])\s*\d+(?:,\d+)*(?:\.\d+)?)/);
+  const colorClass = getColorClass(direction, isRead);
+  
+  return (
+    <>
+      {parts.map((part, i) => {
+        if (i % 2 === 1) {
+          return <span key={i} className={`font-semibold ${colorClass}`}>{part}</span>;
+        }
+        return part;
+      })}
+    </>
+  );
+};
 
 export default function Notifications() {
   const navigate = useNavigate();
   const user = useAuthStore(state => state.user);
   
-  // Refresh on mount
   useEffect(() => {
     if (user) {
       syncNotifications().catch(console.error);
@@ -33,7 +132,6 @@ export default function Notifications() {
     } else if (n.entity_type === 'connection') {
       navigate('/connections');
     }
-    // Other types can be added here later
   };
 
   const handleMarkAllRead = async () => {
@@ -85,34 +183,39 @@ export default function Notifications() {
           </div>
         ) : (
           <div className="divide-y divide-border/40">
-            {notifications.map(n => (
-              <div 
-                key={n.id}
-                onClick={() => handleNotificationClick(n)}
-                className={`p-4 flex gap-4 cursor-pointer transition-colors hover:bg-muted/30 ${!n.read_at ? 'bg-muted/10' : ''}`}
-              >
-                <div className="mt-0.5 shrink-0">
-                  {!n.read_at ? (
-                    <div className="w-2.5 h-2.5 rounded-full bg-accent shadow-sm ring-4 ring-accent/10" />
-                  ) : (
-                    <CheckCircle2 size={16} className="text-muted-foreground/40" />
+            {notifications.map(n => {
+              const isRead = !!n.read_at;
+              const direction = getNotificationSemantics(n.type);
+              return (
+                <div 
+                  key={n.id}
+                  onClick={() => handleNotificationClick(n)}
+                  className={`py-5 px-4 flex gap-4 cursor-pointer transition-colors hover:bg-muted/30 relative ${!isRead ? 'bg-muted/5' : ''}`}
+                >
+                  {!isRead && (
+                    <div className="absolute left-0 top-1/2 -translate-y-1/2 w-1 h-10 bg-accent rounded-r-md" />
                   )}
-                </div>
-                <div className="flex-1 min-w-0">
-                  <div className="flex justify-between items-start gap-2 mb-0.5">
-                    <p className={`text-sm font-medium truncate ${!n.read_at ? 'text-foreground' : 'text-foreground/80'}`}>
-                      {n.title}
-                    </p>
-                    <span className="text-[11px] text-muted-foreground shrink-0 mt-0.5">
-                      {formatTime(n.created_at)}
-                    </span>
+                  
+                  <div className="mt-0.5 shrink-0 flex items-center justify-center w-9 h-9 rounded-full bg-muted/20 border border-border/40">
+                    {getIconForType(n.type, direction, isRead)}
                   </div>
-                  <p className={`text-xs leading-relaxed ${!n.read_at ? 'text-muted-foreground/90' : 'text-muted-foreground/60'}`}>
-                    {n.body}
-                  </p>
+                  
+                  <div className="flex-1 min-w-0 pt-0.5">
+                    <div className="flex justify-between items-start gap-2 mb-1.5">
+                      <p className="text-sm truncate leading-tight">
+                        {formatTitle(n.title, direction, isRead)}
+                      </p>
+                      <span className="text-[11px] text-muted-foreground shrink-0 mt-0.5 font-medium">
+                        {formatTime(n.created_at)}
+                      </span>
+                    </div>
+                    <p className={`text-xs leading-relaxed line-clamp-2 ${!isRead ? 'text-muted-foreground/90' : 'text-muted-foreground/60'}`}>
+                      {formatBody(n.body, direction, isRead)}
+                    </p>
+                  </div>
                 </div>
-              </div>
-            ))}
+              );
+            })}
           </div>
         )}
       </main>

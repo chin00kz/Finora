@@ -3,6 +3,7 @@ import { db } from '../db/db';
 import type { RecurringFrequency } from '../db/db';
 import { addDays, addWeeks, addMonths, addYears } from 'date-fns';
 import { triggerSync } from '../sync/syncEngine';
+import { applyAccountBalanceDeltas, prepareApplyBalance } from './accountBalanceEffects';
 
 /**
  * Advances a timestamp to the next cycle based on frequency.
@@ -46,36 +47,38 @@ export async function processDueRecurringTransactions(): Promise<number> {
       const txnDate = nextDue;
       const txnId = createId('txn-rec');
 
-      await db.transaction('rw', [db.transactions, db.accounts, db.recurringTransactions], async () => {
-        // 1. Create the regular transaction
-        await db.transactions.add({
-          id: txnId,
-          type: rule.type,
-          amount: rule.amount,
-          date: txnDate,
-          accountId: rule.accountId,
-          categoryId: rule.categoryId,
-          notes: `${rule.name} (Recurring)`,
-          updatedAt: Date.now(),
-        });
-
-        // 2. Adjust account balance
-        const acc = await db.accounts.get(rule.accountId);
-        if (acc) {
-          const delta = rule.type === 'expense' ? -rule.amount : rule.amount;
-          await db.accounts.update(rule.accountId, {
-            balance: acc.balance + delta,
-            updatedAt: Date.now(),
+      try {
+        await db.transaction('rw', [db.transactions, db.accounts, db.recurringTransactions], async () => {
+          const now = Date.now();
+          const deltas = await prepareApplyBalance({
+            type: rule.type,
+            amount: rule.amount,
+            accountId: rule.accountId,
           });
-        }
 
-        // 3. Advance rule nextDueDate
-        nextDue = advanceDueDate(nextDue, rule.frequency);
-        await db.recurringTransactions.update(rule.id, {
-          nextDueDate: nextDue,
-          updatedAt: Date.now(),
+          await db.transactions.add({
+            id: txnId,
+            type: rule.type,
+            amount: rule.amount,
+            date: txnDate,
+            accountId: rule.accountId,
+            categoryId: rule.categoryId,
+            notes: `${rule.name} (Recurring)`,
+            updatedAt: now,
+          });
+
+          await applyAccountBalanceDeltas(deltas, { now, requireAllAccounts: true });
+
+          nextDue = advanceDueDate(nextDue, rule.frequency);
+          await db.recurringTransactions.update(rule.id, {
+            nextDueDate: nextDue,
+            updatedAt: now,
+          });
         });
-      });
+      } catch (err) {
+        console.warn(`[recurring] Skipped occurrence for rule ${rule.id}:`, err);
+        break;
+      }
 
       triggerSync('transactions', txnId);
       triggerSync('accounts', rule.accountId);

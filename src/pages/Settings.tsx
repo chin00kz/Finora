@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { db } from '../db/db';
 import { Trash2, Edit2, Check, X, Merge, Moon, Sun, Monitor, LogOut, UserX, CloudUpload, RefreshCw, Download, CheckCircle, Plus, FileSpreadsheet, UploadCloud, CreditCard, SlidersHorizontal, FileJson, Sparkles, Eye, EyeOff, FileText } from 'lucide-react';
@@ -11,11 +11,39 @@ import { useNavigate } from 'react-router-dom';
 import ExportReportModal from '../components/ExportReportModal';
 import ImportDataModal from '../components/ImportDataModal';
 import MonthlyDigestModal from '../components/MonthlyDigestModal';
-import { exportFullBackupJSON, restoreFullBackupJSON } from '../utils/jsonBackup';
+import {
+  buildRecoveryKit,
+  downloadRecoveryKit,
+  executeReplaceAllLocalOnly,
+  exportFullBackupJSON,
+  planReplaceAllRestore,
+  REPLACE_CONFIRMATION_PHRASE,
+  restoreFullBackupJSON,
+  type ReplaceAllRestorePlan,
+} from '../utils/jsonBackup';
+import {
+  getPersonalFinanceEditBlockError,
+  isPersonalFinanceEditFrozen,
+  isRestoreIsolated,
+} from '../sync/restoreIsolation';
+import {
+  buildReconciliationPreview,
+  cancelReconciliationPreview,
+  choiceAUnavailableReason,
+  executeChoiceBUseCloud,
+  isChoiceAAvailable,
+  USE_CLOUD_CONFIRMATION_PHRASE,
+  type ReconciliationPreview,
+} from '../sync/cloudReconciliation';
+import {
+  buildOutboxReviewRows,
+  type OutboxReviewRow,
+} from '../sync/outboxQuarantine';
 import Logo from '../components/Logo';
 import { createId } from '../utils/createId';
 import { useConfirm } from '../components/ConfirmDialog';
 import FinoraProfileWidget from '../components/FinoraProfileWidget';
+import NotificationBell from '../components/NotificationBell';
 
 export default function Settings() {
   const { confirmDialog, requestConfirm } = useConfirm();
@@ -48,7 +76,37 @@ export default function Settings() {
   const [isExportModalOpen, setIsExportModalOpen] = useState(false);
   const [isImportModalOpen, setIsImportModalOpen] = useState(false);
   const [isRestoringJson, setIsRestoringJson] = useState(false);
+  const [replaceAllPlan, setReplaceAllPlan] = useState<ReplaceAllRestorePlan | null>(null);
+  const [replaceBackupJson, setReplaceBackupJson] = useState<string | null>(null);
+  const [replaceConfirmText, setReplaceConfirmText] = useState('');
+  const [recoveryKitSaved, setRecoveryKitSaved] = useState(false);
+  const [isPreparingRecovery, setIsPreparingRecovery] = useState(false);
+  const [isExecutingReplace, setIsExecutingReplace] = useState(false);
   const [isDigestModalOpen, setIsDigestModalOpen] = useState(false);
+  const cloudSyncIsolated = isRestoreIsolated();
+  const personalEditsFrozen = isPersonalFinanceEditFrozen();
+
+  const [reconcileLoading, setReconcileLoading] = useState(false);
+  const [reconcileError, setReconcileError] = useState<string | null>(null);
+  const [reconcilePreview, setReconcilePreview] = useState<ReconciliationPreview | null>(null);
+  const [useCloudConfirmText, setUseCloudConfirmText] = useState('');
+  const [isApplyingChoiceB, setIsApplyingChoiceB] = useState(false);
+  const [outboxReviewRows, setOutboxReviewRows] = useState<OutboxReviewRow[]>([]);
+
+  const quarantinedOutbox = useLiveQuery(async () => {
+    const all = await db.pendingAccountOutbox.toArray();
+    return all.filter(e => e.quarantinedAt != null);
+  }) || [];
+
+  useEffect(() => {
+    let cancelled = false;
+    void buildOutboxReviewRows({ quarantinedOnly: true }).then(rows => {
+      if (!cancelled) setOutboxReviewRows(rows);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [quarantinedOutbox.length, quarantinedOutbox.map(e => e.id).join(',')]);
 
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editName, setEditName] = useState('');
@@ -66,6 +124,11 @@ export default function Settings() {
 
   const saveEdit = async (id: string) => {
     if (!editName.trim()) return;
+    const editBlock = getPersonalFinanceEditBlockError();
+    if (editBlock) {
+      setSyncFeedback({ message: editBlock.message, isError: true });
+      return;
+    }
     await db.tags.update(id, { name: editName.trim(), updatedAt: Date.now() });
     setEditingId(null);
     triggerSync('tags', id);
@@ -189,7 +252,10 @@ export default function Settings() {
   return (
     <div className="p-6 pb-28 max-w-5xl mx-auto">
       {confirmDialog}
-      <h2 className="text-2xl font-medium text-foreground mb-6">Settings</h2>
+      <div className="flex items-center justify-between mb-6">
+        <h2 className="text-2xl font-medium text-foreground">Settings</h2>
+        <NotificationBell />
+      </div>
 
       {/* ── Account ─────────────────────────────────────────────────────────── */}
       <section className="bg-card rounded-2xl border border-border shadow-sm overflow-hidden mb-6">
@@ -235,11 +301,11 @@ export default function Settings() {
                     setSyncFeedback({ message: res.error || 'Sync encountered an error.', isError: true });
                   }
                 }}
-                disabled={isSyncing}
+                disabled={isSyncing || cloudSyncIsolated}
                 className="flex items-center justify-center gap-2 py-2.5 px-3 bg-accent text-accent-foreground rounded-xl text-xs font-medium active:scale-[0.98] transition-transform disabled:opacity-60"
               >
                 <RefreshCw size={14} className={isSyncing ? 'animate-spin' : ''} />
-                {isSyncing ? 'Syncing…' : 'Sync Now'}
+                {cloudSyncIsolated ? 'Sync isolated' : isSyncing ? 'Syncing…' : 'Sync Now'}
               </button>
 
               <button
@@ -253,13 +319,229 @@ export default function Settings() {
                     isError: false
                   });
                 }}
-                disabled={isSyncing}
+                disabled={isSyncing || cloudSyncIsolated}
                 className="flex items-center justify-center gap-2 py-2.5 px-3 bg-muted text-foreground rounded-xl text-xs font-medium active:scale-[0.98] transition-transform disabled:opacity-60"
               >
                 <Download size={14} />
                 Pull Cloud Data
               </button>
             </div>
+            {cloudSyncIsolated && (
+              <div className="space-y-3 pt-2 border-t border-border">
+                <p className="text-[11px] text-amber-600 dark:text-amber-400 leading-relaxed">
+                  Local-only restored isolation is active. Cloud sync is blocked.
+                  {personalEditsFrozen
+                    ? ' Personal edits are frozen during reconciliation.'
+                    : ' Local-only personal edits are allowed but will not sync until reconciliation completes.'}
+                </p>
+
+                {!reconcilePreview ? (
+                  <button
+                    type="button"
+                    disabled={reconcileLoading || !user}
+                    onClick={async () => {
+                      if (!user) return;
+                      setReconcileLoading(true);
+                      setReconcileError(null);
+                      setSyncFeedback(null);
+                      const preview = await buildReconciliationPreview(user.id);
+                      setReconcileLoading(false);
+                      if (!preview.ok) {
+                        setReconcileError(preview.error);
+                        return;
+                      }
+                      setReconcilePreview(preview);
+                      setUseCloudConfirmText('');
+                    }}
+                    className="flex items-center justify-center gap-2 w-full py-2.5 px-3 bg-primary text-primary-foreground rounded-xl text-xs font-medium active:scale-[0.98] transition-transform disabled:opacity-60"
+                  >
+                    <RefreshCw size={14} className={reconcileLoading ? 'animate-spin' : ''} />
+                    {reconcileLoading ? 'Fetching cloud (read-only)…' : 'Reconcile with cloud…'}
+                  </button>
+                ) : (
+                  <div className="space-y-3 p-3 rounded-xl border border-amber-500/25 bg-amber-500/5">
+                    <div>
+                      <p className="text-xs font-semibold text-foreground">Reconciliation preview</p>
+                      <p className="text-[11px] text-muted-foreground mt-1 leading-relaxed">
+                        Read-only comparison of this device vs current cloud personal data. Shared
+                        IOUs are not part of this decision. Kits saved:{' '}
+                        <span className="font-mono">{reconcilePreview.localKitId}</span> (local),{' '}
+                        <span className="font-mono">{reconcilePreview.cloudKitId}</span> (cloud).
+                        Outbox quarantined: {reconcilePreview.outboxQuarantinedCount}.
+                      </p>
+                    </div>
+
+                    <div className="max-h-48 overflow-y-auto space-y-1.5 text-[11px]">
+                      {reconcilePreview.tableDiffs
+                        .filter(
+                          d =>
+                            d.localOnlyIds.length ||
+                            d.cloudOnlyIds.length ||
+                            d.differentIds.length ||
+                            d.localCount !== d.cloudCount,
+                        )
+                        .map(d => (
+                          <div
+                            key={d.table}
+                            className="flex flex-wrap gap-x-2 gap-y-0.5 text-muted-foreground border-b border-border/40 pb-1"
+                          >
+                            <span className="font-medium text-foreground w-full">{d.table}</span>
+                            <span>local {d.localCount}</span>
+                            <span>cloud {d.cloudCount}</span>
+                            <span>only-local {d.localOnlyIds.length}</span>
+                            <span>only-cloud {d.cloudOnlyIds.length}</span>
+                            <span>changed {d.differentIds.length}</span>
+                            <span>equal {d.equalCount}</span>
+                          </div>
+                        ))}
+                      {reconcilePreview.tableDiffs.every(
+                        d =>
+                          !d.localOnlyIds.length &&
+                          !d.cloudOnlyIds.length &&
+                          !d.differentIds.length,
+                      ) && (
+                        <p className="text-emerald-700 dark:text-emerald-400">
+                          No personal-record differences detected (payload compare excludes
+                          updatedAt).
+                        </p>
+                      )}
+                    </div>
+
+                    {reconcilePreview.warnings.length > 0 && (
+                      <div className="space-y-1">
+                        <p className="text-[11px] font-semibold text-amber-700 dark:text-amber-400">
+                          Account / transaction consistency
+                        </p>
+                        <ul className="text-[11px] text-muted-foreground space-y-1 max-h-28 overflow-y-auto list-disc pl-4">
+                          {reconcilePreview.warnings.slice(0, 12).map((w, i) => (
+                            <li key={`${w.accountId}-${w.kind}-${i}`}>{w.detail}</li>
+                          ))}
+                          {reconcilePreview.warnings.length > 12 && (
+                            <li>+{reconcilePreview.warnings.length - 12} more…</li>
+                          )}
+                        </ul>
+                      </div>
+                    )}
+
+                    <div className="space-y-2 pt-1">
+                      <label className="block text-[11px] text-muted-foreground">
+                        Type {USE_CLOUD_CONFIRMATION_PHRASE} to discard this restore and use cloud
+                      </label>
+                      <input
+                        type="text"
+                        value={useCloudConfirmText}
+                        onChange={e => setUseCloudConfirmText(e.target.value)}
+                        placeholder={USE_CLOUD_CONFIRMATION_PHRASE}
+                        className="w-full bg-background border border-border/50 rounded-lg px-3 py-2 text-xs"
+                      />
+                      <button
+                        type="button"
+                        disabled={
+                          isApplyingChoiceB ||
+                          useCloudConfirmText.trim() !== USE_CLOUD_CONFIRMATION_PHRASE ||
+                          !user
+                        }
+                        onClick={async () => {
+                          if (!user || !reconcilePreview) return;
+                          const ok = await requestConfirm({
+                            title: 'Use cloud and discard this restore?',
+                            body:
+                              'This replaces personal finance tables on this device with the current cloud snapshot. Cloud is not modified. Recovery and reconciliation kits are kept. Pending settlement outbox stays quarantined.',
+                            danger: true,
+                          });
+                          if (!ok) return;
+                          setIsApplyingChoiceB(true);
+                          setReconcileError(null);
+                          const res = await executeChoiceBUseCloud({
+                            userId: user.id,
+                            preview: reconcilePreview,
+                            confirmationPhrase: useCloudConfirmText,
+                          });
+                          setIsApplyingChoiceB(false);
+                          if (!res.success) {
+                            setReconcileError(res.error || 'Choice B failed.');
+                            return;
+                          }
+                          setReconcilePreview(null);
+                          setUseCloudConfirmText('');
+                          setSyncFeedback({
+                            message: `Adopted cloud snapshot (${res.restoredCount ?? 0} rows). Isolation cleared. Review quarantined settlement outbox if any.`,
+                            isError: false,
+                          });
+                        }}
+                        className="flex items-center justify-center gap-2 w-full py-2.5 px-3 bg-primary text-primary-foreground rounded-xl text-xs font-medium disabled:opacity-60"
+                      >
+                        {isApplyingChoiceB ? 'Applying…' : 'Choice B: Use cloud (discard restore)'}
+                      </button>
+
+                      <button
+                        type="button"
+                        disabled
+                        title={choiceAUnavailableReason()}
+                        className="flex items-center justify-center gap-2 w-full py-2.5 px-3 bg-muted text-muted-foreground rounded-xl text-xs font-medium opacity-60 cursor-not-allowed"
+                      >
+                        Choice A: Keep this device (disabled)
+                      </button>
+                      <p className="text-[10px] text-muted-foreground leading-relaxed">
+                        {isChoiceAAvailable()
+                          ? 'Type KEEP DEVICE after enablement approval to promote this device.'
+                          : choiceAUnavailableReason()}
+                      </p>
+
+                      <button
+                        type="button"
+                        disabled={isApplyingChoiceB}
+                        onClick={() => {
+                          cancelReconciliationPreview();
+                          setReconcilePreview(null);
+                          setUseCloudConfirmText('');
+                          setReconcileError(null);
+                        }}
+                        className="w-full py-2 text-[11px] text-muted-foreground underline"
+                      >
+                        Cancel reconciliation (stay isolated)
+                      </button>
+                    </div>
+                  </div>
+                )}
+
+                {reconcileError && (
+                  <p className="text-[11px] text-destructive leading-relaxed">{reconcileError}</p>
+                )}
+              </div>
+            )}
+
+            {outboxReviewRows.length > 0 && (
+              <div className="pt-2 border-t border-border space-y-2">
+                <p className="text-xs font-semibold text-foreground">
+                  Quarantined settlement outbox ({outboxReviewRows.length})
+                </p>
+                <p className="text-[11px] text-muted-foreground leading-relaxed">
+                  These Shared IOU account intents are held for manual review. Finora will not
+                  auto-apply, replay, or delete them. Check cloud settlement status and whether a
+                  local balance transaction already exists before acting outside this screen.
+                </p>
+                <ul className="space-y-2 max-h-56 overflow-y-auto">
+                  {outboxReviewRows.map(row => (
+                    <li
+                      key={row.outbox.id}
+                      className="text-[11px] p-2.5 rounded-lg border border-border/50 bg-muted/30 space-y-1"
+                    >
+                      <p className="font-medium text-foreground font-mono text-[10px]">
+                        {row.outbox.id}
+                      </p>
+                      <p className="text-muted-foreground leading-relaxed">{row.summary}</p>
+                      <p className="text-muted-foreground">
+                        Account: {row.accountName ?? row.outbox.accountId} · Cloud:{' '}
+                        {row.cloudSettlementStatus}
+                        {row.sharedIouId ? ` · IOU ${row.sharedIouId}` : ''}
+                        {row.existingTxnId ? ` · Txn ${row.existingTxnId}` : ''}
+                      </p>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            )}
 
             {/* Emergency: fix cloud duplication */}
             <div className="pt-2">
@@ -281,7 +563,7 @@ export default function Settings() {
                     setSyncFeedback({ message: res.error || 'Recovery failed.', isError: true });
                   }
                 }}
-                disabled={isSyncing}
+                disabled={isSyncing || cloudSyncIsolated}
                 className="flex items-center justify-center gap-2 w-full py-2.5 px-3 bg-amber-500/10 border border-amber-500/20 text-amber-600 dark:text-amber-400 rounded-xl text-xs font-medium active:scale-[0.98] transition-transform disabled:opacity-60"
               >
                 <RefreshCw size={14} className={isSyncing ? 'animate-spin' : ''} />
@@ -409,7 +691,7 @@ export default function Settings() {
             </span>
           </button>
 
-          {/* Restore JSON Backup */}
+          {/* Merge restore (upsert, no cloud dirty / no tombstones) */}
           <div className="relative">
             <input
               type="file"
@@ -419,12 +701,23 @@ export default function Settings() {
               onChange={async (e) => {
                 const file = e.target.files?.[0];
                 if (!file) return;
+                const ok = await requestConfirm({
+                  title: 'Merge backup into local data?',
+                  body:
+                    'This upserts records from the backup into this device. It does not clear other local rows, does not delete anything in Supabase, and does not mark restored rows for cloud reupload. Export a Complete JSON Backup first if you may need to recover.',
+                });
+                if (!ok) {
+                  e.target.value = '';
+                  return;
+                }
                 setIsRestoringJson(true);
                 try {
                   const text = await file.text();
                   const res = await restoreFullBackupJSON(text);
                   if (res.success) {
-                    alert(`Successfully restored ${res.restoredCount} items across all tables!`);
+                    alert(
+                      `Merged ${res.restoredCount} items locally.\n\n${res.syncNote || 'Cloud sync was not triggered.'}`,
+                    );
                   } else {
                     alert(`Restore failed: ${res.error}`);
                   }
@@ -444,15 +737,209 @@ export default function Settings() {
               <div className="flex items-center gap-3">
                 <UploadCloud size={20} className="text-emerald-500" />
                 <div className="text-left">
-                  <p className="font-medium text-sm text-foreground">Restore Complete Backup</p>
-                  <p className="text-[11px] text-muted-foreground">Restore full database from a previously exported Finora JSON backup</p>
+                  <p className="font-medium text-sm text-foreground">Merge JSON Backup (local)</p>
+                  <p className="text-[11px] text-muted-foreground">
+                    Upsert backup rows into this device only — no cloud deletes or mass reupload
+                  </p>
                 </div>
               </div>
               <span className="px-3 py-1.5 bg-muted border border-border rounded-lg text-xs font-semibold text-foreground">
-                {isRestoringJson ? 'Restoring…' : 'Restore'}
+                {isRestoringJson ? 'Restoring…' : 'Merge'}
               </span>
             </button>
           </div>
+
+          {/* Replace-all: Option 1 local-only offline snapshot */}
+          <div className="relative">
+            <input
+              type="file"
+              accept=".json"
+              id="json-replace-all-input"
+              className="hidden"
+              onChange={async (e) => {
+                const file = e.target.files?.[0];
+                if (!file) return;
+                try {
+                  const text = await file.text();
+                  setReplaceConfirmText('');
+                  setRecoveryKitSaved(false);
+                  setReplaceBackupJson(text);
+                  setReplaceAllPlan(planReplaceAllRestore(text));
+                } catch (err) {
+                  alert(`Could not read backup: ${err instanceof Error ? err.message : 'Unknown'}`);
+                } finally {
+                  e.target.value = '';
+                }
+              }}
+            />
+            <button
+              onClick={() => document.getElementById('json-replace-all-input')?.click()}
+              disabled={cloudSyncIsolated}
+              className="flex items-center justify-between w-full p-3.5 bg-red-500/5 hover:bg-red-500/10 border border-red-500/20 rounded-xl text-xs font-medium text-foreground transition-colors disabled:opacity-60"
+            >
+              <div className="flex items-center gap-3">
+                <UploadCloud size={20} className="text-red-500" />
+                <div className="text-left">
+                  <p className="font-medium text-sm text-foreground">Replace existing local data</p>
+                  <p className="text-[11px] text-muted-foreground">
+                    Local-only offline snapshot — requires recovery kit + REPLACE confirmation; sync stays isolated
+                  </p>
+                </div>
+              </div>
+              <span className="px-3 py-1.5 bg-red-500/10 text-red-500 border border-red-500/20 rounded-lg text-xs font-semibold">
+                Replace
+              </span>
+            </button>
+          </div>
+
+          {replaceAllPlan && replaceBackupJson && (
+            <div className="fixed inset-0 z-50 bg-black/40 backdrop-blur-sm flex items-end sm:items-center justify-center p-4">
+              <div className="bg-card border border-border rounded-2xl w-full max-w-lg max-h-[90vh] overflow-y-auto p-5 space-y-4 shadow-xl">
+                <div className="flex items-start justify-between gap-3">
+                  <div>
+                    <p className="text-xs font-semibold uppercase tracking-wider text-red-500">
+                      Replace existing local data
+                    </p>
+                    <h3 className="text-lg font-medium text-foreground mt-1">Local-only restore plan</h3>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setReplaceAllPlan(null);
+                      setReplaceBackupJson(null);
+                      setReplaceConfirmText('');
+                      setRecoveryKitSaved(false);
+                    }}
+                    className="p-2 bg-muted rounded-full text-muted-foreground"
+                  >
+                    <X size={16} />
+                  </button>
+                </div>
+
+                <ul className="text-xs text-muted-foreground space-y-1.5 list-disc pl-4">
+                  {replaceAllPlan.warnings.map(w => (
+                    <li key={w}>{w}</li>
+                  ))}
+                </ul>
+
+                {replaceAllPlan.totalItems > 0 && (
+                  <div className="text-xs bg-muted/50 border border-border rounded-xl p-3 space-y-1">
+                    <p className="font-medium text-foreground">
+                      Backup items: {replaceAllPlan.totalItems}
+                      {replaceAllPlan.version != null ? ` · v${replaceAllPlan.version}` : ''}
+                    </p>
+                    <p className="text-muted-foreground">
+                      Accounts: {replaceAllPlan.tableCounts.accounts ?? 0} · Transactions:{' '}
+                      {replaceAllPlan.tableCounts.transactions ?? 0} · Categories:{' '}
+                      {replaceAllPlan.tableCounts.categories ?? 0}
+                    </p>
+                    <p className="text-muted-foreground pt-1">
+                      Preserved (not replaced): Shared IOUs, connections, notifications, profiles,
+                      statement reader, settlement outbox.
+                    </p>
+                  </div>
+                )}
+
+                {replaceAllPlan.blocked ? (
+                  <div className="p-3 bg-amber-500/10 border border-amber-500/20 rounded-xl text-xs text-muted-foreground">
+                    {replaceAllPlan.blockerReason}
+                  </div>
+                ) : (
+                  <>
+                    <button
+                      type="button"
+                      disabled={isPreparingRecovery}
+                      onClick={async () => {
+                        setIsPreparingRecovery(true);
+                        try {
+                          const { kit, verified } = await buildRecoveryKit();
+                          if (!verified) {
+                            alert('Recovery kit verification failed. Nothing was changed.');
+                            return;
+                          }
+                          downloadRecoveryKit(kit);
+                          setRecoveryKitSaved(false);
+                          alert(
+                            'Recovery kit downloaded. It includes your current personal data plus dirty/deleted sync metadata. Store it safely, then check the acknowledgment box.',
+                          );
+                        } catch (err) {
+                          alert(err instanceof Error ? err.message : 'Could not build recovery kit.');
+                        } finally {
+                          setIsPreparingRecovery(false);
+                        }
+                      }}
+                      className="w-full py-2.5 bg-muted border border-border rounded-xl text-xs font-semibold text-foreground disabled:opacity-60"
+                    >
+                      {isPreparingRecovery ? 'Preparing recovery kit…' : '1. Download recovery kit (required)'}
+                    </button>
+
+                    <label className="flex items-start gap-2.5 text-xs cursor-pointer">
+                      <input
+                        type="checkbox"
+                        checked={recoveryKitSaved}
+                        onChange={e => setRecoveryKitSaved(e.target.checked)}
+                        className="mt-0.5 rounded border-border"
+                      />
+                      <span className="text-muted-foreground">
+                        I saved the recovery kit file (includes sync dirty/deleted metadata) and can
+                        use it if this restore fails.
+                      </span>
+                    </label>
+
+                    <div>
+                      <label className="block text-xs font-medium text-muted-foreground mb-1.5">
+                        Type {REPLACE_CONFIRMATION_PHRASE} to confirm
+                      </label>
+                      <input
+                        type="text"
+                        value={replaceConfirmText}
+                        onChange={e => setReplaceConfirmText(e.target.value)}
+                        className="w-full p-3 bg-background border border-border rounded-xl text-sm text-foreground"
+                        placeholder={REPLACE_CONFIRMATION_PHRASE}
+                        autoComplete="off"
+                      />
+                    </div>
+
+                    <button
+                      type="button"
+                      disabled={
+                        isExecutingReplace ||
+                        !recoveryKitSaved ||
+                        replaceConfirmText.trim() !== REPLACE_CONFIRMATION_PHRASE
+                      }
+                      onClick={async () => {
+                        if (!replaceBackupJson) return;
+                        setIsExecutingReplace(true);
+                        try {
+                          const res = await executeReplaceAllLocalOnly(replaceBackupJson, {
+                            confirmationPhrase: replaceConfirmText,
+                            recoveryKitSavedAcknowledged: recoveryKitSaved,
+                          });
+                          if (res.success) {
+                            alert(
+                              `Local replace-all complete (${res.restoredCount} items). Cloud sync is now isolated on this device. Keep your recovery kit.`,
+                            );
+                            setReplaceAllPlan(null);
+                            setReplaceBackupJson(null);
+                            window.location.reload();
+                          } else {
+                            alert(res.error || 'Replace failed.');
+                          }
+                        } finally {
+                          setIsExecutingReplace(false);
+                        }
+                      }}
+                      className="w-full py-3 bg-red-500 text-white rounded-xl text-sm font-medium disabled:opacity-50"
+                    >
+                      {isExecutingReplace
+                        ? 'Replacing local data…'
+                        : '2. Replace local personal data (enter isolation)'}
+                    </button>
+                  </>
+                )}
+              </div>
+            </div>
+          )}
 
           <button
             onClick={async () => {

@@ -1,8 +1,12 @@
-import { useEffect, useRef, useState, useCallback } from 'react';
+import { useEffect, useRef, useState, useCallback, useSyncExternalStore } from 'react';
 import { useAuthStore } from '../store/authStore';
 import { pullAll, pullLiveActivity, pushDirtyRecords, drainPendingSync, applyRealtimeChange, hasPendingDirty, ALL_TABLES } from '../sync/syncEngine';
 import type { TableName } from '../sync/syncEngine';
 import { syncNotifications } from '../sync/notificationSync';
+import {
+  isCloudSyncBlocked,
+  RESTORE_ISOLATION_CHANGED_EVENT,
+} from '../sync/restoreIsolation';
 import { supabase, isSupabaseConfigured } from '../lib/supabase';
 export type SyncStatus = 'idle' | 'syncing' | 'error';
 
@@ -19,6 +23,31 @@ const LIVE_PULL_INTERVAL = 15 * 1000; // 15 seconds
  * cloud snapshots, all dirty local records and pending offline deletions
  * are flushed to Supabase BEFORE running reconciliation pulls.
  */
+let isolationEpoch = 0;
+const isolationListeners = new Set<() => void>();
+let isolationWindowBound = false;
+
+function ensureIsolationWindowListener() {
+  if (isolationWindowBound || typeof window === 'undefined') return;
+  isolationWindowBound = true;
+  window.addEventListener(RESTORE_ISOLATION_CHANGED_EVENT, () => {
+    isolationEpoch += 1;
+    isolationListeners.forEach(l => l());
+  });
+}
+
+function subscribeIsolationEpoch(onStoreChange: () => void) {
+  ensureIsolationWindowListener();
+  isolationListeners.add(onStoreChange);
+  return () => {
+    isolationListeners.delete(onStoreChange);
+  };
+}
+
+function getIsolationEpoch() {
+  return isolationEpoch;
+}
+
 export function useSync(): {
   syncStatus: SyncStatus;
   manualSync: () => Promise<boolean>;
@@ -26,9 +55,19 @@ export function useSync(): {
   const { user } = useAuthStore();
   const [syncStatus, setSyncStatus] = useState<SyncStatus>('idle');
   const lastFullSyncRef = useRef<number>(0);
+  // Re-subscribe when restore isolation is entered/cleared (localStorage is not reactive).
+  const isolationEpochNow = useSyncExternalStore(
+    subscribeIsolationEpoch,
+    getIsolationEpoch,
+    getIsolationEpoch,
+  );
 
   // Push pending writes then pull cloud data into local
   const performSync = useCallback(async (userId: string) => {
+    if (isCloudSyncBlocked()) {
+      setSyncStatus('idle');
+      return false;
+    }
     setSyncStatus('syncing');
     try {
       // 1. Drain pending local writes & deletes FIRST
@@ -50,6 +89,7 @@ export function useSync(): {
   // Manual sync: flush any unsent local writes, then pull.
   const manualSync = useCallback(async () => {
     if (!user) return false;
+    if (isCloudSyncBlocked()) return false;
     return performSync(user.id);
   }, [user, performSync]);
 
@@ -59,9 +99,16 @@ export function useSync(): {
       return;
     }
 
+    // Local-only restored state: do not start pull/push/realtime/polling.
+    if (isCloudSyncBlocked()) {
+      setSyncStatus('idle');
+      return;
+    }
+
     const userId = user.id;
 
     // 1. Drain pending offline/boot writes first, then pull on mount/login
+    // After Choice B, dirty/deleted are empty and outbox is quarantined — safe to resume.
     void performSync(userId);
 
     // 2. Realtime WebSocket subscription for instant cross-device updates
@@ -146,7 +193,7 @@ export function useSync(): {
       window.removeEventListener('focus', onFocus);
       window.removeEventListener('online', onOnline);
     };
-  }, [user?.id, performSync]);
+  }, [user?.id, performSync, isolationEpochNow]);
 
   return { syncStatus, manualSync };
 }

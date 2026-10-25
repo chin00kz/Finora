@@ -56,6 +56,7 @@ import TransactionModal from './components/TransactionModal';
 import GlobalUndoToast from './components/GlobalUndoToast';
 import BudgetModal from './components/BudgetModal';
 import MigrateLocalDataBanner from './components/MigrateLocalDataBanner';
+import RestoreIsolationBanner from './components/RestoreIsolationBanner';
 import CustomizeNavModal from './components/CustomizeNavModal';
 import Logo from './components/Logo';
 import Maintenance from './pages/Maintenance';
@@ -285,14 +286,16 @@ function MobileBottomNav({ syncStatus }: { syncStatus: 'idle' | 'syncing' | 'err
   return (
     <>
       {/* Floating Quick Add FAB on Mobile - Mathematically centered to viewport */}
-      <button
-        onClick={() => setAddTransactionModalOpen(true)}
-        style={{ bottom: 'calc(env(safe-area-inset-bottom) + 5rem)' }}
-          className="md:hidden fixed left-1/2 -translate-x-1/2 z-40 pointer-events-auto w-14 h-14 rounded-full bg-foreground text-background shadow-xl hover:opacity-90 active:scale-95 transition-transform flex items-center justify-center"
-        title="Add transaction"
-      >
-        <Plus size={24} strokeWidth={2.25} />
-      </button>
+      {!isActive('/notifications') && (
+        <button
+          onClick={() => setAddTransactionModalOpen(true)}
+          style={{ bottom: 'calc(env(safe-area-inset-bottom, 0px) + 5rem)' }}
+            className="md:hidden fixed left-1/2 -translate-x-1/2 z-40 pointer-events-auto w-14 h-14 rounded-full bg-foreground text-background shadow-xl hover:opacity-90 active:scale-95 transition-transform flex items-center justify-center"
+          title="Add transaction"
+        >
+          <Plus size={24} strokeWidth={2.25} />
+        </button>
+      )}
 
       {/* Mobile "More" Drawer for hidden items */}
       {isMoreOpen && (
@@ -302,7 +305,7 @@ function MobileBottomNav({ syncStatus }: { syncStatus: 'idle' | 'syncing' | 'err
         >
           <div
             className="bg-card border border-border rounded-2xl p-4 shadow-xl space-y-2 max-w-md mx-auto w-full animate-in slide-in-from-bottom-4 duration-200"
-              style={{ marginBottom: 'calc(env(safe-area-inset-bottom) + 5rem)' }}
+              style={{ marginBottom: 'calc(env(safe-area-inset-bottom, 0px) + 5rem)' }}
             onClick={e => e.stopPropagation()}
           >
             <div className="flex items-center justify-between pb-2 border-b border-border">
@@ -411,8 +414,8 @@ function MobileBottomNav({ syncStatus }: { syncStatus: 'idle' | 'syncing' | 'err
         </div>
       )}
 
-      {/* Mobile Fixed Bottom Nav */}
-      <nav className="md:hidden fixed bottom-0 left-0 right-0 w-full bg-background backdrop-blur-md border-t border-border pb-safe z-40">
+      {/* Mobile Fixed Bottom Nav — opaque bg extends through safe-area via pb-safe */}
+      <nav className="md:hidden fixed bottom-0 left-0 right-0 w-full bg-background border-t border-border pb-safe z-40">
         <div className="flex justify-around items-center h-16 px-1">
           {frontItemIds.map(id => {
             const item = ALL_NAV_ITEMS.find(i => i.id === id);
@@ -424,6 +427,7 @@ function MobileBottomNav({ syncStatus }: { syncStatus: 'idle' | 'syncing' | 'err
               <Link
                 key={id}
                 to={item.to}
+                onClick={() => setIsMoreOpen(false)}
                 className={`flex flex-col items-center justify-center w-full h-full ${
                   active ? 'text-foreground' : 'text-muted-foreground'
                 }`}
@@ -560,13 +564,14 @@ function MainAppShell() {
   if (isNewAccount) return <OnboardingFlow onComplete={() => window.location.reload()} />;
 
   return (
-    <div className="min-h-[100dvh] bg-background text-foreground flex flex-col md:flex-row">
+    <div className="h-[100dvh] max-h-[100dvh] overflow-hidden bg-background text-foreground flex flex-col pt-safe md:h-auto md:max-h-none md:min-h-[100dvh] md:overflow-visible md:pt-0 md:flex-row">
       {/* Desktop Sidebar (hidden on mobile) */}
       {!hideNav && <DesktopSidebar syncStatus={syncStatus} />}
 
-      {/* Main Content Area */}
-      <main className="flex-1 min-w-0 min-h-[100dvh] overflow-y-auto">
-        <div className="w-full min-h-[100dvh]">
+      {/* Main Content Area — sole mobile scroll owner (min-h-0 required for flex scroll) */}
+      <main className="flex-1 min-w-0 min-h-0 overflow-y-auto overscroll-y-contain bg-background md:min-h-[100dvh]">
+        <RestoreIsolationBanner />
+        <div className="w-full min-h-full">
           <Routes>
             <Route
               path="/"

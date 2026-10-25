@@ -1,4 +1,4 @@
-﻿// src/utils/sharedIouSettlementEngine.ts
+// src/utils/sharedIouSettlementEngine.ts
 import type { CacheSharedIouSettlement } from '../db/db';
 
 export interface SharedIouFinancials {
@@ -31,9 +31,41 @@ export function getSharedIouSettlementStatus(iouAmount: number, settlements: Cac
   };
 }
 
+/**
+ * Remaining balance for Mark-as-Paid UI / submit display.
+ *
+ * UnifiedIou.amount from Debts.tsx is ALREADY the confirmed remaining
+ * (original − Σ confirmed). Never subtract confirmed totals from that
+ * field again. Prefer recomputing from originalAmount + settlements when
+ * originalAmount is present so remaps stay idempotent.
+ *
+ * Pending settlements do not reduce Mark-as-Paid remaining — only confirmed
+ * payments do (matches mark_iou_paid server remaining = amount − confirmed).
+ */
+export function resolveMarkPaidRemainingAmount(args: {
+  /** Cloud principal — UnifiedIou.originalAmount */
+  originalAmount?: number;
+  /** UnifiedIou.amount — remaining after confirmed settlements, not principal */
+  unifiedRemainingAmount: number;
+  settlements: Array<Pick<CacheSharedIouSettlement, 'status' | 'amount'>>;
+}): number {
+  if (args.originalAmount != null && Number.isFinite(args.originalAmount)) {
+    return getSharedIouSettlementStatus(
+      args.originalAmount,
+      args.settlements as CacheSharedIouSettlement[],
+    ).remainingAmount;
+  }
+  return Math.max(0, args.unifiedRemainingAmount);
+}
+
+/** True when Mark-as-Paid may submit a settlement for the remaining balance. */
+export function canSubmitMarkPaid(remainingAmount: number): boolean {
+  return Number.isFinite(remainingAmount) && remainingAmount > 0;
+}
+
 export function canProposePayment(
   source: 'local' | 'shared',
-  status: 'active' | 'settled' | 'pending',
+  status: 'active' | 'settled' | 'pending' | 'cancelled' | 'rejected',
   direction: 'theyOweMe' | 'iOweThem',
   availableToPropose: number
 ): boolean {
@@ -47,7 +79,7 @@ export function canProposePayment(
 
 export function canReviewPayment(
   source: 'local' | 'shared',
-  status: 'active' | 'settled' | 'pending',
+  status: 'active' | 'settled' | 'pending' | 'cancelled' | 'rejected',
   direction: 'theyOweMe' | 'iOweThem'
 ): boolean {
   return (

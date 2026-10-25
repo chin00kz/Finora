@@ -24,10 +24,13 @@ import {
   GraduationCap,
 } from 'lucide-react';
 import { getBudgetStatus } from '../utils/budgetUtils';
+import { resolveActiveBudget } from '../utils/budgetLifecycle';
+import { expensePersonalSpendAmount, sumBudgetSpending } from '../utils/spendingAmount';
 import { computeSafeToSpendSync } from '../utils/safeToSpendEngine';
 import SafeToSpendCard from '../components/SafeToSpendCard';
 import { usePrivacyStore } from '../store/privacyStore';
 import MaskedAmount from '../components/MaskedAmount';
+import NotificationBell from '../components/NotificationBell';
 
 /**
  * Resolves a restrained, professional Lucide icon for a transaction row.
@@ -44,6 +47,13 @@ function getTransactionIcon(txn: Transaction, categories: Category[]) {
   if (txn.type === 'transfer') {
     return {
       Icon: ArrowLeftRight,
+      iconClass: 'text-muted-foreground',
+      containerClass: 'bg-muted border border-border',
+    };
+  }
+  if (txn.type === 'opening_balance' || txn.type === 'balance_adjustment') {
+    return {
+      Icon: Receipt,
       iconClass: 'text-muted-foreground',
       containerClass: 'bg-muted border border-border',
     };
@@ -103,7 +113,7 @@ export default function Dashboard() {
 
   const accounts = useLiveQuery(() => db.accounts.toArray()) || [];
   const budgets = useLiveQuery(() => db.budgets.toArray()) || [];
-  const activeBudget = budgets.find(b => b.status === 'active');
+  const activeBudget = resolveActiveBudget(budgets);
   const transactionsRaw = useLiveQuery(() => db.transactions.toArray());
   const transactions = transactionsRaw || [];
   const categories = useLiveQuery(() => db.categories.toArray()) || [];
@@ -148,13 +158,10 @@ export default function Dashboard() {
 
   if (activeBudget) {
     const today = Date.now();
-    const periodTxns = transactions.filter(
-      t => t.type === 'expense' && !t.excludeFromBudget && t.date >= activeBudget.startDate && t.date <= activeBudget.endDate
-    );
-    spentThisPeriod = periodTxns.reduce(
-      (sum, t) => sum + (t.isShared && t.personalAmount ? t.personalAmount : t.amount),
-      0
-    );
+    spentThisPeriod = sumBudgetSpending(transactions, {
+      startDate: activeBudget.startDate,
+      endDate: activeBudget.endDate,
+    });
     daysLeft = Math.max(0, differenceInDays(activeBudget.endDate, today));
     budgetStatus = getBudgetStatus(spentThisPeriod, activeBudget.amount, {
       startDate: activeBudget.startDate,
@@ -197,6 +204,7 @@ export default function Dashboard() {
           <span className="text-sm font-medium text-muted-foreground">Available</span>
 
           <div className="flex items-center gap-1 -mr-2">
+            <NotificationBell />
             {/* Safe-to-Spend Status Shield Icon */}
             {showSafeToSpendHome && (
               <button
@@ -327,6 +335,17 @@ export default function Dashboard() {
             const isIncome = txn.type === 'income';
             const isExpense = txn.type === 'expense';
             const dateLabel = formatTransactionDate(txn.date);
+            const title =
+              txn.notes ||
+              (isExpense
+                ? 'Expense'
+                : isIncome
+                ? 'Income'
+                : txn.type === 'opening_balance'
+                ? 'Opening Balance'
+                : txn.type === 'balance_adjustment'
+                ? 'Balance Adjustment'
+                : 'Transfer');
 
             return (
               <button
@@ -341,7 +360,7 @@ export default function Dashboard() {
                   </div>
                   <div className="min-w-0">
                     <p className="font-medium text-foreground text-sm leading-tight truncate">
-                      {txn.notes || (isExpense ? 'Expense' : isIncome ? 'Income' : 'Transfer')}
+                      {title}
                     </p>
                     <p className="text-xs text-muted-foreground mt-0.5">
                       {dateLabel}
@@ -353,8 +372,31 @@ export default function Dashboard() {
                     </p>
                   </div>
                 </div>
-                <span className={`font-medium text-sm tabular-nums whitespace-nowrap ${getTransactionGlanceColor(txn.amount, txn.type, transactionBaseline, glanceTransactions)}`}>
-                  {isExpense ? '−' : isIncome ? '+' : ''}LKR <MaskedAmount amount={txn.amount} />
+                <span
+                  className={`font-medium text-sm tabular-nums whitespace-nowrap ${getTransactionGlanceColor(
+                    isExpense ? expensePersonalSpendAmount(txn) : txn.amount,
+                    txn.type,
+                    transactionBaseline,
+                    glanceTransactions,
+                  )}`}
+                >
+                  {isExpense
+                    ? '−'
+                    : isIncome
+                    ? '+'
+                    : txn.type === 'opening_balance' || txn.type === 'balance_adjustment'
+                    ? txn.amount >= 0
+                      ? '+'
+                      : '−'
+                    : ''}
+                  LKR{' '}
+                  <MaskedAmount
+                    amount={
+                      txn.type === 'opening_balance' || txn.type === 'balance_adjustment'
+                        ? Math.abs(txn.amount)
+                        : txn.amount
+                    }
+                  />
                 </span>
               </button>
             );

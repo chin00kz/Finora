@@ -1,6 +1,8 @@
 import { supabase } from '../lib/supabase';
 import { db } from '../db/db';
 import type { CacheSharedIou } from '../db/db';
+import { cloudSyncBlockReason, isCloudSyncBlocked } from './restoreIsolation';
+import { shouldAutoApplyOutboxEntry } from './outboxQuarantine';
 
 /**
  * Fetches all Shared IOUs visible to the authenticated user via RLS,
@@ -10,6 +12,9 @@ import type { CacheSharedIou } from '../db/db';
  * This completely bypasses the generic dirty-sync pipeline.
  */
 export async function syncSharedIous(): Promise<{ success: boolean; error?: string }> {
+  if (isCloudSyncBlocked()) {
+    return { success: false, error: cloudSyncBlockReason() };
+  }
   try {
     // 1. Fetch from authoritative cloud via authenticated client
     // RLS policies automatically filter to rows where the user is creator, creditor, or debtor.
@@ -31,6 +36,7 @@ export async function syncSharedIous(): Promise<{ success: boolean; error?: stri
       currency: row.currency,
       description: row.description || undefined,
       status: row.status,
+      status_reason: row.status_reason || undefined,
       created_at: Number(row.created_at),
       accepted_at: row.accepted_at ? Number(row.accepted_at) : undefined,
       updated_at: Number(row.updated_at)
@@ -60,6 +66,9 @@ export async function syncSharedIous(): Promise<{ success: boolean; error?: stri
  * This completely bypasses the generic dirty-sync pipeline.
  */
 export async function syncSharedIouSettlements(): Promise<{ success: boolean; error?: string }> {
+  if (isCloudSyncBlocked()) {
+    return { success: false, error: cloudSyncBlockReason() };
+  }
   try {
     const { data, error } = await supabase.from('shared_iou_settlements').select('*');
 
@@ -86,6 +95,108 @@ export async function syncSharedIouSettlements(): Promise<{ success: boolean; er
         await db.cacheSharedIouSettlements.bulkPut(normalized);
       }
     });
+    
+    // Process local account outbox (debit for payers, credit for creditors)
+    const authStore = (await import('../store/authStore')).useAuthStore.getState();
+    const currentUid = authStore.user?.id;
+    if (currentUid) {
+      const outboxEntries = await db.pendingAccountOutbox.toArray();
+      for (const outbox of outboxEntries) {
+        // Never process another user's outbox intent
+        if (outbox.uid !== currentUid) continue;
+        // Quarantined after restore reconciliation — manual review only
+        if (!shouldAutoApplyOutboxEntry(outbox)) continue;
+
+        const cloudRow = normalized.find(r => r.id === outbox.id);
+        // Settlement not visible yet or still pending — wait
+        if (!cloudRow || cloudRow.status === 'pending') continue;
+
+        if (cloudRow.status === 'rejected') {
+          // Settlement was rejected — discard the pending account intent silently
+          await db.pendingAccountOutbox.delete(outbox.id);
+          continue;
+        }
+
+        if (cloudRow.status === 'confirmed') {
+          const isCredit = outbox.direction === 'credit';
+          let appliedTxnId: string | null = null;
+          let appliedAccountId: string | null = null;
+
+          await db.transaction('rw', [db.accounts, db.transactions, db.pendingAccountOutbox], async () => {
+            // Idempotency: skip if a transaction for this settlement already exists
+            const existing = await db.transactions.where('debtSettlementId').equals(outbox.id).first();
+            if (existing) {
+              await db.pendingAccountOutbox.delete(outbox.id);
+              return;
+            }
+
+            const acc = await db.accounts.get(outbox.accountId);
+            if (!acc) {
+              // Account was deleted before the settlement was processed.
+              // Mark as failed instead of silently discarding, so the user can manually recover.
+              console.warn(`[Outbox] Account ${outbox.accountId} not found for settlement ${outbox.id}. Marking as failed.`);
+              if (!outbox.error) {
+                await db.pendingAccountOutbox.put({
+                  ...outbox,
+                  error: `Account deleted. Please record this ${outbox.amount} transaction manually.`
+                });
+              }
+              return;
+            }
+
+            const { createId } = await import('../utils/createId');
+            const txnId = createId('txn');
+            const now = Date.now();
+
+            if (isCredit) {
+              // Creditor: deposit confirmed payment into their account
+              await db.accounts.update(acc.id, {
+                balance: acc.balance + outbox.amount,
+                updatedAt: now
+              });
+              await db.transactions.add({
+                id: txnId,
+                type: 'debt_settlement',
+                amount: outbox.amount,
+                date: now,
+                accountId: acc.id,
+                notes: 'Shared IOU Payment Received',
+                debtDirection: 'theyOweMe',
+                debtSettlementId: outbox.id,
+                updatedAt: now
+              });
+            } else {
+              // Debtor: deduct payment from their account
+              await db.accounts.update(acc.id, {
+                balance: acc.balance - outbox.amount,
+                updatedAt: now
+              });
+              await db.transactions.add({
+                id: txnId,
+                type: 'debt_settlement',
+                amount: outbox.amount,
+                date: now,
+                accountId: acc.id,
+                notes: 'Shared IOU Payment',
+                debtDirection: 'iOweThem',
+                debtSettlementId: outbox.id,
+                updatedAt: now
+              });
+            }
+
+            await db.pendingAccountOutbox.delete(outbox.id);
+            appliedTxnId = txnId;
+            appliedAccountId = acc.id;
+          });
+
+          if (appliedTxnId && appliedAccountId) {
+            const { triggerSync } = await import('./syncEngine');
+            triggerSync('accounts', appliedAccountId);
+            triggerSync('transactions', appliedTxnId);
+          }
+        }
+      }
+    }
 
     console.log(`[SharedIOU Settlement Sync] Atomically cached ${normalized.length} settlements.`);
     return { success: true };
@@ -94,3 +205,4 @@ export async function syncSharedIouSettlements(): Promise<{ success: boolean; er
     return { success: false, error: err.message };
   }
 }
+

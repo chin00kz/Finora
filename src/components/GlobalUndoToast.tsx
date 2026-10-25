@@ -1,7 +1,7 @@
 import { useEffect, useState, useRef } from 'react';
 import { useUIStore } from '../store/uiStore';
-import { db } from '../db/db';
 import { deleteFromCloud, triggerSync } from '../sync/syncEngine';
+import { undoRecentTransaction } from '../utils/undoRecentTransaction';
 import { RotateCcw, X, CheckCircle2 } from 'lucide-react';
 
 export default function GlobalUndoToast() {
@@ -51,31 +51,28 @@ export default function GlobalUndoToast() {
     setIsUndoing(true);
 
     try {
-      // 1. Delete the created transaction from Dexie
-      await db.transactions.delete(undoToast.transactionId);
+      // Atomic reverse-then-delete via shared balance helpers
+      const result = await undoRecentTransaction({
+        transactionId: undoToast.transactionId,
+        expectedType: undoToast.type,
+      });
 
-      // 2. Restore the account balance
-      const acc = await db.accounts.get(undoToast.accountId);
-      if (acc) {
-        const balanceDelta =
-          undoToast.type === 'expense' ? undoToast.amount : -undoToast.amount;
-        await db.accounts.update(acc.id, {
-          balance: acc.balance + balanceDelta,
-          updatedAt: Date.now(),
-        });
-        triggerSync('accounts', acc.id);
+      if (!result.ok && result.reason === 'not_found') {
+        // Already gone — still clear dirty / cloud tombstone best-effort
+      } else if (!result.ok) {
+        console.warn('[undo] Could not undo transaction:', result.reason);
+        dismissUndoToast();
+        return;
       }
 
-      // 3. Prevent in-flight race condition:
-      // Remove any pending insert for this transaction from localStorage pending queue
+      // Remove pending insert for this transaction from dirty map
       try {
-        // Remove the deleted transaction from the dirty map if it was queued
         const rawDirty = localStorage.getItem('finora-dirty');
         if (rawDirty) {
           const dirty = JSON.parse(rawDirty);
           if (dirty?.transactions) {
             dirty.transactions = (dirty.transactions as string[]).filter(
-              (id: string) => id !== undoToast.transactionId
+              (id: string) => id !== undoToast.transactionId,
             );
             localStorage.setItem('finora-dirty', JSON.stringify(dirty));
           }
@@ -84,10 +81,11 @@ export default function GlobalUndoToast() {
         console.warn('Could not update dirty map on undo:', err);
       }
 
-      // 4. Issue cloud delete
       await deleteFromCloud('transactions', undoToast.transactionId);
 
-      // Show brief success feedback
+      const accountIds = new Set<string>([undoToast.accountId, ...result.reversedAccountIds]);
+      accountIds.forEach(id => triggerSync('accounts', id));
+
       setUndoneSuccess(true);
       setTimeout(() => {
         setUndoneSuccess(false);
@@ -104,7 +102,7 @@ export default function GlobalUndoToast() {
   return (
     <aside
       aria-label="Action feedback"
-      className="fixed bottom-20 md:bottom-6 left-4 right-4 md:left-auto md:right-6 md:w-96 z-50 animate-in fade-in slide-in-from-bottom-5 duration-200 pointer-events-auto"
+      className="fixed left-4 right-4 md:left-auto md:right-6 md:w-96 z-50 animate-in fade-in slide-in-from-bottom-5 duration-200 pointer-events-auto bottom-[calc(5rem+env(safe-area-inset-bottom,0px))] md:bottom-6"
     >
       <div className="bg-card/95 backdrop-blur-md text-foreground border border-border rounded-2xl shadow-xl overflow-hidden p-3.5 flex items-center justify-between gap-3">
         {undoneSuccess ? (
@@ -145,7 +143,6 @@ export default function GlobalUndoToast() {
         )}
       </div>
 
-      {/* Progress countdown indicator */}
       {!undoneSuccess && (
         <div className="h-0.5 w-full bg-muted/40 rounded-b-2xl overflow-hidden -mt-0.5">
           <div

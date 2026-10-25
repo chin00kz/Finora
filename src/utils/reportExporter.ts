@@ -1,5 +1,6 @@
 import { format } from 'date-fns';
 import type { Transaction, Category, Account, Tag } from '../db/db';
+import { csvYourShareValue } from './spendingAmount';
 
 /**
  * Escapes a field for CSV according to RFC 4180.
@@ -33,13 +34,16 @@ export function exportPeriodCSV({
   const accMap = new Map(accounts.map(a => [a.id, a.name]));
   const tagMap = new Map(tags.map(t => [t.id, t.name]));
 
+  // Amount = full cash amount (import-compatible). Your Share = personal spend for splits.
   const headers = [
     'Date',
     'Time',
     'Type',
     'Amount (LKR)',
+    'Your Share (LKR)',
     'Category',
     'Account',
+    'To Account',
     'Tags',
     'Notes',
     'Out of Budget',
@@ -51,6 +55,7 @@ export function exportPeriodCSV({
     const timeStr = format(d, 'h:mm a');
     const catName = t.categoryId ? catMap.get(t.categoryId) || 'Uncategorized' : 'None';
     const accName = accMap.get(t.accountId) || 'Unknown';
+    const toAccName = t.toAccountId ? accMap.get(t.toAccountId) || '' : '';
     const tagNames = (t.tagIds || []).map(id => tagMap.get(id) || id).join('; ');
 
     return [
@@ -58,8 +63,10 @@ export function exportPeriodCSV({
       escapeCSV(timeStr),
       escapeCSV(t.type),
       escapeCSV(t.amount),
+      escapeCSV(csvYourShareValue(t)),
       escapeCSV(catName),
       escapeCSV(accName),
+      escapeCSV(toAccName),
       escapeCSV(tagNames),
       escapeCSV(t.notes || ''),
       escapeCSV(t.excludeFromBudget ? 'Yes' : 'No'),
@@ -152,8 +159,22 @@ export function printPeriodReport(data: PrintableReportData) {
       <td style="padding: 6px 12px; border-bottom: 1px solid #f3f4f6; font-size: 12px; color: #4b5563;">
         ${t.accountName}
       </td>
-      <td style="padding: 6px 12px; border-bottom: 1px solid #f3f4f6; font-size: 12px; text-align: right; font-weight: 600; color: ${t.type === 'expense' ? '#111827' : '#16a34a'};">
-        ${t.type === 'expense' ? '-' : '+'}${currency} ${t.amount.toLocaleString()}
+      <td style="padding: 6px 12px; border-bottom: 1px solid #f3f4f6; font-size: 12px; text-align: right; font-weight: 600; color: ${
+        t.type === 'expense' || (t.type === 'balance_adjustment' && t.amount < 0) || (t.type === 'opening_balance' && t.amount < 0)
+          ? '#111827'
+          : t.type === 'transfer'
+          ? '#6b7280'
+          : '#16a34a'
+      };">
+        ${
+          t.type === 'opening_balance' || t.type === 'balance_adjustment'
+            ? `${t.amount >= 0 ? '+' : '−'}${currency} ${Math.abs(t.amount).toLocaleString()}`
+            : t.type === 'expense'
+            ? `-${currency} ${t.amount.toLocaleString()}`
+            : t.type === 'transfer'
+            ? `${currency} ${t.amount.toLocaleString()}`
+            : `+${currency} ${t.amount.toLocaleString()}`
+        }
       </td>
     </tr>
   `

@@ -10,6 +10,7 @@ import {
   subMonths,
 } from 'date-fns';
 import { formatMoney } from './formatters';
+import { expensePersonalSpendAmount } from './spendingAmount';
 
 export interface CategoryTrend {
   categoryId: string;
@@ -164,7 +165,7 @@ export function computeMonthlyDigestSync({
     if (t.type === 'income') {
       totalIncome += t.amount;
     } else if (t.type === 'expense') {
-      const amount = t.isShared && t.personalAmount ? t.personalAmount : t.amount;
+      const amount = expensePersonalSpendAmount(t);
       grossSpending += amount;
 
       if (isFloatOrInstallmentTxn(t)) {
@@ -184,14 +185,14 @@ export function computeMonthlyDigestSync({
   const currentByCat = new Map<string, number>();
   for (const t of currentTxns.filter((t) => t.type === 'expense')) {
     const cid = t.categoryId || 'uncategorized';
-    const amt = t.isShared && t.personalAmount ? t.personalAmount : t.amount;
+    const amt = expensePersonalSpendAmount(t);
     currentByCat.set(cid, (currentByCat.get(cid) || 0) + amt);
   }
 
   const prevByCat = new Map<string, number>();
   for (const t of prevTxns.filter((t) => t.type === 'expense')) {
     const cid = t.categoryId || 'uncategorized';
-    const amt = t.isShared && t.personalAmount ? t.personalAmount : t.amount;
+    const amt = expensePersonalSpendAmount(t);
     prevByCat.set(cid, (prevByCat.get(cid) || 0) + amt);
   }
 

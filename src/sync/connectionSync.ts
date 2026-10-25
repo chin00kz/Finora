@@ -1,8 +1,10 @@
-﻿import { supabase } from '../lib/supabase';
+import { supabase } from '../lib/supabase';
 import { db } from '../db/db';
 import type { CacheConnection, CacheProfile } from '../db/db';
+import { isCloudSyncBlocked } from './restoreIsolation';
 
 export async function syncConnections(userId: string) {
+  if (isCloudSyncBlocked()) return;
   try {
     const { data, error } = await supabase.rpc('get_my_connections');
     if (error) throw error;
@@ -19,6 +21,8 @@ export async function syncConnections(userId: string) {
           user_b: row.other_user_id,
           status: row.status,
           action_user_id: row.action_user_id,
+          user_a_auto_accepts_ious: row.i_auto_accept,
+          user_b_auto_accepts_ious: row.they_auto_accept,
           created_at: 0,
           updatedAt: Date.now()
         });

@@ -1,4 +1,5 @@
 import type { Transaction } from '../db/db';
+import { expensePersonalSpendAmount } from './spendingAmount';
 
 export function getBudgetGlanceColors(percent: number, isEnabled: boolean) {
   if (!isEnabled) {
@@ -36,20 +37,26 @@ export function getBudgetGlanceColors(percent: number, isEnabled: boolean) {
   }
 }
 
+/**
+ * Median personal-spend baseline for glance coloring (last 90 days).
+ * Uses personal share (0 counts); includes out-of-budget expenses.
+ * Does not use full cash paid — that remains for balance display only.
+ */
 export function getTransactionBaseline(transactions: Transaction[]): number | null {
-  const recentExpenses = transactions
-    .filter(t => t.type === 'expense' && !t.excludeFromBudget && (Date.now() - t.date < 90 * 24 * 60 * 60 * 1000))
-    .map(t => Math.abs(t.amount))
+  const recentPersonalSpend = transactions
+    .filter(t => t.type === 'expense' && Date.now() - t.date < 90 * 24 * 60 * 60 * 1000)
+    .map(t => Math.abs(expensePersonalSpendAmount(t)))
     .sort((a, b) => a - b);
-    
-  if (recentExpenses.length < 5) return null; // Fallback to neutral if not enough data
-  
-  const mid = Math.floor(recentExpenses.length / 2);
-  const median = recentExpenses.length % 2 !== 0 
-    ? recentExpenses[mid] 
-    : (recentExpenses[mid - 1] + recentExpenses[mid]) / 2;
-    
-  // Avoid returning a baseline of 0 if they recorded 0 amount transactions
+
+  if (recentPersonalSpend.length < 5) return null;
+
+  const mid = Math.floor(recentPersonalSpend.length / 2);
+  const median =
+    recentPersonalSpend.length % 2 !== 0
+      ? recentPersonalSpend[mid]
+      : (recentPersonalSpend[mid - 1] + recentPersonalSpend[mid]) / 2;
+
+  // All-zero personal shares (e.g. fully reimbursed splits) → no glance scale
   return median > 0 ? median : null;
 }
 
@@ -57,8 +64,16 @@ export function getTransactionGlanceColor(amount: number, type: string, baseline
   // Income retains positive semantic color
   if (type === 'income') return 'text-emerald-500';
   
-  // Transfers or disabled features remain neutral
-  if (type === 'transfer' || !isEnabled || !baseline) return 'text-foreground';
+  // Transfers / balance history or disabled features remain neutral
+  if (
+    type === 'transfer' ||
+    type === 'opening_balance' ||
+    type === 'balance_adjustment' ||
+    !isEnabled ||
+    !baseline
+  ) {
+    return 'text-foreground';
+  }
   
   const ratio = Math.abs(amount) / baseline;
   

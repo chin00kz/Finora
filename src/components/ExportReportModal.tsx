@@ -3,6 +3,8 @@ import { useLiveQuery } from 'dexie-react-hooks';
 import { db } from '../db/db';
 import { X, Download, Printer, FileSpreadsheet } from 'lucide-react';
 import { exportPeriodCSV, printPeriodReport } from '../utils/reportExporter';
+import { expensePersonalSpendAmount, sumBudgetSpending, sumGeneralExpenseSpending } from '../utils/spendingAmount';
+import { resolveActiveBudget } from '../utils/budgetLifecycle';
 import { subDays, startOfMonth, endOfMonth, format } from 'date-fns';
 
 interface ExportReportModalProps {
@@ -18,8 +20,10 @@ export default function ExportReportModal({ isOpen, onClose, defaultPeriod = 'cu
   const accounts = useLiveQuery(() => db.accounts.toArray()) || [];
   const tags = useLiveQuery(() => db.tags.toArray()) || [];
 
-  const activeBudget = budgets.find(b => b.status === 'active');
-  const pastBudgets = budgets.filter(b => b.status === 'ended');
+  const activeBudget = resolveActiveBudget(budgets);
+  const pastBudgets = budgets
+    .filter(b => b.status === 'ended')
+    .sort((a, b) => b.endDate - a.endDate);
 
   const [selectedPeriod, setSelectedPeriod] = useState<string>(defaultPeriod);
   const [formatType, setFormatType] = useState<'csv' | 'pdf'>('csv');
@@ -28,10 +32,12 @@ export default function ExportReportModal({ isOpen, onClose, defaultPeriod = 'cu
   const wasOpen = React.useRef(isOpen);
   useEffect(() => {
     if (isOpen && !wasOpen.current) {
-      setSelectedPeriod(defaultPeriod);
+      const initial =
+        defaultPeriod === 'current' && !activeBudget ? 'this_month' : defaultPeriod;
+      setSelectedPeriod(initial);
     }
     wasOpen.current = isOpen;
-  }, [isOpen, defaultPeriod]);
+  }, [isOpen, defaultPeriod, activeBudget]);
 
   // Early-return after all hooks.
   if (!isOpen) return null;
@@ -94,15 +100,23 @@ export default function ExportReportModal({ isOpen, onClose, defaultPeriod = 'cu
 
       const expenses = periodTransactions.filter(t => t.type === 'expense');
       const incomes = periodTransactions.filter(t => t.type === 'income');
+      const isBudgetPeriod =
+        (selectedPeriod === 'current' && !!activeBudget) || selectedPeriod.startsWith('budget_');
 
-      const totalExpense = expenses.reduce((sum, t) => sum + (t.personalAmount ?? t.amount), 0);
+      // Budget-period exports match Budget spent; calendar exports are general spending.
+      const totalExpense = isBudgetPeriod
+        ? sumBudgetSpending(periodTransactions)
+        : sumGeneralExpenseSpending(periodTransactions);
       const totalIncome = incomes.reduce((sum, t) => sum + t.amount, 0);
 
-      // Category breakdown
+      // Category breakdown (same exclusion rule as total)
+      const catSource = isBudgetPeriod
+        ? expenses.filter(t => !t.excludeFromBudget)
+        : expenses;
       const catSpending = new Map<string, number>();
-      for (const t of expenses) {
+      for (const t of catSource) {
         const cId = t.categoryId || 'uncat';
-        catSpending.set(cId, (catSpending.get(cId) || 0) + (t.personalAmount ?? t.amount));
+        catSpending.set(cId, (catSpending.get(cId) || 0) + expensePersonalSpendAmount(t));
       }
 
       const categoryBreakdown = Array.from(catSpending.entries()).map(([cId, amount]) => {

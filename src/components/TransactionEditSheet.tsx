@@ -8,6 +8,12 @@ import { triggerSync, deleteFromCloud } from '../sync/syncEngine';
 import { createId } from '../utils/createId';
 import { formatMoney } from '../utils/formatters';
 import { syncSettlementFromTransactionDelete, syncSettlementFromTransactionEdit } from '../utils/debtSettlementEngine';
+import {
+  applyAccountBalanceDeltas,
+  computeReverseBalanceDeltas,
+  prepareApplyBalance,
+} from '../utils/accountBalanceEffects';
+import { isBalanceHistoryType, transactionTypeLabel } from '../utils/transactionPresentation';
 import { useConfirm } from './ConfirmDialog';
 
 interface Props {
@@ -53,56 +59,43 @@ export default function TransactionEditSheet({ transaction, onClose }: Props) {
 
   const filteredCategories = categories.filter(c => c.type === (type === 'transfer' ? 'expense' : type));
 
-  // ── Reverse balance effect of the OLD transaction ───────────────────────────
+  // ── Reverse / apply balance via shared helpers ──────────────────────────────
   const reverseBalance = async () => {
-    const oldAmount = transaction.amount;
-    const fromAcc = await db.accounts.get(transaction.accountId);
-    if (!fromAcc) return;
-    const now = Date.now();
-
-    if (transaction.type === 'expense') {
-      await db.accounts.update(transaction.accountId, { balance: fromAcc.balance + oldAmount, updatedAt: now });
-    } else if (transaction.type === 'income') {
-      await db.accounts.update(transaction.accountId, { balance: fromAcc.balance - oldAmount, updatedAt: now });
-    } else if (transaction.type === 'transfer' && transaction.toAccountId) {
-      const toAcc = await db.accounts.get(transaction.toAccountId);
-      if (toAcc) {
-        await db.accounts.update(transaction.accountId, { balance: fromAcc.balance + oldAmount, updatedAt: now });
-        await db.accounts.update(transaction.toAccountId, { balance: toAcc.balance - oldAmount, updatedAt: now });
-      }
-    } else if (transaction.type === 'debt_settlement') {
-      const delta = transaction.debtDirection === 'theyOweMe' ? -oldAmount : oldAmount;
-      await db.accounts.update(transaction.accountId, { balance: fromAcc.balance + delta, updatedAt: now });
-    }
+    const deltas = computeReverseBalanceDeltas(transaction);
+    // Partial apply: transfer can reverse the remaining side if one account was deleted
+    await applyAccountBalanceDeltas(deltas, { requireAllAccounts: false });
   };
 
-  // ── Apply balance effect of the NEW transaction ─────────────────────────────
   const applyBalance = async (newAmount: number, newAccountId: string, newToAccountId?: string) => {
-    const fromAcc = await db.accounts.get(newAccountId);
-    if (!fromAcc) return;
-    const now = Date.now();
-
-    if (type === 'expense') {
-      await db.accounts.update(newAccountId, { balance: fromAcc.balance - newAmount, updatedAt: now });
-    } else if (type === 'income') {
-      await db.accounts.update(newAccountId, { balance: fromAcc.balance + newAmount, updatedAt: now });
-    } else if (type === 'transfer' && newToAccountId) {
-      const toAcc = await db.accounts.get(newToAccountId);
-      if (toAcc) {
-        await db.accounts.update(newAccountId, { balance: fromAcc.balance - newAmount, updatedAt: now });
-        await db.accounts.update(newToAccountId, { balance: toAcc.balance + newAmount, updatedAt: now });
-      }
-    } else if (type === 'debt_settlement') {
-      const delta = transaction.debtDirection === 'theyOweMe' ? newAmount : -newAmount;
-      await db.accounts.update(newAccountId, { balance: fromAcc.balance + delta, updatedAt: now });
-    }
+    const balanceTxn = {
+      type,
+      amount: newAmount,
+      accountId: newAccountId,
+      toAccountId: type === 'transfer' ? newToAccountId : undefined,
+      debtDirection: transaction.debtDirection,
+    };
+    const deltas = await prepareApplyBalance(balanceTxn);
+    await applyAccountBalanceDeltas(deltas, { requireAllAccounts: true });
   };
 
   // ── Save ────────────────────────────────────────────────────────────────────
   const handleSave = async () => {
+    const { getPersonalFinanceEditBlockError } = await import('../sync/restoreIsolation');
+    const editBlock = getPersonalFinanceEditBlockError();
+    if (editBlock) {
+      alert(editBlock.message);
+      return;
+    }
     if (isSubmitting) return;
     const numAmount = Number(amount);
-    if (!numAmount || isNaN(numAmount) || numAmount <= 0) return;
+    if (isNaN(numAmount)) return;
+    if (isBalanceHistoryType(type)) {
+      if (numAmount === 0) return;
+    } else if (!numAmount || numAmount <= 0) {
+      return;
+    }
+    if (!accountId) return;
+    if (type === 'transfer' && (!toAccountId || toAccountId === accountId)) return;
 
     setIsSubmitting(true);
     try {
@@ -153,7 +146,10 @@ export default function TransactionEditSheet({ transaction, onClose }: Props) {
           date: now,
           accountId,
           toAccountId: type === 'transfer' ? toAccountId : undefined,
-          categoryId: type !== 'transfer' && type !== 'debt_settlement' ? categoryId : undefined,
+          categoryId:
+            type !== 'transfer' && type !== 'debt_settlement' && !isBalanceHistoryType(type)
+              ? categoryId
+              : undefined,
           notes,
           tagIds: resolvedTagIds.length > 0 ? resolvedTagIds : undefined,
           isShared: type === 'expense' ? isShared : false,
@@ -185,6 +181,12 @@ export default function TransactionEditSheet({ transaction, onClose }: Props) {
 
   // ── Delete ──────────────────────────────────────────────────────────────────
   const handleDelete = async () => {
+    const { getPersonalFinanceEditBlockError } = await import('../sync/restoreIsolation');
+    const editBlock = getPersonalFinanceEditBlockError();
+    if (editBlock) {
+      alert(editBlock.message);
+      return;
+    }
     const ok = await requestConfirm({
       title: 'Delete this transaction?',
       body: 'The account balance will be reversed.',
@@ -262,14 +264,8 @@ export default function TransactionEditSheet({ transaction, onClose }: Props) {
     setShowNewCat(false);
   };
 
-  const typeLabel =
-    type === 'expense'
-      ? 'Expense'
-      : type === 'income'
-      ? 'Income'
-      : type === 'transfer'
-      ? 'Transfer'
-      : 'Debt Settlement';
+  const typeLabel = transactionTypeLabel(type);
+  const signedBalanceType = isBalanceHistoryType(type);
 
   return (
     <div className="fixed inset-0 z-50 flex flex-col justify-end bg-black/40 backdrop-blur-sm animate-in fade-in duration-200">
@@ -292,7 +288,9 @@ export default function TransactionEditSheet({ transaction, onClose }: Props) {
 
           {/* Amount */}
           <div>
-            <label className="block text-xs font-medium text-muted-foreground mb-1 uppercase tracking-wider">Amount</label>
+            <label className="block text-xs font-medium text-muted-foreground mb-1 uppercase tracking-wider">
+              {signedBalanceType ? 'Signed amount' : 'Amount'}
+            </label>
             <div className="flex items-center text-4xl font-light">
               <span className="text-xl text-muted-foreground mr-2">LKR</span>
               <input
@@ -304,6 +302,11 @@ export default function TransactionEditSheet({ transaction, onClose }: Props) {
                 className="w-full bg-transparent text-foreground outline-none placeholder:text-muted-foreground/50"
               />
             </div>
+            {signedBalanceType && (
+              <p className="text-xs text-muted-foreground mt-2">
+                Positive credits the account; negative debits. Not income, expense, or budget spending.
+              </p>
+            )}
           </div>
 
           {/* Notes */}
@@ -374,7 +377,7 @@ export default function TransactionEditSheet({ transaction, onClose }: Props) {
           )}
 
           {/* Category */}
-          {type !== 'transfer' && type !== 'debt_settlement' && filteredCategories.length >= 0 && (
+          {type !== 'transfer' && type !== 'debt_settlement' && !signedBalanceType && filteredCategories.length >= 0 && (
             <div>
               <label className="block text-xs font-medium text-muted-foreground mb-2 uppercase tracking-wider">Category</label>
               <div className="grid grid-cols-3 gap-2">
@@ -569,7 +572,12 @@ export default function TransactionEditSheet({ transaction, onClose }: Props) {
           </button>
           <button
             onClick={handleSave}
-            disabled={isSubmitting || !amount || isNaN(Number(amount)) || Number(amount) <= 0}
+            disabled={
+              isSubmitting ||
+              amount === '' ||
+              isNaN(Number(amount)) ||
+              (signedBalanceType ? Number(amount) === 0 : Number(amount) <= 0)
+            }
             className="flex-1 py-4 bg-accent text-accent-foreground rounded-xl font-medium text-base active:scale-[0.98] transition-transform disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
           >
             {isSubmitting ? (

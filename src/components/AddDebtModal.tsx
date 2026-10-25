@@ -4,7 +4,7 @@ import { X, ArrowDownLeft, ArrowUpRight } from 'lucide-react';
 import { db, type DebtDirection } from '../db/db';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { triggerSync } from '../sync/syncEngine';
-import { supabase } from '../lib/supabase';
+import { createSharedIou } from '../sync/sharedCloudMutations';
 import { syncSharedIous } from '../sync/sharedIouSync';
 import { useAuthStore } from '../store/authStore';
 import { syncConnections } from '../sync/connectionSync';
@@ -120,6 +120,12 @@ export default function AddDebtModal({ isOpen, onClose, defaultDirection = 'they
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    const { getPersonalFinanceEditBlockError } = await import('../sync/restoreIsolation');
+    const editBlock = getPersonalFinanceEditBlockError();
+    if (editBlock) {
+      setError(editBlock.message);
+      return;
+    }
     const numAmount = Number(amount);
 
     if (!personName.trim()) {
@@ -142,7 +148,7 @@ export default function AddDebtModal({ isOpen, onClose, defaultDirection = 'they
       }
 
       try {
-        const { error: rpcError } = await supabase.rpc('create_shared_iou', {
+        const { error: rpcError } = await createSharedIou({
           p_debtor_id: targetFriendId,
           p_amount: numAmount,
           p_currency: 'LKR',
