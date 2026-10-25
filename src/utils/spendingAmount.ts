@@ -26,17 +26,49 @@ export function isBudgetCountedExpense(
   return t.type === 'expense' && !t.excludeFromBudget;
 }
 
+export type BudgetDateRange = { startDate: number; endDate: number };
+
+/**
+ * Period-budget eligibility: counted expense whose occurrence timestamp falls
+ * inside [startDate, endDate] inclusive. No category matching — budgets are
+ * date windows over personal spend.
+ */
+export function isTransactionInBudgetPeriod(
+  t: Pick<SpendTxn, 'type' | 'excludeFromBudget' | 'date'>,
+  range: BudgetDateRange,
+): boolean {
+  if (!isBudgetCountedExpense(t)) return false;
+  return t.date >= range.startDate && t.date <= range.endDate;
+}
+
+/**
+ * Budget activity list — same eligibility as `sumBudgetSpending` for a range.
+ * Newest first. Does not mutate transactions.
+ */
+export function listBudgetCountedExpenses<T extends SpendTxn>(
+  txns: T[],
+  range: BudgetDateRange,
+): T[] {
+  return txns
+    .filter(t => isTransactionInBudgetPeriod(t, range))
+    .sort((a, b) => b.date - a.date);
+}
+
 /**
  * Sum personal spend for budget surfaces (Dashboard, BudgetDetail, Analytics
  * when viewing a budget period). Excludes excludeFromBudget and non-expenses.
+ * When `range` is set, uses the same inclusion rules as `listBudgetCountedExpenses`.
  */
 export function sumBudgetSpending(
   txns: SpendTxn[],
-  range?: { startDate: number; endDate: number },
+  range?: BudgetDateRange,
 ): number {
   return txns.reduce((sum, t) => {
-    if (!isBudgetCountedExpense(t)) return sum;
-    if (range && (t.date < range.startDate || t.date > range.endDate)) return sum;
+    if (range) {
+      if (!isTransactionInBudgetPeriod(t, range)) return sum;
+    } else if (!isBudgetCountedExpense(t)) {
+      return sum;
+    }
     return sum + expensePersonalSpendAmount(t);
   }, 0);
 }

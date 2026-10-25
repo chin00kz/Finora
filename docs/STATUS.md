@@ -10,7 +10,7 @@ This document tracks the current state of Finora, deployed features, known limit
 
 **Personal Finance (Local-First)**
 - Accounts, Transactions, Categories, and Tags
-- Budgets and Safe-to-Spend forecasting
+- Budgets and Safe-to-Spend forecasting (period budgets: create/edit, end, soft-remove/archive, Ended history, Continue with inherited limit; one active; natural expiry; spending via date window + `excludeFromBudget`)
 - Savings Goals
 - Recurring Payments
 - Personal IOUs (offline tracking with non-users)
@@ -31,6 +31,7 @@ This document tracks the current state of Finora, deployed features, known limit
 - **NotificationBell & Badges:** Global bell with a priority-colored semantic badge indicating the highest-urgency unread event (Red > Amber > Cyan > Emerald).
 
 ## 🟡 Currently Being Refined / Known Technical Debt
+- **Budgets lifecycle (staging):** Option C starts — greenfield today = midnight; same-day replace/Manual End→Create = handoff `Date.now()` with prior `newStart-1`. Overlap recovery, Continue/carry-forward, Hide/Restore, live ended totals. Local-first Dexie → generic upsert (no new schema). Per-category caps out of scope. Manual UI soak outstanding.
 - **Shared IOU Mark-as-Paid remaining (P0):** After partial confirmed payments, Mark as Paid understated remaining by subtracting confirmed totals from an amount that was already remaining. Fixed on staging via `resolveMarkPaidRemainingAmount` (unit-tested). Live two-user soak still outstanding.
 - **Mobile White-Bar Issue:** Root cause identified as unconstrained shell/`main` height (document scrolled instead of `main`) plus home-indicator/safe-area paint gaps under URL-bar and overscroll. Staging has a focused shell/safe-area fix and a manifest-only home-screen config (no service worker). Real-device Android/iPhone verification still outstanding.
 - **Transaction Edit Date/Time:** Layout was improved for narrow screens, but historically had intermittent disappearance reports.

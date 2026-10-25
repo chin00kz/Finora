@@ -28,6 +28,8 @@ Personal finance data (Accounts, Transactions, Budgets, Categories, personal Deb
 - The frontend operates primarily offline.
 - Background sync uploads opportunistic changes to Supabase via dirty tracking.
 
+**Budgets (period totals):** A budget is a dated spending window (`startDate`/`endDate`) with a limit / opening available — not a per-category cap. Spending and period activity use the same eligibility (`listBudgetCountedExpenses` / `sumBudgetSpending`) over inclusive occurrence timestamps (no per-transaction budget id). **Option C start rules:** greenfield create (or past start day) → local **midnight** of the selected day (full calendar day). **Same-day handoff** (+ New while active, or Create after Manual End the same local day) → new `startDate = Date.now()`, prior period clipped to `newStart-1` (repairing `startDate` only if a legacy same-day `start=now` would leave `end >= newStart`). Pre-handoff expenses stay on the old period; post-handoff on the new; no double-count / no gap. Other-day ended periods are not rewritten and still block true overlaps. Overlap recovery uses the same create-bounds resolution. **Continue** starts at `source.endDate+1` with carry-forward remaining; `bud-cont-{sourceId}` via `add` only. **Hide**/`Restore`, natural expiry, and edit start-day stability unchanged.
+
 ### B. Cloud-Consensus (Shared Data)
 Shared data (Profiles, Connections, Shared IOUs, Settlements) uses **Supabase as the authoritative source**.
 - Dexie is merely a read cache where appropriate.

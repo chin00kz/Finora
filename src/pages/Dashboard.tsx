@@ -1,4 +1,4 @@
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useEffect } from 'react';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { db, type Transaction, type Category } from '../db/db';
 import { differenceInDays, isToday, isYesterday, format, isSameDay } from 'date-fns';
@@ -25,6 +25,7 @@ import {
 } from 'lucide-react';
 import { getBudgetStatus } from '../utils/budgetUtils';
 import { resolveActiveBudget } from '../utils/budgetLifecycle';
+import { healMultipleActiveBudgets } from '../utils/budgetHeal';
 import { expensePersonalSpendAmount, sumBudgetSpending } from '../utils/spendingAmount';
 import { computeSafeToSpendSync } from '../utils/safeToSpendEngine';
 import SafeToSpendCard from '../components/SafeToSpendCard';
@@ -114,6 +115,10 @@ export default function Dashboard() {
   const accounts = useLiveQuery(() => db.accounts.toArray()) || [];
   const budgets = useLiveQuery(() => db.budgets.toArray()) || [];
   const activeBudget = resolveActiveBudget(budgets);
+
+  useEffect(() => {
+    void healMultipleActiveBudgets();
+  }, []);
   const transactionsRaw = useLiveQuery(() => db.transactions.toArray());
   const transactions = transactionsRaw || [];
   const categories = useLiveQuery(() => db.categories.toArray()) || [];

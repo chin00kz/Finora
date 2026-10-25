@@ -20,6 +20,11 @@ export interface TransactionPrefill {
   tagIds?: string[];
 }
 
+export type BudgetModalIntent =
+  | { mode: 'create' }
+  | { mode: 'edit'; budgetId: string }
+  | { mode: 'continue'; budgetId: string };
+
 interface UIState {
   hasDismissedProfileIntroV1: boolean;
   loadDismissedProfileIntroV1: (userId: string) => void;
@@ -28,7 +33,8 @@ interface UIState {
   isAddTransactionModalOpen: boolean;
   setAddTransactionModalOpen: (isOpen: boolean) => void;
   isBudgetModalOpen: boolean;
-  setBudgetModalOpen: (isOpen: boolean) => void;
+  budgetModalIntent: BudgetModalIntent;
+  setBudgetModalOpen: (isOpen: boolean, intent?: BudgetModalIntent) => void;
 
   undoToast: UndoToastAction | null;
   showUndoToast: (action: UndoToastAction) => void;
@@ -57,7 +63,12 @@ export const useUIStore = create<UIState>((set) => ({
       prefillData: isOpen ? state.prefillData : null,
     })),
   isBudgetModalOpen: false,
-  setBudgetModalOpen: (isOpen) => set({ isBudgetModalOpen: isOpen }),
+  budgetModalIntent: { mode: 'create' },
+  setBudgetModalOpen: (isOpen, intent) =>
+    set({
+      isBudgetModalOpen: isOpen,
+      budgetModalIntent: isOpen ? (intent ?? { mode: 'create' }) : { mode: 'create' },
+    }),
 
   undoToast: null,
   showUndoToast: (undoToast) => set({ undoToast }),
@@ -66,9 +77,3 @@ export const useUIStore = create<UIState>((set) => ({
   prefillData: null,
   setPrefillData: (prefillData) => set({ prefillData }),
 }));
-
-
-
-
-
-

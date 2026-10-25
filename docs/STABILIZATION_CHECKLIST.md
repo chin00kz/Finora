@@ -19,25 +19,37 @@ See also historical notes in `STAGE1_CHECKLIST.md` (superseded by this master li
 
 | Item | Status | Notes |
 |------|--------|-------|
-| Create budget (name, amount, custom dates) | FIXED | Atomic create; ends prior actives with clipped `endDate` |
+| Create budget (name, amount, custom dates) | FIXED | Atomic create; replaces prior actives with `newStart-1` clip |
 | One active budget rule | FIXED | Resolver + heal (runtime + Dexie v15); create ends others |
-| Edit budget amount/dates | PARTIAL | Rename only by design; amount/date edit not offered |
+| Edit budget name/amount/dates | FIXED | Active: name/amount/dates; ended: name/amount (dates locked for history) |
 | End budget early | FIXED | Clips `endDate` to freeze window |
-| Local midnight / today-start = now | WORKING | Centralized in `parseBudgetDateBounds` + tests |
-| Overlapping periods after replace/end | FIXED | Clip to `now-1` on end |
-| Category allocation caps | PARTIAL | Distribution charts only; no per-category limits (by design) |
-| Progress / remaining / overspend | WORKING | `getBudgetStatus`; detail now passes period for pace |
+| Natural period expiry | FIXED | Active with `endDate < now` → `ended` without rewriting planned `endDate` |
+| Continue ended budget | FIXED | `bud-cont-{id}` via `add` only; blocks if active exists or id already used (incl. archived); does not end unrelated actives |
+| Continue carry-forward | FIXED | New period opening = remaining (`max(0, limit−spent)`); prior spend stays on ended period; overspend → carry 0 + require new limit |
+| Non-overlapping periods | FIXED | Guard on create/continue/active date edit; create simulates replace clip of prior actives |
+| Edit today start stability | FIXED | Unchanged start calendar day keeps exact `startDate` ms |
+| Archive restore | FIXED | Restore → `ended` same id/dates if no overlap; continuations never overwritten |
+| Today start = local midnight | FIXED | `parseBudgetDateBounds` (not `Date.now()`); morning+afternoon on start day counted |
+| Create-after-replace handoff | FIXED | Clip displaced active to `newStart-1`; no stranding / no double-count; ended rows untouched |
+| Overlapping periods after replace/end | FIXED | Replace → `newStart-1`; manual End → `now-1` |
+| Manual End → Create same-day recovery | FIXED | Multi-period earliest start ≥ selected start for fixed end; create clip parity; no button if no gap |
+| Manual End → Create same day | FIXED | Option C: handoff start=`now`, prior ends `now-1`; pre-handoff on old, post on new |
+| Greenfield today vs replace today | FIXED | Greenfield midnight (full day); replace/handoff uses creation timestamp |
+| Ended section + detail | FIXED | List + open details (limit, spent, remaining/%, period activity) |
+| Active period activity list | FIXED | Same `listBudgetCountedExpenses` / `sumBudgetSpending` eligibility as ended |
+| Category allocation caps | N/A (by design) | Budgets are period totals, not per-category limits; txn categories still shown in period activity |
+| Progress / remaining / overspend | WORKING | `getBudgetStatus`; detail shows % used + pace |
 | `excludeFromBudget` | WORKING | Excluded from budget sums |
 | Shared `personalAmount` incl. 0 | WORKING | `spendingAmount` tests |
 | Recalc after txn create/edit/delete/undo | WORKING | LiveQuery + `sumBudgetSpending` |
-| Dashboard budget card | WORKING | Uses `resolveActiveBudget` + pace period |
+| Dashboard budget card | WORKING | Uses `resolveActiveBudget` + pace period; expires past-end on mount |
 | Analytics current w/o active | FIXED | Falls back to This Month; not all-time budget mode |
 | Analytics past-budget daily chart | FIXED | Uses budget start/end dates |
 | Historical multi-active from v3 migration | FIXED | Dexie v15 heal + runtime heal |
 | Sync missing status → active | FIXED | Infer ended if window passed |
 | Empty / validation / errors | FIXED | Modal form errors; amount > 0 |
-| Desktop/mobile budget UI | NOT TESTED | No browser run this session |
-| Budget delete per period | PARTIAL | No per-budget delete UI (Settings clear only) |
+| Desktop/mobile budget UI | NOT TESTED | Manual soak still outstanding |
+| Budget delete per period | FIXED | Soft-archive (`status: archived`); transactions never deleted |
 
 ## Mobile shell / home-screen (manifest-only)
 
